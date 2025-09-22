@@ -1,30 +1,63 @@
 {
   "name": "tsops",
   "version": "1.0.0",
-  "description": "",
+  "description": "TypeScript-first operations toolkit and CLI for Kubernetes-centric delivery pipelines.",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
+  "type": "module",
   "bin": {
-    "tsops": "dist/bin.js"
+    "tsops": "dist/src/bin.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "build:watch": "tsc -w -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "prepublishOnly": "pnpm run build"
   },
-  "keywords": [],
-  "author": "Roman Popov <opensource@rom4.dev>",
+  "keywords": [
+    "operations",
+    "cli",
+    "kubernetes",
+    "typescript"
+  ],
+  "author": "Roman Popov <atfpom4h@gmail.com>",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pom4H/tsops.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Pom4H/tsops/issues"
+  },
+  "homepage": "https://github.com/Pom4H/tsops#readme",
+  "engines": {
+    "node": ">=18"
+  },
   "dependencies": {
-    "commander": "^14.0.1",
-    "ts-node": "^10.9.2"
+    "commander": "^14.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
+  },
+  "peerDependencies": {
+    "typescript": ">=5.0.0"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "packageManager": "pnpm@10.17.0"
 }

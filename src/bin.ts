@@ -3,14 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import process from 'process';
 import { Command } from 'commander';
-import { pathToFileURL } from 'url';
-import { createRequire } from 'module';
-import packageJson from '../package.json';
+import packageJson from '../package.json' with { type: 'json' };
 import { TsOps, BuildOptions, DeployOptions } from './core';
-import type { TsOpsConfig } from '../types';
+import type { TsOpsConfig } from './types';
 
 const DEFAULT_CONFIG_BASENAME = 'tsops.config';
-let tsNodeRegistered = false;
 const tsOpsCache = new Map<string, TsOps>();
 
 const program = new Command();
@@ -65,6 +62,8 @@ const resolveConfigPath = (inputPath: string): string => {
   const candidates = [
     absoluteInput,
     `${absoluteInput}.ts`,
+    `${absoluteInput}.mts`,
+    `${absoluteInput}.cts`,
     `${absoluteInput}.js`,
     `${absoluteInput}.cjs`,
     `${absoluteInput}.mjs`,
@@ -79,38 +78,8 @@ const resolveConfigPath = (inputPath: string): string => {
   throw new Error(`Unable to locate config file at ${absoluteInput}`);
 };
 
-const ensureTsNode = async (): Promise<void> => {
-  if (tsNodeRegistered) {
-    return;
-  }
-
-  try {
-    await import('ts-node');
-    tsNodeRegistered = true;
-  } catch (error) {
-    throw new Error(
-      'Failed to load ts-node. Install it by running "pnpm add -D ts-node" or provide a compiled config.',
-    );
-  }
-};
-
 const importConfigModule = async (configPath: string): Promise<TsOpsConfig> => {
-  const extension = path.extname(configPath).toLowerCase();
-  if (extension === '.ts' || extension === '.tsx') {
-    await ensureTsNode();
-  }
-
-  let imported: unknown;
-  if (extension === '.mjs' || extension === '.mts' || extension === '.cjs' || extension === '.js') {
-    const moduleUrl = pathToFileURL(configPath).href;
-    imported = await import(moduleUrl);
-  } else if (extension === '.ts' || extension === '.tsx') {
-    const requireModule = createRequire(configPath);
-    imported = requireModule(configPath);
-  } else {
-    const requireModule = createRequire(configPath);
-    imported = requireModule(configPath);
-  }
+  const imported = await import(configPath);
 
   const resolved =
     typeof imported === 'object' && imported !== null && 'default' in imported

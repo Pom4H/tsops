@@ -4,16 +4,25 @@ import type {
   ServiceManifest,
   ServiceManifestContext,
   TsOpsConfig,
-} from './types';
+} from '../dist/types';
 
-const dockerfileMap: Record<'frontend' | 'backend', { dockerfile: string; context: string }> = {
-  frontend: { dockerfile: './apps/frontend/Dockerfile', context: './apps/frontend' },
-  backend: { dockerfile: './apps/backend/Dockerfile', context: './apps/backend' },
+const dockerfileMap: Record<
+  'frontend' | 'backend',
+  { dockerfile: string; context: string }
+> = {
+  frontend: {
+    dockerfile: './apps/frontend/Dockerfile',
+    context: './apps/frontend',
+  },
+  backend: {
+    dockerfile: './apps/backend/Dockerfile',
+    context: './apps/backend',
+  },
 };
 
 const createManifests = (
   name: 'frontend' | 'backend',
-  ports: { container: number; service: number },
+  ports: { container: number; service: number }
 ): ((ctx: ServiceManifestContext) => KubernetesManifest[]) => {
   return (context) => {
     const deployment: DeploymentManifest = {
@@ -172,9 +181,7 @@ const config: TsOpsConfig = {
         const { dockerfile, context } = dockerfileMap[key];
         const tag = `${service.containerImage}:${git.shortSha}`;
 
-        await exec(
-          `docker build -f ${dockerfile} -t ${tag} ${context}`,
-        );
+        await exec(`docker build -f ${dockerfile} -t ${tag} ${context}`);
       },
     },
     test: {

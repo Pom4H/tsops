@@ -379,3 +379,10 @@ export interface TsOpsConfig extends TsOpsConfigHelpers {
   hooks?: HooksConfig;
   featureFlags?: Record<string, unknown>;
 }
+
+export interface Logger {
+  info(message: string): void;
+  warn(message: string): void;
+  error(message: string, error?: unknown): void;
+  debug?(message: string): void;
+}

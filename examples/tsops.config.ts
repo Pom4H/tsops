@@ -1,4 +1,4 @@
-import {
+import type {
   DeploymentManifest,
   IngressManifest,
   KubernetesManifest,
@@ -8,7 +8,7 @@ import {
   EnvironmentConfig,
   ServiceConfig,
   GitInfo,
-} from './types';
+} from '../dist/types';
 
 const buildImageTag = (
   service: ServiceConfig & { name: string },
