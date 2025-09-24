@@ -26,13 +26,13 @@ The CLI is published as a binary named `tsops`. After installing it locally you 
 1. Create `tsops.config.ts` in the root of your repo:
 
 ```ts
-import type { TsOpsConfig } from 'tsops';
+import type { TsOpsConfig } from 'tsops'
 
 const config: TsOpsConfig = {
   project: {
     name: 'demo',
     repoUrl: 'https://github.com/example/demo',
-    defaultBranch: 'main',
+    defaultBranch: 'main'
   },
   environments: {
     dev: {
@@ -40,8 +40,8 @@ const config: TsOpsConfig = {
       namespace: 'demo-dev',
       imageTagStrategy: { type: 'gitSha', length: 7 },
       ingressController: { type: 'traefik', autoInstall: true },
-      tls: { selfSigned: { enabled: true } },
-    },
+      tls: { selfSigned: { enabled: true } }
+    }
   },
   services: {
     api: {
@@ -58,22 +58,19 @@ const config: TsOpsConfig = {
             template: {
               metadata: { labels: { app: 'api' } },
               spec: {
-                containers: [{ name: 'api', image, ports: [{ containerPort: 8080 }] }],
-              },
-            },
-          },
-        },
-      ],
-    },
+                containers: [{ name: 'api', image, ports: [{ containerPort: 8080 }] }]
+              }
+            }
+          }
+        }
+      ]
+    }
   },
   pipeline: {
     build: {
       run: async ({ exec, env, service, git }) => {
-        await exec(
-          `docker build -t ${service.containerImage}:${git.shortSha} .`,
-          { env },
-        );
-      },
+        await exec(`docker build -t ${service.containerImage}:${git.shortSha} .`, { env })
+      }
     },
     test: { run: async ({ exec }) => exec('pnpm test') },
     deploy: {
@@ -81,25 +78,25 @@ const config: TsOpsConfig = {
         await kubectl.apply({
           context: environment.cluster.context,
           namespace: environment.namespace,
-          manifests,
-        });
+          manifests
+        })
       },
       diff: async ({ kubectl, environment, manifests }) =>
         kubectl.diff({
           context: environment.cluster.context,
           namespace: environment.namespace,
-          manifests,
-        }),
-    },
+          manifests
+        })
+    }
   },
   secrets: { provider: { type: 'vault', connection: {} }, map: {} },
   notifications: {
     channels: {},
-    onEvents: {},
-  },
-};
+    onEvents: {}
+  }
+}
 
-export default config;
+export default config
 ```
 
 2. Run your first build:
@@ -137,16 +134,16 @@ Configs written in TypeScript are compiled on the fly by the locally-installed T
 The CLI is a thin wrapper around the `TsOps` class. You can embed it directly inside scripts or tests:
 
 ```ts
-import { TsOps } from 'tsops';
-import config from './tsops.config';
+import { TsOps } from 'tsops'
+import config from './tsops.config'
 
 const tsops = new TsOps(config, {
   cwd: process.cwd(),
-  logger: console,
-});
+  logger: console
+})
 
-await tsops.build('api');
-await tsops.deploy('api', 'dev', { diff: true });
+await tsops.build('api')
+await tsops.deploy('api', 'dev', { diff: true })
 ```
 
 Optional constructor overrides:

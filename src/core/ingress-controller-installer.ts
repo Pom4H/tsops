@@ -1,71 +1,74 @@
-import type { EnvironmentConfig, IngressControllerConfig, Logger } from '../types';
-import { CommandExecutor } from './command-executor';
+import type { EnvironmentConfig, IngressControllerConfig, Logger } from '../types.js'
+import { CommandExecutor } from './command-executor.js'
 
 export class IngressControllerInstaller {
-  private readonly ensuredControllers = new Set<string>();
+  private readonly ensuredControllers = new Set<string>()
 
-  constructor(
-    private readonly executor: CommandExecutor,
-    private readonly logger: Logger,
-  ) {}
+  private readonly executor: CommandExecutor
+  private readonly logger: Logger
+
+  constructor(executor: CommandExecutor, logger: Logger) {
+    this.executor = executor
+    this.logger = logger
+  }
 
   async ensure(environment: EnvironmentConfig & { name: string }): Promise<void> {
-    const controller = environment.ingressController;
+    const controller = environment.ingressController
     if (!controller || !controller.autoInstall) {
-      return;
+      return
     }
 
-    const key = `${environment.cluster.context}:${controller.type}:${controller.namespace ?? 'kube-system'}`;
+    const key = `${environment.cluster.context}:${controller.type}:${controller.namespace ?? 'kube-system'}`
     if (this.ensuredControllers.has(key)) {
-      return;
+      return
     }
 
     switch (controller.type) {
       case 'traefik':
-        await this.ensureTraefikController(environment, controller);
-        break;
+        await this.ensureTraefikController(environment, controller)
+        break
       default:
-        this.logger.warn(`Unsupported ingress controller type "${controller.type}"`);
-        return;
+        this.logger.warn(`Unsupported ingress controller type "${controller.type}"`)
+        return
     }
 
-    this.ensuredControllers.add(key);
+    this.ensuredControllers.add(key)
   }
 
   private async ensureTraefikController(
     environment: EnvironmentConfig & { name: string },
-    controller: IngressControllerConfig,
+    controller: IngressControllerConfig
   ): Promise<void> {
-    const namespace = controller.namespace ?? 'kube-system';
-    const context = environment.cluster.context;
+    const namespace = controller.namespace ?? 'kube-system'
+    const context = environment.cluster.context
 
-    let deploymentExists = true;
+    let deploymentExists = true
     try {
       await this.executor.capture(
-        `kubectl --context ${context} --namespace ${namespace} get deployment traefik`,
-      );
+        `kubectl --context ${context} --namespace ${namespace} get deployment traefik`
+      )
     } catch {
-      deploymentExists = false;
+      deploymentExists = false
       this.logger.info(
-        `Installing Traefik ingress controller into namespace "${namespace}" for context "${context}"`,
-      );
+        `Installing Traefik ingress controller into namespace "${namespace}" for context "${context}"`
+      )
     }
 
-    const manifest = this.buildTraefikManifest(namespace, controller.serviceType ?? 'LoadBalancer');
+    const manifest = this.buildTraefikManifest(namespace, controller.serviceType ?? 'LoadBalancer')
 
     await this.executor.run(`kubectl --context ${context} apply -f -`, {
-      input: manifest,
-    });
+      input: manifest
+    })
   }
 
   private buildTraefikManifest(
     namespace: string,
-    serviceType: 'LoadBalancer' | 'NodePort' | 'ClusterIP',
+    serviceType: 'LoadBalancer' | 'NodePort' | 'ClusterIP'
   ): string {
     const serviceExtra =
       serviceType === 'NodePort'
         ? '  externalTrafficPolicy: Cluster\n  ports:\n    - name: web\n      port: 80\n      targetPort: web\n      nodePort: 32080\n    - name: websecure\n      port: 443\n      targetPort: websecure\n      nodePort: 32443'
-        : '  ports:\n    - name: web\n      port: 80\n      targetPort: web\n    - name: websecure\n      port: 443\n      targetPort: websecure';
+        : '  ports:\n    - name: web\n      port: 80\n      targetPort: web\n    - name: websecure\n      port: 443\n      targetPort: websecure'
 
     return `apiVersion: v1
 kind: Namespace
@@ -172,6 +175,6 @@ spec:
 ${serviceExtra}
   selector:
     app: traefik
-`;
+`
   }
 }

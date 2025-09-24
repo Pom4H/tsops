@@ -3,60 +3,53 @@ import type {
   IngressManifest,
   KubernetesManifest,
   ServiceConfig,
-  ServiceManifest,
-} from '../types';
+  ServiceManifest
+} from '../types.js'
 
 export class IngressBuilder {
   appendIngressManifests(
     baseManifests: KubernetesManifest[],
     service: ServiceConfig & { name: string },
-    environment: EnvironmentConfig & { name: string },
+    environment: EnvironmentConfig & { name: string }
   ): KubernetesManifest[] {
-    const ingressManifests = this.buildIngressManifests(
-      baseManifests,
-      service,
-      environment,
-    );
+    const ingressManifests = this.buildIngressManifests(baseManifests, service, environment)
 
-    return ingressManifests.length > 0
-      ? [...baseManifests, ...ingressManifests]
-      : baseManifests;
+    return ingressManifests.length > 0 ? [...baseManifests, ...ingressManifests] : baseManifests
   }
 
   private buildIngressManifests(
     baseManifests: KubernetesManifest[],
     service: ServiceConfig & { name: string },
-    environment: EnvironmentConfig & { name: string },
+    environment: EnvironmentConfig & { name: string }
   ): IngressManifest[] {
-    const ingressConfig = service.ingress;
+    const ingressConfig = service.ingress
     if (!ingressConfig) {
-      return [];
+      return []
     }
 
     const baseContainsIngress = baseManifests.some(
-      (manifest) => (manifest as { kind?: string }).kind === 'Ingress',
-    );
+      (manifest) => (manifest as { kind?: string }).kind === 'Ingress'
+    )
     if (baseContainsIngress) {
-      return [];
+      return []
     }
 
     const serviceManifest = baseManifests.find(
-      (manifest) => (manifest as { kind?: string }).kind === 'Service',
-    ) as ServiceManifest | undefined;
+      (manifest) => (manifest as { kind?: string }).kind === 'Service'
+    ) as ServiceManifest | undefined
 
-    const defaultServicePort = serviceManifest?.spec.ports?.[0]?.name ??
-      serviceManifest?.spec.ports?.[0]?.port;
+    const defaultServicePort =
+      serviceManifest?.spec.ports?.[0]?.name ?? serviceManifest?.spec.ports?.[0]?.port
 
-    const manifests: IngressManifest[] = [];
+    const manifests: IngressManifest[] = []
 
     for (const [ingressKey, definition] of Object.entries(ingressConfig)) {
       if (!definition) {
-        continue;
+        continue
       }
 
       const entryPoints =
-        definition.entryPoints ??
-        (ingressKey === 'websecure' ? ['websecure'] : undefined);
+        definition.entryPoints ?? (ingressKey === 'websecure' ? ['websecure'] : undefined)
 
       const tlsDefinitions =
         definition.tls ??
@@ -64,19 +57,16 @@ export class IngressBuilder {
           ? [
               {
                 secretName: `${service.name}-tls`,
-                hosts: Array.from(
-                  new Set(definition.rules.map((rule) => rule.host)),
-                ),
-              },
+                hosts: Array.from(new Set(definition.rules.map((rule) => rule.host)))
+              }
             ]
-          : undefined);
+          : undefined)
 
       const annotations: Record<string, string> = {
-        ...(definition.annotations ?? {}),
-      };
+        ...(definition.annotations ?? {})
+      }
       if (entryPoints && entryPoints.length > 0) {
-        annotations['traefik.ingress.kubernetes.io/router.entrypoints'] =
-          entryPoints.join(',');
+        annotations['traefik.ingress.kubernetes.io/router.entrypoints'] = entryPoints.join(',')
       }
       if (
         definition.className === 'traefik' &&
@@ -84,23 +74,20 @@ export class IngressBuilder {
         tlsDefinitions.length > 0 &&
         annotations['traefik.ingress.kubernetes.io/router.tls'] === undefined
       ) {
-        annotations['traefik.ingress.kubernetes.io/router.tls'] = 'true';
+        annotations['traefik.ingress.kubernetes.io/router.tls'] = 'true'
       }
 
       const rules = definition.rules.map((rule) => {
         const paths = rule.paths.map((pathConfig) => {
-          const resolvedPort =
-            pathConfig.servicePort ?? defaultServicePort;
+          const resolvedPort = pathConfig.servicePort ?? defaultServicePort
           if (resolvedPort === undefined) {
             throw new Error(
-              `Ingress definition "${ingressKey}" for service "${service.name}" is missing a servicePort and no default could be inferred.`,
-            );
+              `Ingress definition "${ingressKey}" for service "${service.name}" is missing a servicePort and no default could be inferred.`
+            )
           }
 
           const portDefinition =
-            typeof resolvedPort === 'number'
-              ? { number: resolvedPort }
-              : { name: resolvedPort };
+            typeof resolvedPort === 'number' ? { number: resolvedPort } : { name: resolvedPort }
 
           return {
             path: pathConfig.path ?? '/',
@@ -108,17 +95,17 @@ export class IngressBuilder {
             backend: {
               service: {
                 name: service.name,
-                port: portDefinition,
-              },
-            },
-          };
-        });
+                port: portDefinition
+              }
+            }
+          }
+        })
 
         return {
           host: rule.host,
-          http: { paths },
-        };
-      });
+          http: { paths }
+        }
+      })
 
       const ingressManifest: IngressManifest = {
         apiVersion: 'networking.k8s.io/v1',
@@ -127,19 +114,18 @@ export class IngressBuilder {
           name: definition.name ?? `${service.name}-${ingressKey}`,
           namespace: environment.namespace,
           labels: { app: service.name },
-          annotations:
-            Object.keys(annotations).length > 0 ? annotations : undefined,
+          annotations: Object.keys(annotations).length > 0 ? annotations : undefined
         },
         spec: {
           ingressClassName: definition.className,
           tls: tlsDefinitions,
-          rules,
-        },
-      };
+          rules
+        }
+      }
 
-      manifests.push(ingressManifest);
+      manifests.push(ingressManifest)
     }
 
-    return manifests;
+    return manifests
   }
 }

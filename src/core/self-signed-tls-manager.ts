@@ -1,6 +1,6 @@
-import { promises as fs } from 'fs';
-import { tmpdir } from 'os';
-import path from 'path';
+import { promises as fs } from 'fs'
+import { tmpdir } from 'os'
+import path from 'path'
 
 import type {
   EnvironmentConfig,
@@ -8,120 +8,114 @@ import type {
   KubernetesManifest,
   ServiceConfig,
   Logger
-} from '../types.js';
+} from '../types.js'
 
-import { CommandExecutor } from './command-executor.js';
+import { CommandExecutor } from './command-executor.js'
 
 export class SelfSignedTlsManager {
-  constructor(
-    private readonly executor: CommandExecutor,
-    private readonly logger: Logger,
-  ) {}
+  private executor: CommandExecutor
+  private logger: Logger
+
+  constructor(executor: CommandExecutor, logger: Logger) {
+    this.executor = executor
+    this.logger = logger
+  }
 
   async ensureTlsSecrets(
     service: ServiceConfig & { name: string },
     environment: EnvironmentConfig & { name: string },
-    manifests: KubernetesManifest[],
+    manifests: KubernetesManifest[]
   ): Promise<void> {
-    const tlsConfig = environment.tls?.selfSigned;
+    const tlsConfig = environment.tls?.selfSigned
     if (!tlsConfig?.enabled) {
-      return;
+      return
     }
 
     const ingressManifests = manifests.filter(
-      (manifest): manifest is IngressManifest =>
-        (manifest as { kind?: string }).kind === 'Ingress',
-    );
+      (manifest): manifest is IngressManifest => (manifest as { kind?: string }).kind === 'Ingress'
+    )
 
     if (ingressManifests.length === 0) {
-      return;
+      return
     }
 
-    const tlsSecrets = new Map<string, Set<string>>();
+    const tlsSecrets = new Map<string, Set<string>>()
 
     for (const ingress of ingressManifests) {
       const spec = (ingress as { spec?: unknown }).spec as
         | {
-            tls?: Array<{ secretName?: string; hosts?: string[] }>;
+            tls?: Array<{ secretName?: string; hosts?: string[] }>
           }
-        | undefined;
-      const tlsEntries = Array.isArray(spec?.tls) ? spec?.tls : [];
+        | undefined
+      const tlsEntries = Array.isArray(spec?.tls) ? spec?.tls : []
       for (const entry of tlsEntries) {
-        const secretName = entry?.secretName;
+        const secretName = entry?.secretName
         if (!secretName) {
-          continue;
+          continue
         }
-        const hosts = Array.isArray(entry?.hosts) ? entry.hosts : [];
-        const set = tlsSecrets.get(secretName) ?? new Set<string>();
+        const hosts = Array.isArray(entry?.hosts) ? entry.hosts : []
+        const set = tlsSecrets.get(secretName) ?? new Set<string>()
         for (const host of hosts) {
           if (host) {
-            set.add(host);
+            set.add(host)
           }
         }
-        tlsSecrets.set(secretName, set);
+        tlsSecrets.set(secretName, set)
       }
     }
 
     if (tlsSecrets.size === 0) {
-      return;
+      return
     }
 
-    const context = environment.cluster.context;
-    const namespace = environment.namespace;
-    const keySize = tlsConfig.keySize ?? 2048;
-    const validDays = tlsConfig.validDays ?? 365;
+    const context = environment.cluster.context
+    const namespace = environment.namespace
+    const keySize = tlsConfig.keySize ?? 2048
+    const validDays = tlsConfig.validDays ?? 365
 
     for (const [secretName, hostsSet] of tlsSecrets) {
-      const hosts = Array.from(hostsSet);
-      const primaryHost = hosts[0] ?? `${service.name}.${environment.name}.local`;
+      const hosts = Array.from(hostsSet)
+      const primaryHost = hosts[0] ?? `${service.name}.${environment.name}.local`
 
       try {
         await this.executor.capture(
-          `kubectl --context ${context} --namespace ${namespace} get secret ${secretName}`,
-        );
-        continue;
+          `kubectl --context ${context} --namespace ${namespace} get secret ${secretName}`
+        )
+        continue
       } catch (error) {
         this.logger.info(
-          `Auto-generating self-signed TLS secret "${secretName}" for service "${service.name}" in env "${environment.name}"`,
-        );
+          `Auto-generating self-signed TLS secret "${secretName}" for service "${service.name}" in env "${environment.name}"`
+        )
       }
 
-      const certificateHosts = hosts.length > 0 ? hosts : [primaryHost];
+      const certificateHosts = hosts.length > 0 ? hosts : [primaryHost]
 
       const { cert, key } = await this.generateSelfSignedCertificate(
         certificateHosts,
         keySize,
-        validDays,
-      );
+        validDays
+      )
 
-      const secretManifest = this.buildTlsSecretManifest(
-        secretName,
-        namespace,
-        cert,
-        key,
-      );
+      const secretManifest = this.buildTlsSecretManifest(secretName, namespace, cert, key)
 
-      await this.executor.run(
-        `kubectl --context ${context} apply -f -`,
-        { input: secretManifest },
-      );
+      await this.executor.run(`kubectl --context ${context} apply -f -`, { input: secretManifest })
     }
   }
 
   private async generateSelfSignedCertificate(
     hosts: string[],
     keySize: number,
-    validDays: number,
+    validDays: number
   ): Promise<{ cert: Buffer; key: Buffer }> {
-    const cn = hosts[0] ?? 'localhost';
-    const altNames = hosts.map((host, index) => `DNS.${index + 1} = ${host}`).join('\n');
+    const cn = hosts[0] ?? 'localhost'
+    const altNames = hosts.map((host, index) => `DNS.${index + 1} = ${host}`).join('\n')
 
-    const tmpBase = path.join(tmpdir(), 'tsops-tls-');
-    const workdir = await fs.mkdtemp(tmpBase);
+    const tmpBase = path.join(tmpdir(), 'tsops-tls-')
+    const workdir = await fs.mkdtemp(tmpBase)
 
-    const configPath = path.join(workdir, 'openssl.cnf');
-    const keyPath = path.join(workdir, 'tls.key');
-    const certPath = path.join(workdir, 'tls.crt');
+    const configPath = path.join(workdir, 'openssl.cnf')
+    const keyPath = path.join(workdir, 'tls.key')
+    const certPath = path.join(workdir, 'tls.crt')
 
     const configContent = `
 [ req ]
@@ -139,23 +133,20 @@ subjectAltName = @alt_names
 
 [ alt_names ]
 ${altNames || `DNS.1 = ${cn}`}
-`.trimStart();
+`.trimStart()
 
     try {
-      await fs.writeFile(configPath, configContent, 'utf8');
+      await fs.writeFile(configPath, configContent, 'utf8')
 
       await this.executor.capture(
-        `openssl req -x509 -nodes -days ${validDays} -newkey rsa:${keySize} -config ${configPath} -extensions v3_req -keyout ${keyPath} -out ${certPath}`,
-      );
+        `openssl req -x509 -nodes -days ${validDays} -newkey rsa:${keySize} -config ${configPath} -extensions v3_req -keyout ${keyPath} -out ${certPath}`
+      )
 
-      const [cert, key] = await Promise.all([
-        fs.readFile(certPath),
-        fs.readFile(keyPath),
-      ]);
+      const [cert, key] = await Promise.all([fs.readFile(certPath), fs.readFile(keyPath)])
 
-      return { cert, key };
+      return { cert, key }
     } finally {
-      await fs.rm(workdir, { recursive: true, force: true });
+      await fs.rm(workdir, { recursive: true, force: true })
     }
   }
 
@@ -163,10 +154,10 @@ ${altNames || `DNS.1 = ${cn}`}
     secretName: string,
     namespace: string,
     cert: Buffer,
-    key: Buffer,
+    key: Buffer
   ): string {
-    const certBase64 = cert.toString('base64');
-    const keyBase64 = key.toString('base64');
+    const certBase64 = cert.toString('base64')
+    const keyBase64 = key.toString('base64')
 
     return [
       'apiVersion: v1',
@@ -178,7 +169,7 @@ ${altNames || `DNS.1 = ${cn}`}
       'data:',
       `  tls.crt: ${certBase64}`,
       `  tls.key: ${keyBase64}`,
-      '',
-    ].join('\n');
+      ''
+    ].join('\n')
   }
 }

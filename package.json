@@ -2,11 +2,11 @@
   "name": "tsops",
   "version": "1.0.0",
   "description": "TypeScript-first operations toolkit and CLI for Kubernetes-centric delivery pipelines.",
-  "main": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "type": "module",
   "bin": {
-    "tsops": "dist/src/bin.js"
+    "tsops": "dist/bin.js"
   },
   "files": [
     "dist",
@@ -14,6 +14,8 @@
     "LICENSE"
   ],
   "scripts": {
+    "format": "prettier --check \"**/*.{ts,tsx,md}\"",
+    "format:fix": "prettier --write \"**/*.{ts,tsx,md}\"",
     "build": "tsc -p tsconfig.json",
     "build:watch": "tsc -w -p tsconfig.json",
     "test": "vitest run",
@@ -22,7 +24,6 @@
     "prepublishOnly": "pnpm run build"
   },
   "keywords": [
-    "operations",
     "cli",
     "kubernetes",
     "typescript"
@@ -38,13 +39,14 @@
   },
   "homepage": "https://github.com/Pom4H/tsops#readme",
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "commander": "^14.0.1"
   },
   "devDependencies": {
     "@types/node": "^24.5.2",
+    "prettier": "^3.6.2",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
@@ -59,5 +61,5 @@
   "publishConfig": {
     "access": "public"
   },
-  "packageManager": "pnpm@10.17.0"
+  "packageManager": "pnpm@10.17.1"
 }

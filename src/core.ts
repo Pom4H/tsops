@@ -15,240 +15,218 @@ import {
   ServiceRuntime,
   TsOpsConfig,
   Logger
-} from './types';
+} from './types.js'
 
-import { CommandExecutor } from './core/command-executor';
-import { GitMetadataProvider } from './core/git-metadata';
+import { CommandExecutor } from './core/command-executor.js'
+import { GitMetadataProvider } from './core/git-metadata.js'
 
-import { createDefaultKubectlClient } from './core/kubectl-client';
+import { createDefaultKubectlClient } from './core/kubectl-client.js'
 
-import { IngressBuilder } from './core/ingress-builder';
-import { ManifestRenderer } from './core/manifest-renderer';
+import { IngressBuilder } from './core/ingress-builder.js'
+import { ManifestRenderer } from './core/manifest-renderer.js'
 
-import { IngressControllerInstaller } from './core/ingress-controller-installer';
-import { SelfSignedTlsManager } from './core/self-signed-tls-manager';
-
+import { IngressControllerInstaller } from './core/ingress-controller-installer.js'
+import { SelfSignedTlsManager } from './core/self-signed-tls-manager.js'
 
 export interface NotificationDispatchInput {
-  event: string;
-  channel: string;
-  config: NotificationChannelConfig;
-  message: string;
-  args: NotificationTemplateArgs;
+  event: string
+  channel: string
+  config: NotificationChannelConfig
+  message: string
+  args: NotificationTemplateArgs
 }
 
-export type NotificationDispatcher = (
-  input: NotificationDispatchInput,
-) => Promise<void> | void;
+export type NotificationDispatcher = (input: NotificationDispatchInput) => Promise<void> | void
 
 export interface DeployOptions {
-  environment?: string;
-  diff?: boolean;
-  diffOnly?: boolean;
-  skipHooks?: boolean;
-  notify?: boolean;
-  imageTag?: string;
-  git?: GitInfo;
+  environment?: string
+  diff?: boolean
+  diffOnly?: boolean
+  skipHooks?: boolean
+  notify?: boolean
+  imageTag?: string
+  git?: GitInfo
 }
 
 export interface BuildOptions {
-  environment?: string;
-  env?: Record<string, string>;
-  git?: GitInfo;
+  environment?: string
+  env?: Record<string, string>
+  git?: GitInfo
 }
 
 export interface TestOptions {
-  git?: GitInfo;
+  git?: GitInfo
 }
 
 export interface TsOpsOptions {
-  cwd?: string;
-  exec?: ExecFn;
-  kubectl?: KubectlClient;
-  logger?: Logger;
-  notificationDispatcher?: NotificationDispatcher;
+  cwd?: string
+  exec?: ExecFn
+  kubectl?: KubectlClient
+  logger?: Logger
+  notificationDispatcher?: NotificationDispatcher
 }
 
-export type { Logger };
+export type { Logger }
 
 const defaultLogger: Logger = {
   info: (message) => console.log(`[tsops] ${message}`),
   warn: (message) => console.warn(`[tsops] ${message}`),
   error: (message, error) => {
-    console.error(`[tsops] ${message}`);
+    console.error(`[tsops] ${message}`)
     if (error) {
-      console.error(error);
+      console.error(error)
     }
   },
   debug: (message) => {
     if (process.env.TSOPS_DEBUG === '1') {
-      console.debug(`[tsops] ${message}`);
+      console.debug(`[tsops] ${message}`)
     }
-  },
-};
+  }
+}
 
 const defaultNotificationDispatcher: NotificationDispatcher = async ({
   event,
   channel,
-  message,
+  message
 }) => {
-  defaultLogger.info(`notification:${event} -> ${channel}: ${message}`);
-};
+  defaultLogger.info(`notification:${event} -> ${channel}: ${message}`)
+}
 
 export class TsOps {
-  private readonly config: TsOpsConfig;
-  private readonly execFn: ExecFn;
-  private readonly kubectl: KubectlClient;
-  private readonly logger: Logger;
-  private readonly notificationDispatcher: NotificationDispatcher;
-  private readonly cwd: string;
-  private readonly commandExecutor: CommandExecutor;
-  private readonly gitMetadataProvider: GitMetadataProvider;
-  private readonly manifestRenderer: ManifestRenderer;
-  private readonly ingressBuilder: IngressBuilder;
-  private readonly ingressControllerInstaller: IngressControllerInstaller;
-  private readonly selfSignedTlsManager: SelfSignedTlsManager;
+  private readonly config: TsOpsConfig
+  private readonly execFn: ExecFn
+  private readonly kubectl: KubectlClient
+  private readonly logger: Logger
+  private readonly notificationDispatcher: NotificationDispatcher
+  private readonly cwd: string
+  private readonly commandExecutor: CommandExecutor
+  private readonly gitMetadataProvider: GitMetadataProvider
+  private readonly manifestRenderer: ManifestRenderer
+  private readonly ingressBuilder: IngressBuilder
+  private readonly ingressControllerInstaller: IngressControllerInstaller
+  private readonly selfSignedTlsManager: SelfSignedTlsManager
 
   constructor(config: TsOpsConfig, options: TsOpsOptions = {}) {
-    this.config = config;
-    this.cwd = options.cwd ?? process.cwd();
-    this.logger = options.logger ?? defaultLogger;
-    this.commandExecutor = new CommandExecutor(this.cwd);
+    this.config = config
+    this.cwd = options.cwd ?? process.cwd()
+    this.logger = options.logger ?? defaultLogger
+    this.commandExecutor = new CommandExecutor(this.cwd)
     this.gitMetadataProvider = new GitMetadataProvider({
       executor: this.commandExecutor,
-      logger: this.logger,
-    });
-    this.manifestRenderer = new ManifestRenderer(this.config);
-    this.ingressBuilder = new IngressBuilder();
+      logger: this.logger
+    })
+    this.manifestRenderer = new ManifestRenderer(this.config)
+    this.ingressBuilder = new IngressBuilder()
     this.ingressControllerInstaller = new IngressControllerInstaller(
       this.commandExecutor,
-      this.logger,
-    );
-    this.selfSignedTlsManager = new SelfSignedTlsManager(
-      this.commandExecutor,
-      this.logger,
-    );
-    this.notificationDispatcher =
-      options.notificationDispatcher ?? defaultNotificationDispatcher;
+      this.logger
+    )
+    this.selfSignedTlsManager = new SelfSignedTlsManager(this.commandExecutor, this.logger)
+    this.notificationDispatcher = options.notificationDispatcher ?? defaultNotificationDispatcher
     this.execFn =
-      options.exec ?? ((command, execOptions) =>
-        this.commandExecutor.run(command, { env: execOptions?.env }));
-    this.kubectl = options.kubectl ?? this.createKubectlClient();
+      options.exec ??
+      ((command, execOptions) => this.commandExecutor.run(command, { env: execOptions?.env }))
+    this.kubectl = options.kubectl ?? this.createKubectlClient()
   }
 
   async build(serviceName: string, options: BuildOptions = {}): Promise<void> {
-    const service = this.resolveService(serviceName);
-    const environment = this.resolveEnvironmentForService(
-      service,
-      options.environment,
-    );
-    const git = options.git ?? (await this.detectGitInfo());
+    const service = this.resolveService(serviceName)
+    const environment = this.resolveEnvironmentForService(service, options.environment)
+    const git = options.git ?? (await this.detectGitInfo())
 
     const envRuntime: EnvironmentRuntimeInfo = {
       name: environment.name,
-      namespace: environment.namespace,
-    };
+      namespace: environment.namespace
+    }
 
     const envVars: Record<string, string> = {
       SERVICE_NAME: service.name,
       ENVIRONMENT: envRuntime.name,
-      ...(options.env ?? {}),
-    };
+      ...(options.env ?? {})
+    }
 
     this.logger.info(
-      `Running build pipeline for service "${service.name}" in env "${envRuntime.name}"`,
-    );
+      `Running build pipeline for service "${service.name}" in env "${envRuntime.name}"`
+    )
 
     await this.config.pipeline.build.run({
       exec: this.execFn,
       env: envVars,
       service: this.createServiceRuntime(service),
       environment: envRuntime,
-      git,
-    });
+      git
+    })
   }
 
-  async buildAll(
-    environmentName?: string,
-    options: BuildOptions = {},
-  ): Promise<void> {
-    const order = this.getServiceDeploymentOrder();
+  async buildAll(environmentName?: string, options: BuildOptions = {}): Promise<void> {
+    const order = this.getServiceDeploymentOrder()
     if (order.length === 0) {
-      this.logger.warn('No services configured for build; nothing to do.');
-      return;
+      this.logger.warn('No services configured for build; nothing to do.')
+      return
     }
 
-    const git = options.git ?? (await this.detectGitInfo());
+    const git = options.git ?? (await this.detectGitInfo())
 
     for (const serviceName of order) {
       await this.build(serviceName, {
         ...options,
         environment: environmentName ?? options.environment,
-        git,
-      });
+        git
+      })
     }
   }
 
   async test(options: TestOptions = {}): Promise<void> {
-    const git = options.git ?? (await this.detectGitInfo());
+    const git = options.git ?? (await this.detectGitInfo())
 
-    this.logger.info('Running test pipeline');
+    this.logger.info('Running test pipeline')
 
     await this.config.pipeline.test.run({
       exec: this.execFn,
-      git,
-    });
+      git
+    })
   }
 
   async deploy(
     serviceName: string,
     environmentName?: string,
-    options: DeployOptions = {},
+    options: DeployOptions = {}
   ): Promise<void> {
-    const service = this.resolveService(serviceName);
+    const service = this.resolveService(serviceName)
     const environment = this.resolveEnvironmentForService(
       service,
-      environmentName ?? options.environment,
-    );
-    const git = options.git ?? (await this.detectGitInfo());
+      environmentName ?? options.environment
+    )
+    const git = options.git ?? (await this.detectGitInfo())
 
-    const serviceRuntime = this.createServiceRuntime(service);
+    const serviceRuntime = this.createServiceRuntime(service)
     const envRuntime: EnvironmentRuntimeInfo = {
       name: environment.name,
-      namespace: environment.namespace,
-    };
+      namespace: environment.namespace
+    }
 
-    const manifestsInfo = this.renderManifests(
-      service,
-      environment,
-      git,
-      options.imageTag,
-    );
+    const manifestsInfo = this.renderManifests(service, environment, git, options.imageTag)
 
-    await this.ensureIngressController(environment);
+    await this.ensureIngressController(environment)
 
-    await this.selfSignedTlsManager.ensureTlsSecrets(
-      service,
-      environment,
-      manifestsInfo.manifests,
-    );
+    await this.selfSignedTlsManager.ensureTlsSecrets(service, environment, manifestsInfo.manifests)
 
     const hookContext: Partial<HookContext> = {
       exec: this.execFn,
       kubectl: this.kubectl,
       git,
       environment,
-      service: serviceRuntime,
-    };
+      service: serviceRuntime
+    }
 
     if (!options.skipHooks) {
-      await this.runHooks(this.config.hooks?.beforeDeploy, hookContext);
+      await this.runHooks(this.config.hooks?.beforeDeploy, hookContext)
     }
 
     if (options.diff || options.diffOnly) {
-      await this.runDiff(this.config.pipeline.deploy, environment, manifestsInfo.manifests);
+      await this.runDiff(this.config.pipeline.deploy, environment, manifestsInfo.manifests)
       if (options.diffOnly) {
-        return;
+        return
       }
     }
 
@@ -259,30 +237,30 @@ export class TsOps {
         service: serviceRuntime,
         config: this.config,
         git,
-        manifests: manifestsInfo.manifests,
-      });
+        manifests: manifestsInfo.manifests
+      })
 
       if (!options.skipHooks) {
-        await this.runHooks(this.config.hooks?.afterDeploy, hookContext);
+        await this.runHooks(this.config.hooks?.afterDeploy, hookContext)
       }
 
       if (options.notify ?? true) {
         await this.notify('deploySuccess', {
           service: serviceRuntime,
           environment: envRuntime,
-          git,
-        });
+          git
+        })
       }
 
       this.logger.info(
-        `Deploy pipeline finished for service "${service.name}" in env "${environment.name}"`,
-      );
+        `Deploy pipeline finished for service "${service.name}" in env "${environment.name}"`
+      )
     } catch (error) {
       if (!options.skipHooks) {
         await this.runHooks(this.config.hooks?.onFailure, {
           ...hookContext,
-          service: serviceRuntime,
-        });
+          service: serviceRuntime
+        })
       }
 
       if (options.notify ?? true) {
@@ -292,244 +270,229 @@ export class TsOps {
             service: serviceRuntime,
             environment: envRuntime,
             git,
-            error,
+            error
           },
-          'failure',
-        );
+          'failure'
+        )
       }
 
-      throw error;
+      throw error
     }
   }
 
-  async deployAll(
-    environmentName?: string,
-    options: DeployOptions = {},
-  ): Promise<void> {
-    const order = this.getServiceDeploymentOrder();
+  async deployAll(environmentName?: string, options: DeployOptions = {}): Promise<void> {
+    const order = this.getServiceDeploymentOrder()
     if (order.length === 0) {
-      this.logger.warn('No services configured for deployment; nothing to do.');
-      return;
+      this.logger.warn('No services configured for deployment; nothing to do.')
+      return
     }
 
-    const git = options.git ?? (await this.detectGitInfo());
+    const git = options.git ?? (await this.detectGitInfo())
 
     for (const serviceName of order) {
       await this.deploy(serviceName, environmentName ?? options.environment, {
         ...options,
-        git,
-      });
+        git
+      })
     }
   }
 
   async getGitInfo(): Promise<GitInfo> {
-    return this.detectGitInfo();
+    return this.detectGitInfo()
   }
 
   private async runDiff(
     deployConfig: DeployPipelineConfig,
     environment: EnvironmentConfig & { name: string },
-    manifests: KubernetesManifest[],
+    manifests: KubernetesManifest[]
   ): Promise<void> {
     if (!deployConfig.diff) {
-      this.logger.warn('diff requested but no diff handler configured; skipping');
-      return;
+      this.logger.warn('diff requested but no diff handler configured; skipping')
+      return
     }
 
     this.logger.info(
       `Running diff for environment "${environment.name}" (${manifests.length} manifest${
         manifests.length === 1 ? '' : 's'
-      })`,
-    );
+      })`
+    )
 
     await deployConfig.diff({
       kubectl: this.kubectl,
       environment,
-      manifests,
-    });
+      manifests
+    })
   }
 
   private resolveEnvironmentForService(
     service: ServiceConfig & { name: string },
-    explicitEnvironment?: string,
+    explicitEnvironment?: string
   ): EnvironmentConfig & { name: string } {
     const environmentName =
-      explicitEnvironment ?? service.defaultEnvironment ?? this.defaultEnvironment();
+      explicitEnvironment ?? service.defaultEnvironment ?? this.defaultEnvironment()
 
     if (!environmentName) {
       throw new Error(
-        `Environment not specified for service "${service.name}" and no default found`,
-      );
+        `Environment not specified for service "${service.name}" and no default found`
+      )
     }
 
-    return this.resolveEnvironment(environmentName);
+    return this.resolveEnvironment(environmentName)
   }
 
   private defaultEnvironment(): string | undefined {
-    const candidate = Object.keys(this.config.environments);
-    return candidate.length === 1 ? candidate[0] : undefined;
+    const candidate = Object.keys(this.config.environments)
+    return candidate.length === 1 ? candidate[0] : undefined
   }
 
-  private resolveService(
-    serviceName: string,
-  ): ServiceConfig & { name: string } {
-    const service = this.config.services[serviceName];
+  private resolveService(serviceName: string): ServiceConfig & { name: string } {
+    const service = this.config.services[serviceName]
     if (!service) {
-      throw new Error(`Unknown service "${serviceName}"`);
+      throw new Error(`Unknown service "${serviceName}"`)
     }
-    return { ...service, name: serviceName };
+    return { ...service, name: serviceName }
   }
 
-  private resolveEnvironment(
-    environmentName: string,
-  ): EnvironmentConfig & { name: string } {
-    const environment = this.config.environments[environmentName];
+  private resolveEnvironment(environmentName: string): EnvironmentConfig & { name: string } {
+    const environment = this.config.environments[environmentName]
     if (!environment) {
-      throw new Error(`Unknown environment "${environmentName}"`);
+      throw new Error(`Unknown environment "${environmentName}"`)
     }
-    return { ...environment, name: environmentName };
+    return { ...environment, name: environmentName }
   }
 
-  private createServiceRuntime(
-    service: ServiceConfig & { name: string },
-  ): ServiceRuntime {
+  private createServiceRuntime(service: ServiceConfig & { name: string }): ServiceRuntime {
     return {
       name: service.name,
       releaseName: service.releaseName,
-      containerImage: service.containerImage,
-    };
+      containerImage: service.containerImage
+    }
   }
 
   private detectGitInfo(): Promise<GitInfo> {
-    return this.gitMetadataProvider.getGitInfo();
+    return this.gitMetadataProvider.getGitInfo()
   }
 
   private renderManifests(
     service: ServiceConfig & { name: string },
     environment: EnvironmentConfig & { name: string },
     git: GitInfo,
-    explicitImageTag?: string,
+    explicitImageTag?: string
   ): { manifests: KubernetesManifest[]; imageTag: string; context: ServiceManifestContext } {
     const renderResult = this.manifestRenderer.render({
       service,
       environment,
       git,
-      explicitImageTag,
-    });
+      explicitImageTag
+    })
 
     const manifestsWithIngress = this.ingressBuilder.appendIngressManifests(
       renderResult.manifests,
       service,
-      environment,
-    );
+      environment
+    )
 
     return {
       manifests: manifestsWithIngress,
       imageTag: renderResult.imageTag,
-      context: renderResult.context,
-    };
+      context: renderResult.context
+    }
   }
 
   private getServiceDeploymentOrder(): string[] {
-    const services = Object.keys(this.config.services);
-    const visited = new Set<string>();
-    const visiting = new Set<string>();
-    const order: string[] = [];
+    const services = Object.keys(this.config.services)
+    const visited = new Set<string>()
+    const visiting = new Set<string>()
+    const order: string[] = []
 
     const visit = (serviceName: string): void => {
       if (visited.has(serviceName)) {
-        return;
+        return
       }
       if (visiting.has(serviceName)) {
-        throw new Error(`Circular dependency detected for service "${serviceName}"`);
+        throw new Error(`Circular dependency detected for service "${serviceName}"`)
       }
 
-      const service = this.config.services[serviceName];
+      const service = this.config.services[serviceName]
       if (!service) {
-        throw new Error(`Unknown service "${serviceName}" while computing deployment order`);
+        throw new Error(`Unknown service "${serviceName}" while computing deployment order`)
       }
 
-      visiting.add(serviceName);
+      visiting.add(serviceName)
 
       for (const dependency of service.dependsOn ?? []) {
         if (!this.config.services[dependency]) {
-          throw new Error(
-            `Service "${serviceName}" depends on unknown service "${dependency}"`,
-          );
+          throw new Error(`Service "${serviceName}" depends on unknown service "${dependency}"`)
         }
-        visit(dependency);
+        visit(dependency)
       }
 
-      visiting.delete(serviceName);
-      visited.add(serviceName);
-      order.push(serviceName);
-    };
-
-    for (const serviceName of services) {
-      visit(serviceName);
+      visiting.delete(serviceName)
+      visited.add(serviceName)
+      order.push(serviceName)
     }
 
-    return order;
+    for (const serviceName of services) {
+      visit(serviceName)
+    }
+
+    return order
   }
 
   private async ensureIngressController(
-    environment: EnvironmentConfig & { name: string },
+    environment: EnvironmentConfig & { name: string }
   ): Promise<void> {
-    await this.ingressControllerInstaller.ensure(environment);
+    await this.ingressControllerInstaller.ensure(environment)
   }
 
-  private async runHooks(
-    hooks: Hook[] | undefined,
-    context: Partial<HookContext>,
-  ): Promise<void> {
+  private async runHooks(hooks: Hook[] | undefined, context: Partial<HookContext>): Promise<void> {
     if (!hooks || hooks.length === 0) {
-      return;
+      return
     }
 
     for (const hook of hooks) {
-      await hook(context);
+      await hook(context)
     }
   }
 
   private async notify(
     event: string,
     args: NotificationTemplateArgs,
-    template: 'success' | 'failure' = 'success',
+    template: 'success' | 'failure' = 'success'
   ): Promise<void> {
-    const notificationConfig = this.config.notifications;
+    const notificationConfig = this.config.notifications
     if (!notificationConfig) {
-      return;
+      return
     }
 
-    const channelIds = notificationConfig.onEvents[event];
+    const channelIds = notificationConfig.onEvents[event]
     if (!channelIds || channelIds.length === 0) {
-      return;
+      return
     }
 
     for (const channelId of channelIds) {
-      const channelConfig = notificationConfig.channels[channelId];
+      const channelConfig = notificationConfig.channels[channelId]
       if (!channelConfig) {
-        this.logger.warn(`No notification channel configured for id "${channelId}"`);
-        continue;
+        this.logger.warn(`No notification channel configured for id "${channelId}"`)
+        continue
       }
 
       const message =
         template === 'failure'
           ? channelConfig.templates.failure(args)
-          : channelConfig.templates.success(args);
+          : channelConfig.templates.success(args)
 
       await this.notificationDispatcher({
         event,
         channel: channelId,
         config: channelConfig,
         message,
-        args,
-      });
+        args
+      })
     }
   }
 
   private createKubectlClient(): KubectlClient {
-    return createDefaultKubectlClient(this.commandExecutor);
+    return createDefaultKubectlClient(this.commandExecutor)
   }
-
 }
