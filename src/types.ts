@@ -147,6 +147,21 @@ export interface ServiceManifestContext {
   image: string
 }
 
+export type ServiceBuildConfig = ServiceDockerBuildConfig
+
+export interface ServiceDockerBuildConfig {
+  type: 'dockerfile'
+  context?: string
+  dockerfile?: string
+  target?: string
+  platform?: string
+  buildArgs?: Record<string, string>
+  tags?: string[]
+  cacheFrom?: string[]
+  cacheTo?: string[]
+  env?: Record<string, string>
+}
+
 export interface ServiceConfig {
   containerImage: string
   defaultEnvironment?: string
@@ -165,6 +180,7 @@ export interface ServiceConfig {
     }
   >
   ingress?: Record<string, ServiceIngressConfig>
+  build?: ServiceBuildConfig
 }
 
 export interface ExecOptions {
@@ -180,6 +196,11 @@ export interface KubectlApplyOptions {
 }
 
 export interface KubectlDiffOptions extends KubectlApplyOptions {}
+
+export interface KubectlDeleteOptions extends KubectlApplyOptions {
+  ignoreNotFound?: boolean
+  gracePeriodSeconds?: number
+}
 
 export interface KubectlRolloutStatusOptions {
   context: string
@@ -199,6 +220,7 @@ export interface KubectlExecOptions {
 export interface KubectlClient {
   apply(options: KubectlApplyOptions): Promise<void>
   diff(options: KubectlDiffOptions): Promise<void>
+  delete(options: KubectlDeleteOptions): Promise<void>
   rolloutStatus(options: KubectlRolloutStatusOptions): Promise<void>
   exec(options: KubectlExecOptions): Promise<void>
 }
@@ -237,6 +259,53 @@ export interface ServiceRuntime {
   name: string
   releaseName?: string
   containerImage: string
+}
+
+export interface BuildOptions {
+  environment?: string
+  env?: Record<string, string>
+  git?: GitInfo
+}
+
+export interface TestOptions {
+  git?: GitInfo
+}
+
+export interface DeployOptions {
+  environment?: string
+  diff?: boolean
+  diffOnly?: boolean
+  skipHooks?: boolean
+  notify?: boolean
+  imageTag?: string
+  git?: GitInfo
+}
+
+export interface RenderOptions {
+  environment?: string
+  imageTag?: string
+  git?: GitInfo
+}
+
+export interface RenderResult {
+  manifests: KubernetesManifest[]
+  imageTag: string
+  context: ServiceManifestContext
+}
+
+export interface RenderedService extends RenderResult {
+  service: string
+}
+
+export interface DeleteOptions extends RenderOptions {
+  ignoreNotFound?: boolean
+  gracePeriodSeconds?: number
+}
+
+export interface RunOptions extends DeployOptions {
+  skipBuild?: boolean
+  skipTests?: boolean
+  env?: Record<string, string>
 }
 
 export interface BuildPipelineConfig {
@@ -301,6 +370,25 @@ export interface SecretMapEntry {
 export interface SecretsConfig {
   provider: SecretProviderConfig
   map: Record<string, SecretMapEntry>
+}
+
+export interface SecretWriteOptions {
+  type?: string
+  labels?: Record<string, string>
+  annotations?: Record<string, string>
+}
+
+export interface SecretReadResult {
+  type: string
+  data: Record<string, string>
+  metadata: {
+    labels?: Record<string, string>
+    annotations?: Record<string, string>
+  }
+}
+
+export interface SecretDeleteOptions {
+  ignoreNotFound?: boolean
 }
 
 export interface NotificationTemplateArgs {
@@ -376,9 +464,9 @@ export interface TsOpsConfig extends TsOpsConfigHelpers {
   project: ProjectConfig
   environments: EnvironmentsConfig
   services: ServicesConfig
-  pipeline: PipelineConfig
-  secrets: SecretsConfig
-  notifications: NotificationsConfig
+  pipeline?: PipelineConfig
+  secrets?: SecretsConfig
+  notifications?: NotificationsConfig
   hooks?: HooksConfig
   featureFlags?: Record<string, unknown>
 }

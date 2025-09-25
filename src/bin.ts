@@ -1,11 +1,20 @@
 #!/usr/bin/env node
-import fs from 'fs'
-import path from 'path'
-import process from 'process'
+import fs from 'node:fs'
+import path from 'node:path'
+import process from 'node:process'
 import { createRequire } from 'node:module'
 import { Command } from 'commander'
-import { TsOps, BuildOptions, DeployOptions } from './core.js'
-import type { TsOpsConfig } from './types.js'
+import { TsOps } from './core.js'
+import { serializeManifests } from './core/kubectl-client.js'
+import type {
+  TsOpsConfig,
+  BuildOptions,
+  DeployOptions,
+  RunOptions,
+  RenderOptions,
+  DeleteOptions,
+  RenderedService
+} from './types.js'
 
 const require = createRequire(import.meta.url)
 const packageJson = require('../package.json') as { version?: string }
@@ -13,12 +22,63 @@ const packageJson = require('../package.json') as { version?: string }
 const DEFAULT_CONFIG_BASENAME = 'tsops.config'
 const tsOpsCache = new Map<string, TsOps>()
 
-const program = new Command()
-program
-  .name('tsops')
-  .description('Stateless operations CLI powered by TsOps configuration')
-  .version(packageJson.version ?? '0.0.0')
-  .option('-c, --config <path>', 'Path to tsops config file', `${DEFAULT_CONFIG_BASENAME}.ts`)
+type RenderFormat = 'yaml' | 'json'
+
+type GlobalOptions = { config: string }
+
+type BuildCommandOptions = { environment?: string; env?: string[] }
+
+type RunCommandOptions = {
+  environment?: string
+  skipBuild?: boolean
+  skipTests?: boolean
+  diff?: boolean
+  diffOnly?: boolean
+  skipHooks?: boolean
+  notify?: boolean
+  imageTag?: string
+  env?: string[]
+}
+
+type DeployCommandOptions = {
+  environment?: string
+  diff?: boolean
+  diffOnly?: boolean
+  skipHooks?: boolean
+  notify?: boolean
+  imageTag?: string
+}
+
+type RenderCommandOptions = {
+  environment?: string
+  imageTag?: string
+  format?: string
+  output?: string
+}
+
+type DeleteCommandOptions = {
+  environment?: string
+  imageTag?: string
+  ignoreNotFound?: boolean
+  gracePeriod?: string
+}
+
+type SecretSetCommandOptions = {
+  environment?: string
+  data?: string[]
+  type?: string
+  label?: string[]
+  annotation?: string[]
+}
+
+type SecretGetCommandOptions = {
+  environment?: string
+}
+
+type SecretDeleteCommandOptions = {
+  environment?: string
+  ignoreNotFound?: boolean
+}
 
 function handleError(error: unknown): void {
   if (error instanceof Error) {
@@ -110,64 +170,206 @@ const getTsOps = async (configPathInput: string): Promise<TsOps> => {
   return instance
 }
 
-program
-  .command('build <service>')
-  .description('Run the build pipeline for a service')
-  .option('-e, --environment <env>', 'Target environment for the build pipeline')
-  .option('--env <key=value>', 'Inject environment variable (can be repeated)', collectKeyValue, [])
-  .action(async (service: string, commandOptions: { environment?: string; env?: string[] }) => {
-    try {
-      const globalOptions = program.opts<{ config: string }>()
-      const tsops = await getTsOps(globalOptions.config)
+const ensureRenderFormat = (value: string | undefined): RenderFormat => {
+  if (!value) {
+    return 'yaml'
+  }
 
-      const envVars = parseKeyValuePairs(commandOptions.env)
-      const buildOptions: BuildOptions = {
-        environment: commandOptions.environment,
-        env: envVars
-      }
+  const normalized = value.toLowerCase()
+  if (normalized === 'yaml' || normalized === 'json') {
+    return normalized as RenderFormat
+  }
 
-      await tsops.build(service, buildOptions)
-    } catch (error) {
-      handleError(error)
+  throw new Error(`Unsupported render format "${value}". Use "yaml" or "json".`)
+}
+
+const renderServicesToYaml = (services: RenderedService[]): string => {
+  const sections: string[] = []
+  for (const { service, manifests } of services) {
+    if (manifests.length === 0) {
+      sections.push(`# Service: ${service}\n# (no manifests)`)
+      continue
     }
-  })
 
-program
-  .command('test')
-  .description('Run the configured test pipeline')
-  .action(async () => {
-    try {
-      const globalOptions = program.opts<{ config: string }>()
-      const tsops = await getTsOps(globalOptions.config)
-      await tsops.test()
-    } catch (error) {
-      handleError(error)
-    }
-  })
+    const payload = serializeManifests(manifests)
+    sections.push(`# Service: ${service}\n${payload}`)
+  }
 
-program
-  .command('deploy <service>')
-  .description('Run the deploy pipeline for a service')
-  .option('-e, --environment <env>', 'Target environment name')
-  .option('--diff', 'Run diff before deployment')
-  .option('--diff-only', 'Run diff and skip deployment')
-  .option('--skip-hooks', 'Skip before/after deploy hooks')
-  .option('--no-notify', 'Disable notifications for this run')
-  .option('--image-tag <tag>', 'Override the image tag used for manifest rendering')
-  .action(
-    async (
-      service: string,
-      commandOptions: {
-        environment?: string
-        diff?: boolean
-        diffOnly?: boolean
-        skipHooks?: boolean
-        notify?: boolean
-        imageTag?: string
-      }
-    ) => {
+  return sections.join('\n')
+}
+
+const renderServicesToJson = (services: RenderedService[]): string =>
+  JSON.stringify(
+    services.map(({ service, manifests, imageTag, context }) => ({
+      service,
+      imageTag,
+      context,
+      manifests
+    })),
+    null,
+    2
+  )
+
+const writeOutput = async (content: string, outputPath?: string): Promise<void> => {
+  const normalized = content.endsWith('\n') ? content : `${content}\n`
+  if (!outputPath) {
+    process.stdout.write(normalized)
+    return
+  }
+
+  const targetPath = path.isAbsolute(outputPath)
+    ? outputPath
+    : path.resolve(process.cwd(), outputPath)
+  await fs.promises.writeFile(targetPath, normalized, 'utf-8')
+}
+
+export const createProgram = (): Command => {
+  const program = new Command()
+  program
+    .name('tsops')
+    .description('Stateless operations CLI powered by TsOps configuration')
+    .version(packageJson.version ?? '0.0.0')
+    .option('-c, --config <path>', 'Path to tsops config file', `${DEFAULT_CONFIG_BASENAME}.ts`)
+
+  program
+    .command('build [service]')
+    .description('Run the build pipeline for a service (or all services when omitted)')
+    .option('-e, --environment <env>', 'Target environment for the build pipeline')
+    .option(
+      '--env <key=value>',
+      'Inject environment variable (can be repeated)',
+      collectKeyValue,
+      []
+    )
+    .action(async (service: string | undefined, commandOptions: BuildCommandOptions) => {
       try {
-        const globalOptions = program.opts<{ config: string }>()
+        const globalOptions = program.opts<GlobalOptions>()
+        const tsops = await getTsOps(globalOptions.config)
+
+        const envVars = parseKeyValuePairs(commandOptions.env)
+        const buildOptions: BuildOptions = {
+          environment: commandOptions.environment,
+          env: envVars
+        }
+
+        if (service) {
+          await tsops.build(service, buildOptions)
+        } else {
+          await tsops.buildAll(commandOptions.environment, buildOptions)
+        }
+      } catch (error) {
+        handleError(error)
+      }
+    })
+
+  program
+    .command('test')
+    .description('Run the configured test pipeline')
+    .action(async () => {
+      try {
+        const globalOptions = program.opts<GlobalOptions>()
+        const tsops = await getTsOps(globalOptions.config)
+        await tsops.test()
+      } catch (error) {
+        handleError(error)
+      }
+    })
+
+  program
+    .command('run [service]')
+    .description('Build, test, and deploy in one pass (skaffold run)')
+    .option('-e, --environment <env>', 'Target environment name')
+    .option('--skip-build', 'Skip the build phase')
+    .option('--skip-tests', 'Skip the test phase')
+    .option('--diff', 'Run diff before deployment')
+    .option('--diff-only', 'Run diff and skip deployment')
+    .option('--skip-hooks', 'Skip before/after deploy hooks')
+    .option('--no-notify', 'Disable notifications for this run')
+    .option('--image-tag <tag>', 'Override the image tag used for manifest rendering')
+    .option(
+      '--env <key=value>',
+      'Inject environment variable for the build phase (repeatable)',
+      collectKeyValue,
+      []
+    )
+    .action(async (service: string | undefined, commandOptions: RunCommandOptions) => {
+      try {
+        const globalOptions = program.opts<GlobalOptions>()
+        const tsops = await getTsOps(globalOptions.config)
+
+        const envVars = parseKeyValuePairs(commandOptions.env)
+        const runOptions: RunOptions = {
+          environment: commandOptions.environment,
+          skipBuild: Boolean(commandOptions.skipBuild),
+          skipTests: Boolean(commandOptions.skipTests),
+          diff: commandOptions.diff || commandOptions.diffOnly,
+          diffOnly: commandOptions.diffOnly,
+          skipHooks: commandOptions.skipHooks,
+          notify: commandOptions.notify,
+          imageTag: commandOptions.imageTag,
+          env: envVars
+        }
+
+        if (service) {
+          await tsops.run(service, commandOptions.environment, runOptions)
+        } else {
+          await tsops.runAll(commandOptions.environment, runOptions)
+        }
+      } catch (error) {
+        handleError(error)
+      }
+    })
+
+  program
+    .command('render [service]')
+    .description('Render manifests without deploying (skaffold render)')
+    .option('-e, --environment <env>', 'Target environment name')
+    .option('--image-tag <tag>', 'Override the image tag used for manifest rendering')
+    .option('-f, --format <format>', 'Output format: yaml or json', 'yaml')
+    .option('-o, --output <path>', 'Write rendered output to a file instead of stdout')
+    .action(async (service: string | undefined, commandOptions: RenderCommandOptions) => {
+      try {
+        const globalOptions = program.opts<GlobalOptions>()
+        const tsops = await getTsOps(globalOptions.config)
+        const format = ensureRenderFormat(commandOptions.format)
+
+        const renderOptions: RenderOptions = {
+          environment: commandOptions.environment,
+          imageTag: commandOptions.imageTag
+        }
+
+        let rendered: RenderedService[]
+        if (service) {
+          const result = await tsops.render(service, commandOptions.environment, renderOptions)
+          rendered = [{ service, ...result }]
+        } else {
+          rendered = await tsops.renderAll(commandOptions.environment, renderOptions)
+          if (rendered.length === 0) {
+            return
+          }
+        }
+
+        const output =
+          format === 'json' ? renderServicesToJson(rendered) : renderServicesToYaml(rendered)
+
+        await writeOutput(output, commandOptions.output)
+      } catch (error) {
+        handleError(error)
+      }
+    })
+
+  program
+    .command('deploy [service]')
+    .description('Run the deploy pipeline for a service (or all services when omitted)')
+    .option('-e, --environment <env>', 'Target environment name')
+    .option('--diff', 'Run diff before deployment')
+    .option('--diff-only', 'Run diff and skip deployment')
+    .option('--skip-hooks', 'Skip before/after deploy hooks')
+    .option('--no-notify', 'Disable notifications for this run')
+    .option('--image-tag <tag>', 'Override the image tag used for manifest rendering')
+    .action(async (service: string | undefined, commandOptions: DeployCommandOptions) => {
+      try {
+        const globalOptions = program.opts<GlobalOptions>()
         const tsops = await getTsOps(globalOptions.config)
 
         const deployOptions: DeployOptions = {
@@ -179,66 +381,151 @@ program
           imageTag: commandOptions.imageTag
         }
 
-        await tsops.deploy(service, undefined, deployOptions)
+        if (service) {
+          await tsops.deploy(service, undefined, deployOptions)
+        } else {
+          await tsops.deployAll(commandOptions.environment, deployOptions)
+        }
       } catch (error) {
         handleError(error)
       }
-    }
-  )
+    })
 
-program
-  .command('deploy-all')
-  .description('Run the deploy pipeline for all services defined in the config')
-  .option('-e, --environment <env>', 'Target environment name')
-  .option('--diff', 'Run diff before deployment')
-  .option('--diff-only', 'Run diff and skip deployment')
-  .option('--skip-hooks', 'Skip before/after deploy hooks')
-  .option('--no-notify', 'Disable notifications for this run')
-  .option('--image-tag <tag>', 'Override the image tag used for manifest rendering')
-  .option('--build', 'Run build pipeline for each service before deploying')
-  .action(
-    async (commandOptions: {
-      environment?: string
-      diff?: boolean
-      diffOnly?: boolean
-      skipHooks?: boolean
-      notify?: boolean
-      imageTag?: string
-      build?: boolean
-    }) => {
+  program
+    .command('delete [service]')
+    .description('Delete previously applied manifests (skaffold delete)')
+    .option('-e, --environment <env>', 'Target environment name')
+    .option('--image-tag <tag>', 'Override the image tag used for manifest rendering')
+    .option('--ignore-not-found', 'Suppress errors for missing resources')
+    .option('--grace-period <seconds>', 'Override kubectl delete grace period in seconds')
+    .action(async (service: string | undefined, commandOptions: DeleteCommandOptions) => {
       try {
-        const globalOptions = program.opts<{ config: string }>()
+        const globalOptions = program.opts<GlobalOptions>()
         const tsops = await getTsOps(globalOptions.config)
 
-        const gitInfo = await tsops.getGitInfo().catch((error) => {
-          handleError(error)
-          throw error
-        })
-
-        if (commandOptions.build) {
-          await tsops.buildAll(commandOptions.environment, {
-            environment: commandOptions.environment,
-            git: gitInfo
-          })
+        let gracePeriodSeconds: number | undefined
+        if (commandOptions.gracePeriod !== undefined) {
+          const parsed = Number(commandOptions.gracePeriod)
+          if (Number.isNaN(parsed)) {
+            throw new Error(`Invalid grace period: ${commandOptions.gracePeriod}`)
+          }
+          gracePeriodSeconds = parsed
         }
 
-        const deployOptions: DeployOptions = {
+        const deleteOptions: DeleteOptions = {
           environment: commandOptions.environment,
-          diff: commandOptions.diff || commandOptions.diffOnly,
-          diffOnly: commandOptions.diffOnly,
-          skipHooks: commandOptions.skipHooks,
-          notify: commandOptions.notify,
           imageTag: commandOptions.imageTag,
-          git: gitInfo
+          ignoreNotFound: Boolean(commandOptions.ignoreNotFound),
+          gracePeriodSeconds
         }
 
-        await tsops.deployAll(commandOptions.environment, deployOptions)
+        if (service) {
+          await tsops.delete(service, commandOptions.environment, deleteOptions)
+        } else {
+          await tsops.deleteAll(commandOptions.environment, deleteOptions)
+        }
       } catch (error) {
         handleError(error)
       }
-    }
-  )
+    })
 
-program.parseAsync(process.argv).catch((error) => {
-  handleError(error)
-})
+  program
+    .command('secret:set <name>')
+    .description('Create or update a Kubernetes Secret in the target environment')
+    .option('-e, --environment <env>', 'Target environment name')
+    .option('--type <type>', 'Secret type (defaults to Opaque)')
+    .option('--data <key=value>', 'Secret data entry (repeatable)', collectKeyValue, [])
+    .option('--label <key=value>', 'Label to apply to the Secret (repeatable)', collectKeyValue, [])
+    .option(
+      '--annotation <key=value>',
+      'Annotation to apply to the Secret (repeatable)',
+      collectKeyValue,
+      []
+    )
+    .action(async (name: string, commandOptions: SecretSetCommandOptions) => {
+      try {
+        const environment = commandOptions.environment
+        if (!environment) {
+          throw new Error('Environment is required. Pass --environment <env>.')
+        }
+
+        const data = parseKeyValuePairs(commandOptions.data)
+        if (Object.keys(data).length === 0) {
+          throw new Error('At least one --data KEY=VALUE pair is required.')
+        }
+
+        const labels = parseKeyValuePairs(commandOptions.label)
+        const annotations = parseKeyValuePairs(commandOptions.annotation)
+
+        const globalOptions = program.opts<GlobalOptions>()
+        const tsops = await getTsOps(globalOptions.config)
+
+        await tsops.upsertSecret(environment, name, data, {
+          type: commandOptions.type,
+          labels: Object.keys(labels).length > 0 ? labels : undefined,
+          annotations: Object.keys(annotations).length > 0 ? annotations : undefined
+        })
+      } catch (error) {
+        handleError(error)
+      }
+    })
+
+  program
+    .command('secret:get <name>')
+    .description('Read a Kubernetes Secret and print the decoded data')
+    .option('-e, --environment <env>', 'Target environment name')
+    .action(async (name: string, commandOptions: SecretGetCommandOptions) => {
+      try {
+        const environment = commandOptions.environment
+        if (!environment) {
+          throw new Error('Environment is required. Pass --environment <env>.')
+        }
+
+        const globalOptions = program.opts<GlobalOptions>()
+        const tsops = await getTsOps(globalOptions.config)
+        const secret = await tsops.readSecret(environment, name)
+
+        const output = JSON.stringify(secret, null, 2)
+        process.stdout.write(output.endsWith('\n') ? output : `${output}\n`)
+      } catch (error) {
+        handleError(error)
+      }
+    })
+
+  program
+    .command('secret:delete <name>')
+    .description('Delete a Kubernetes Secret from the target environment')
+    .option('-e, --environment <env>', 'Target environment name')
+    .option('--ignore-not-found', 'Do not fail if the Secret does not exist')
+    .action(async (name: string, commandOptions: SecretDeleteCommandOptions) => {
+      try {
+        const environment = commandOptions.environment
+        if (!environment) {
+          throw new Error('Environment is required. Pass --environment <env>.')
+        }
+
+        const globalOptions = program.opts<GlobalOptions>()
+        const tsops = await getTsOps(globalOptions.config)
+
+        await tsops.deleteSecret(environment, name, {
+          ignoreNotFound: Boolean(commandOptions.ignoreNotFound)
+        })
+      } catch (error) {
+        handleError(error)
+      }
+    })
+
+  return program
+}
+
+export const resetTsOpsCache = (): void => {
+  tsOpsCache.clear()
+}
+
+if (process.env.TSOPS_CLI_TEST_MODE !== '1') {
+  createProgram()
+    .parseAsync(process.argv)
+    .catch((error) => {
+      handleError(error)
+    })
+}

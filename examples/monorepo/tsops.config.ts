@@ -1,16 +1,42 @@
-import { defineConfig } from '../../dist'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+import { defineConfig } from '../../dist/index.js'
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const dockerfilePath = path.join(__dirname, 'Dockerfile')
+
+const serviceMeta = {
+  frontend: {
+    packageName: '@monorepo/frontend',
+    serviceDir: 'apps/frontend',
+    port: 3000
+  },
+  backend: {
+    packageName: '@monorepo/backend',
+    serviceDir: 'apps/backend',
+    port: 4000
+  }
+} satisfies Record<
+  string,
+  {
+    packageName: string
+    serviceDir: string
+    port: number
+  }
+>
+
+const backendSecretName = 'monorepo-backend-env'
 
 const namespaceManifest = (namespace: string) => ({
   apiVersion: 'v1',
   kind: 'Namespace',
-  metadata: {
-    name: namespace
-  }
+  metadata: { name: namespace }
 })
 
 const config = defineConfig({
   project: {
-    name: 'tsops-fullstack-demo',
+    name: 'tsops-monorepo-demo',
     repoUrl: 'https://github.com/Pom4H/tsops',
     defaultBranch: 'main'
   },
@@ -20,7 +46,7 @@ const config = defineConfig({
         apiServer: 'https://kubernetes.docker.internal:6443',
         context: 'docker-desktop'
       },
-      namespace: 'tsops-fullstack',
+      namespace: 'tsops-monorepo',
       imageTagStrategy: { type: 'gitSha', length: 7 },
       ingressController: {
         type: 'traefik',
@@ -37,10 +63,23 @@ const config = defineConfig({
   },
   services: {
     backend: {
-      containerImage: 'tsops-example-backend',
+      containerImage: 'tsops-monorepo-backend',
       defaultEnvironment: 'local',
+      build: {
+        type: 'dockerfile',
+        context: __dirname,
+        dockerfile: dockerfilePath,
+        buildArgs: {
+          PACKAGE_NAME: serviceMeta.backend.packageName,
+          SERVICE_DIR: serviceMeta.backend.serviceDir,
+          NODE_VERSION: '20'
+        },
+        env: {
+          DOCKER_BUILDKIT: '1'
+        }
+      },
       manifests: ({ env, image }) => {
-        const appLabels = { app: 'backend' }
+        const labels = { app: 'monorepo-backend' }
         return [
           namespaceManifest(env.namespace),
           {
@@ -49,27 +88,32 @@ const config = defineConfig({
             metadata: {
               name: 'backend',
               namespace: env.namespace,
-              labels: appLabels
+              labels
             },
             spec: {
               replicas: 1,
-              selector: { matchLabels: appLabels },
+              selector: { matchLabels: labels },
               template: {
-                metadata: {
-                  labels: appLabels
-                },
+                metadata: { labels },
                 spec: {
                   containers: [
                     {
                       name: 'backend',
                       image,
                       imagePullPolicy: 'IfNotPresent',
-                      ports: [{ containerPort: 8080 }],
+                      ports: [{ containerPort: serviceMeta.backend.port }],
                       env: [
-                        { name: 'PORT', value: '8080' },
+                        { name: 'PORT', value: String(serviceMeta.backend.port) },
+                        { name: 'NODE_ENV', value: 'production' },
+                        { name: 'RELEASE', value: env.name },
                         {
                           name: 'FRONTEND_URL',
-                          value: `http://frontend.${env.namespace}.svc.cluster.local`
+                          value: `http://frontend.${env.namespace}.svc.cluster.local:${serviceMeta.frontend.port}`
+                        }
+                      ],
+                      envFrom: [
+                        {
+                          secretRef: { name: backendSecretName }
                         }
                       ]
                     }
@@ -86,11 +130,12 @@ const config = defineConfig({
               namespace: env.namespace
             },
             spec: {
-              selector: appLabels,
+              selector: labels,
               ports: [
                 {
-                  port: 8080,
-                  targetPort: 8080
+                  name: 'http',
+                  port: serviceMeta.backend.port,
+                  targetPort: serviceMeta.backend.port
                 }
               ],
               type: 'ClusterIP'
@@ -100,11 +145,25 @@ const config = defineConfig({
       }
     },
     frontend: {
-      containerImage: 'tsops-example-frontend',
+      containerImage: 'tsops-monorepo-frontend',
       defaultEnvironment: 'local',
+      dependsOn: ['backend'],
+      build: {
+        type: 'dockerfile',
+        context: __dirname,
+        dockerfile: dockerfilePath,
+        buildArgs: {
+          PACKAGE_NAME: serviceMeta.frontend.packageName,
+          SERVICE_DIR: serviceMeta.frontend.serviceDir,
+          NODE_VERSION: '20'
+        },
+        env: {
+          DOCKER_BUILDKIT: '1'
+        }
+      },
       manifests: ({ env, image }) => {
-        const appLabels = { app: 'frontend' }
-        const host = 'fullstack2.localtest.me'
+        const labels = { app: 'monorepo-frontend' }
+        const host = 'monorepo.localtest.me'
         return [
           namespaceManifest(env.namespace),
           {
@@ -113,30 +172,31 @@ const config = defineConfig({
             metadata: {
               name: 'frontend',
               namespace: env.namespace,
-              labels: appLabels
+              labels
             },
             spec: {
               replicas: 1,
-              selector: { matchLabels: appLabels },
+              selector: { matchLabels: labels },
               template: {
-                metadata: {
-                  labels: appLabels
-                },
+                metadata: { labels },
                 spec: {
                   containers: [
                     {
                       name: 'frontend',
                       image,
                       imagePullPolicy: 'IfNotPresent',
-                      ports: [{ containerPort: 3000 }],
+                      ports: [{ containerPort: serviceMeta.frontend.port }],
                       env: [
+                        { name: 'PORT', value: String(serviceMeta.frontend.port) },
+                        { name: 'NODE_ENV', value: 'production' },
+                        { name: 'PAGE_TITLE', value: 'Turbo Monorepo Frontend' },
                         {
-                          name: 'PORT',
-                          value: '3000'
+                          name: 'BACKEND_INTERNAL_URL',
+                          value: `http://backend.${env.namespace}.svc.cluster.local:${serviceMeta.backend.port}`
                         },
                         {
-                          name: 'NEXT_PUBLIC_API_BASE_URL',
-                          value: `http://backend.${env.namespace}.svc.cluster.local:8080`
+                          name: 'BACKEND_PUBLIC_URL',
+                          value: '/api'
                         }
                       ]
                     }
@@ -153,12 +213,12 @@ const config = defineConfig({
               namespace: env.namespace
             },
             spec: {
-              selector: appLabels,
+              selector: labels,
               ports: [
                 {
                   name: 'http',
                   port: 80,
-                  targetPort: 3000
+                  targetPort: serviceMeta.frontend.port
                 }
               ],
               type: 'ClusterIP'
@@ -201,52 +261,46 @@ const config = defineConfig({
       }
     }
   },
-  pipeline: {
-    build: {
-      run: async ({ exec, service, git }) => {
-        const imageTag = `${service.containerImage}:${git.shortSha}`
-        const dockerContext = `examples/fullstack/${service.name}`
-        await exec(`docker build -t ${imageTag} -f ${dockerContext}/Dockerfile ${dockerContext}`, {
-          env: { DOCKER_BUILDKIT: '1' }
-        })
-      }
-    },
-    test: {
-      run: async (_ctx) => {
-        // Tests are omitted for the demo stack.
-      }
-    },
-    deploy: {
-      run: async ({ kubectl, environment, service, manifests }) => {
+  hooks: {
+    beforeDeploy: [
+      async ({ kubectl, environment, service }) => {
+        if (!kubectl || !environment || !service || service.name !== 'backend') {
+          return
+        }
+
+        const token = process.env.BACKEND_API_TOKEN
+        if (!token) {
+          console.warn(
+            '[tsops] BACKEND_API_TOKEN not set; backend secret will not be updated during deploy.'
+          )
+          return
+        }
+
         await kubectl.apply({
           context: environment.cluster.context,
           namespace: environment.namespace,
-          manifests
-        })
-        await kubectl.rolloutStatus({
-          context: environment.cluster.context,
-          namespace: environment.namespace,
-          workload: `deployment/${service.name}`,
-          timeoutSeconds: 180
-        })
-      },
-      diff: async ({ kubectl, environment, manifests }) => {
-        await kubectl.diff({
-          context: environment.cluster.context,
-          namespace: environment.namespace,
-          manifests
+          manifests: [
+            {
+              apiVersion: 'v1',
+              kind: 'Secret',
+              metadata: {
+                name: backendSecretName,
+                namespace: environment.namespace,
+                labels: {
+                  'app.kubernetes.io/name': 'backend',
+                  'app.kubernetes.io/component': 'api'
+                }
+              },
+              type: 'Opaque',
+              stringData: {
+                API_TOKEN: token
+              }
+            }
+          ]
         })
       }
-    }
+    ]
   },
-  secrets: {
-    provider: { type: 'vault', connection: {} },
-    map: {}
-  },
-  notifications: {
-    channels: {},
-    onEvents: {}
-  }
 })
 
 export default config

@@ -1,5 +1,9 @@
-import {
+import path from 'node:path'
+
+import type {
+  DeployOptions,
   DeployPipelineConfig,
+  DeployContext,
   EnvironmentConfig,
   EnvironmentRuntimeInfo,
   ExecFn,
@@ -7,14 +11,26 @@ import {
   Hook,
   HookContext,
   KubernetesManifest,
+  DeploymentManifest,
   KubectlClient,
   NotificationChannelConfig,
   NotificationTemplateArgs,
   ServiceConfig,
   ServiceManifestContext,
+  ServiceBuildConfig,
   ServiceRuntime,
+  RenderOptions,
+  RenderResult,
+  RenderedService,
+  DeleteOptions,
+  RunOptions,
+  BuildOptions,
+  TestOptions,
   TsOpsConfig,
-  Logger
+  Logger,
+  SecretWriteOptions,
+  SecretReadResult,
+  SecretDeleteOptions
 } from './types.js'
 
 import { CommandExecutor } from './core/command-executor.js'
@@ -27,6 +43,7 @@ import { ManifestRenderer } from './core/manifest-renderer.js'
 
 import { IngressControllerInstaller } from './core/ingress-controller-installer.js'
 import { SelfSignedTlsManager } from './core/self-signed-tls-manager.js'
+import { SecretManager } from './core/secret-manager.js'
 
 export interface NotificationDispatchInput {
   event: string
@@ -37,26 +54,6 @@ export interface NotificationDispatchInput {
 }
 
 export type NotificationDispatcher = (input: NotificationDispatchInput) => Promise<void> | void
-
-export interface DeployOptions {
-  environment?: string
-  diff?: boolean
-  diffOnly?: boolean
-  skipHooks?: boolean
-  notify?: boolean
-  imageTag?: string
-  git?: GitInfo
-}
-
-export interface BuildOptions {
-  environment?: string
-  env?: Record<string, string>
-  git?: GitInfo
-}
-
-export interface TestOptions {
-  git?: GitInfo
-}
 
 export interface TsOpsOptions {
   cwd?: string
@@ -92,6 +89,10 @@ const defaultNotificationDispatcher: NotificationDispatcher = async ({
   defaultLogger.info(`notification:${event} -> ${channel}: ${message}`)
 }
 
+export function defineConfig(config: TsOpsConfig): TsOpsConfig {
+  return config
+}
+
 export class TsOps {
   private readonly config: TsOpsConfig
   private readonly execFn: ExecFn
@@ -105,6 +106,7 @@ export class TsOps {
   private readonly ingressBuilder: IngressBuilder
   private readonly ingressControllerInstaller: IngressControllerInstaller
   private readonly selfSignedTlsManager: SelfSignedTlsManager
+  private readonly secretManager: SecretManager
 
   constructor(config: TsOpsConfig, options: TsOpsOptions = {}) {
     this.config = config
@@ -122,6 +124,7 @@ export class TsOps {
       this.logger
     )
     this.selfSignedTlsManager = new SelfSignedTlsManager(this.commandExecutor, this.logger)
+    this.secretManager = new SecretManager(this.commandExecutor, this.logger)
     this.notificationDispatcher = options.notificationDispatcher ?? defaultNotificationDispatcher
     this.execFn =
       options.exec ??
@@ -139,23 +142,36 @@ export class TsOps {
       namespace: environment.namespace
     }
 
+    const imageTag = this.computeImageTag(service, environment, git)
+    const imageRef = `${service.containerImage}:${imageTag}`
     const envVars: Record<string, string> = {
       SERVICE_NAME: service.name,
       ENVIRONMENT: envRuntime.name,
+      IMAGE_TAG: imageTag,
+      IMAGE_REF: imageRef,
       ...(options.env ?? {})
     }
 
-    this.logger.info(
-      `Running build pipeline for service "${service.name}" in env "${envRuntime.name}"`
-    )
+    await this.runServiceBuild(service, environment, git, imageTag, envVars)
 
-    await this.config.pipeline.build.run({
-      exec: this.execFn,
-      env: envVars,
-      service: this.createServiceRuntime(service),
-      environment: envRuntime,
-      git
-    })
+    const buildPipeline = this.config.pipeline?.build
+    if (buildPipeline?.run) {
+      this.logger.info(
+        `Running build pipeline for service "${service.name}" in env "${envRuntime.name}"`
+      )
+
+      await buildPipeline.run({
+        exec: this.execFn,
+        env: envVars,
+        service: this.createServiceRuntime(service),
+        environment: envRuntime,
+        git
+      })
+    } else {
+      this.logger.info(
+        `No custom build pipeline for service "${service.name}"; using automatic Docker build only.`
+      )
+    }
   }
 
   async buildAll(environmentName?: string, options: BuildOptions = {}): Promise<void> {
@@ -176,15 +192,116 @@ export class TsOps {
     }
   }
 
+  async runAll(environmentName?: string, options: RunOptions = {}): Promise<void> {
+    const { env, skipBuild, skipTests, ...deployOptions } = options
+    const targetEnvironment = environmentName ?? options.environment
+    const git = options.git ?? (await this.detectGitInfo())
+
+    if (!skipBuild) {
+      await this.buildAll(targetEnvironment, {
+        env,
+        git
+      })
+    }
+
+    if (!skipTests) {
+      await this.test({ git })
+    }
+
+    await this.deployAll(targetEnvironment, {
+      ...deployOptions,
+      environment: targetEnvironment,
+      git
+    })
+  }
+
   async test(options: TestOptions = {}): Promise<void> {
     const git = options.git ?? (await this.detectGitInfo())
+    const testPipeline = this.config.pipeline?.test
+
+    if (!testPipeline?.run) {
+      this.logger.info('No test pipeline defined; skipping tests.')
+      return
+    }
 
     this.logger.info('Running test pipeline')
 
-    await this.config.pipeline.test.run({
+    await testPipeline.run({
       exec: this.execFn,
       git
     })
+  }
+
+  async run(
+    serviceName: string,
+    environmentName?: string,
+    options: RunOptions = {}
+  ): Promise<void> {
+    const { env, skipBuild, skipTests, ...deployOptions } = options
+    const targetEnvironment = environmentName ?? options.environment
+    const git = options.git ?? (await this.detectGitInfo())
+
+    if (!skipBuild) {
+      await this.build(serviceName, {
+        environment: targetEnvironment,
+        env,
+        git
+      })
+    }
+
+    if (!skipTests) {
+      await this.test({ git })
+    }
+
+    await this.deploy(serviceName, targetEnvironment, {
+      ...deployOptions,
+      environment: targetEnvironment,
+      git
+    })
+  }
+
+  async render(
+    serviceName: string,
+    environmentName?: string,
+    options: RenderOptions = {}
+  ): Promise<RenderResult> {
+    const service = this.resolveService(serviceName)
+    const environment = this.resolveEnvironmentForService(
+      service,
+      environmentName ?? options.environment
+    )
+    const git = options.git ?? (await this.detectGitInfo())
+
+    return this.renderManifests(service, environment, git, options.imageTag)
+  }
+
+  async renderAll(
+    environmentName?: string,
+    options: RenderOptions = {}
+  ): Promise<RenderedService[]> {
+    const order = this.getServiceDeploymentOrder()
+    if (order.length === 0) {
+      this.logger.warn('No services configured for render; nothing to do.')
+      return []
+    }
+
+    const git = options.git ?? (await this.detectGitInfo())
+    const resolvedEnvironment = environmentName ?? options.environment
+    const results: RenderedService[] = []
+
+    for (const serviceName of order) {
+      const renderResult = await this.render(serviceName, resolvedEnvironment, {
+        ...options,
+        environment: resolvedEnvironment,
+        git
+      })
+      results.push({
+        service: serviceName,
+        ...renderResult
+      })
+    }
+
+    return results
   }
 
   async deploy(
@@ -223,22 +340,30 @@ export class TsOps {
       await this.runHooks(this.config.hooks?.beforeDeploy, hookContext)
     }
 
+    const deployPipeline = this.config.pipeline?.deploy
+
     if (options.diff || options.diffOnly) {
-      await this.runDiff(this.config.pipeline.deploy, environment, manifestsInfo.manifests)
+      await this.runDiff(deployPipeline, environment, manifestsInfo.manifests)
       if (options.diffOnly) {
         return
       }
     }
 
     try {
-      await this.config.pipeline.deploy.run({
+      const deployContext: DeployContext = {
         kubectl: this.kubectl,
         environment,
         service: serviceRuntime,
         config: this.config,
         git,
         manifests: manifestsInfo.manifests
-      })
+      }
+
+      if (deployPipeline?.run) {
+        await deployPipeline.run(deployContext)
+      } else {
+        await this.defaultDeployRun(deployContext)
+      }
 
       if (!options.skipHooks) {
         await this.runHooks(this.config.hooks?.afterDeploy, hookContext)
@@ -280,6 +405,52 @@ export class TsOps {
     }
   }
 
+  async delete(
+    serviceName: string,
+    environmentName?: string,
+    options: DeleteOptions = {}
+  ): Promise<void> {
+    const service = this.resolveService(serviceName)
+    const environment = this.resolveEnvironmentForService(
+      service,
+      environmentName ?? options.environment
+    )
+    const git = options.git ?? (await this.detectGitInfo())
+
+    const manifestsInfo = this.renderManifests(service, environment, git, options.imageTag)
+
+    await this.kubectl.delete({
+      context: environment.cluster.context,
+      namespace: environment.namespace,
+      manifests: manifestsInfo.manifests,
+      ignoreNotFound: options.ignoreNotFound,
+      gracePeriodSeconds: options.gracePeriodSeconds
+    })
+
+    this.logger.info(
+      `Deleted resources for service "${service.name}" from env "${environment.name}"`
+    )
+  }
+
+  async deleteAll(environmentName?: string, options: DeleteOptions = {}): Promise<void> {
+    const order = this.getServiceDeploymentOrder()
+    if (order.length === 0) {
+      this.logger.warn('No services configured for delete; nothing to do.')
+      return
+    }
+
+    const git = options.git ?? (await this.detectGitInfo())
+    const resolvedEnvironment = environmentName ?? options.environment
+
+    for (const serviceName of [...order].reverse()) {
+      await this.delete(serviceName, resolvedEnvironment, {
+        ...options,
+        environment: resolvedEnvironment,
+        git
+      })
+    }
+  }
+
   async deployAll(environmentName?: string, options: DeployOptions = {}): Promise<void> {
     const order = this.getServiceDeploymentOrder()
     if (order.length === 0) {
@@ -301,27 +472,69 @@ export class TsOps {
     return this.detectGitInfo()
   }
 
+  async upsertSecret(
+    environmentName: string,
+    secretName: string,
+    data: Record<string, string>,
+    options: SecretWriteOptions = {}
+  ): Promise<void> {
+    const environment = this.resolveEnvironment(environmentName)
+
+    await this.secretManager.upsertSecret({
+      context: environment.cluster.context,
+      namespace: environment.namespace,
+      name: secretName,
+      data,
+      options
+    })
+  }
+
+  async readSecret(environmentName: string, secretName: string): Promise<SecretReadResult> {
+    const environment = this.resolveEnvironment(environmentName)
+
+    return this.secretManager.readSecret({
+      context: environment.cluster.context,
+      namespace: environment.namespace,
+      name: secretName
+    })
+  }
+
+  async deleteSecret(
+    environmentName: string,
+    secretName: string,
+    options: SecretDeleteOptions = {}
+  ): Promise<void> {
+    const environment = this.resolveEnvironment(environmentName)
+
+    await this.secretManager.deleteSecret({
+      context: environment.cluster.context,
+      namespace: environment.namespace,
+      name: secretName,
+      options
+    })
+  }
+
   private async runDiff(
-    deployConfig: DeployPipelineConfig,
+    deployConfig: DeployPipelineConfig | undefined,
     environment: EnvironmentConfig & { name: string },
     manifests: KubernetesManifest[]
   ): Promise<void> {
-    if (!deployConfig.diff) {
-      this.logger.warn('diff requested but no diff handler configured; skipping')
-      return
-    }
-
     this.logger.info(
       `Running diff for environment "${environment.name}" (${manifests.length} manifest${
         manifests.length === 1 ? '' : 's'
       })`
     )
 
-    await deployConfig.diff({
-      kubectl: this.kubectl,
-      environment,
-      manifests
-    })
+    if (deployConfig?.diff) {
+      await deployConfig.diff({
+        kubectl: this.kubectl,
+        environment,
+        manifests
+      })
+      return
+    }
+
+    await this.defaultDeployDiff(environment, manifests)
   }
 
   private resolveEnvironmentForService(
@@ -371,6 +584,150 @@ export class TsOps {
 
   private detectGitInfo(): Promise<GitInfo> {
     return this.gitMetadataProvider.getGitInfo()
+  }
+
+  private computeImageTag(
+    service: ServiceConfig & { name: string },
+    environment: EnvironmentConfig & { name: string },
+    git: GitInfo
+  ): string {
+    return this.config.buildImageTag
+      ? this.config.buildImageTag(service, environment, git)
+      : git.shortSha
+  }
+
+  private async runServiceBuild(
+    service: ServiceConfig & { name: string },
+    environment: EnvironmentConfig & { name: string },
+    git: GitInfo,
+    imageTag: string,
+    envVars: Record<string, string>
+  ): Promise<void> {
+    const buildConfig = service.build
+    if (!buildConfig) {
+      return
+    }
+
+    switch (buildConfig.type) {
+      case 'dockerfile':
+        await this.buildServiceWithDockerfile(service, imageTag, envVars, buildConfig)
+        break
+      default: {
+        const unknownType = (buildConfig as { type?: string }).type ?? 'unknown'
+        this.logger.warn(
+          `Skipping automatic build for service "${service.name}"; unsupported build type "${unknownType}".`
+        )
+      }
+    }
+  }
+
+  private async buildServiceWithDockerfile(
+    service: ServiceConfig & { name: string },
+    imageTag: string,
+    envVars: Record<string, string>,
+    buildConfig: ServiceBuildConfig & { type: 'dockerfile' }
+  ): Promise<void> {
+    const imageRef = `${service.containerImage}:${imageTag}`
+    const contextPath = this.resolvePath(buildConfig.context ?? '.')
+    const dockerfilePath = buildConfig.dockerfile
+      ? this.resolvePath(buildConfig.dockerfile)
+      : undefined
+
+    const commandParts: string[] = ['docker', 'build']
+
+    if (buildConfig.platform) {
+      commandParts.push('--platform', buildConfig.platform)
+    }
+    if (dockerfilePath) {
+      commandParts.push('-f', dockerfilePath)
+    }
+    if (buildConfig.target) {
+      commandParts.push('--target', buildConfig.target)
+    }
+
+    for (const cacheFrom of buildConfig.cacheFrom ?? []) {
+      commandParts.push('--cache-from', cacheFrom)
+    }
+    for (const cacheTo of buildConfig.cacheTo ?? []) {
+      commandParts.push('--cache-to', cacheTo)
+    }
+    for (const [key, value] of Object.entries(buildConfig.buildArgs ?? {})) {
+      commandParts.push('--build-arg', `${key}=${value}`)
+    }
+
+    const tagSet = new Set<string>(buildConfig.tags ?? [])
+    tagSet.add(imageRef)
+    for (const tag of tagSet) {
+      commandParts.push('--tag', tag)
+    }
+
+    commandParts.push(contextPath)
+
+    const command = commandParts.map((part) => this.shellQuote(part)).join(' ')
+    const relativeContext = path.relative(this.cwd, contextPath) || contextPath
+
+    const buildEnv = {
+      ...envVars,
+      IMAGE_REF: imageRef,
+      IMAGE_TAG: imageTag,
+      ...(buildConfig.env ?? {})
+    }
+
+    this.logger.info(
+      `Building Docker image ${imageRef} for service "${service.name}" (context: ${relativeContext})`
+    )
+
+    await this.execFn(command, { env: buildEnv })
+  }
+
+  private async defaultDeployRun(ctx: DeployContext): Promise<void> {
+    await ctx.kubectl.apply({
+      context: ctx.environment.cluster.context,
+      namespace: ctx.environment.namespace,
+      manifests: ctx.manifests
+    })
+
+    for (const manifest of ctx.manifests) {
+      if (manifest.kind === 'Deployment') {
+        const deployment = manifest as DeploymentManifest
+        const name = deployment.metadata?.name
+        if (!name) {
+          continue
+        }
+
+        await ctx.kubectl.rolloutStatus({
+          context: ctx.environment.cluster.context,
+          namespace: ctx.environment.namespace,
+          workload: `deployment/${name}`,
+          timeoutSeconds: 120
+        })
+      }
+    }
+  }
+
+  private async defaultDeployDiff(
+    environment: EnvironmentConfig & { name: string },
+    manifests: KubernetesManifest[]
+  ): Promise<void> {
+    await this.kubectl.diff({
+      context: environment.cluster.context,
+      namespace: environment.namespace,
+      manifests
+    })
+  }
+
+  private resolvePath(input: string): string {
+    return path.isAbsolute(input) ? input : path.join(this.cwd, input)
+  }
+
+  private shellQuote(value: string): string {
+    if (value === '') {
+      return "''"
+    }
+    if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) {
+      return value
+    }
+    return `'${value.replace(/'/g, "'\\''")}'`
   }
 
   private renderManifests(

@@ -9,6 +9,7 @@ TsOps is a TypeScript-first operations toolkit that lets you describe build, tes
 - Optional auto-installation of ingress controllers and self-signed TLS automation per-environment
 - Build/test/deploy pipelines share common Git metadata (branch, SHA, tag, dirty state)
 - Extensible architecture with pluggable command executor, manifest renderer, ingress/TLS services, and notification dispatcher
+- Manage Kubernetes Secrets directly from TypeScript (create/read/delete) without leaving the workflow
 - Batteries-included CLI with diff and dry-run workflows, environment overrides, and hook support
 
 ## Installation
@@ -23,12 +24,12 @@ The CLI is published as a binary named `tsops`. After installing it locally you 
 
 ## Quick Start
 
-1. Create `tsops.config.ts` in the root of your repo:
+1. Create `tsops.config.ts` in the root of your repo. The `defineConfig` helper keeps full type safety without importing `TsOpsConfig` manually:
 
 ```ts
-import type { TsOpsConfig } from 'tsops'
+import { defineConfig } from 'tsops'
 
-const config: TsOpsConfig = {
+export default defineConfig({
   project: {
     name: 'demo',
     repoUrl: 'https://github.com/example/demo',
@@ -38,9 +39,7 @@ const config: TsOpsConfig = {
     dev: {
       cluster: { apiServer: 'https://k8s.dev.example.com', context: 'dev' },
       namespace: 'demo-dev',
-      imageTagStrategy: { type: 'gitSha', length: 7 },
-      ingressController: { type: 'traefik', autoInstall: true },
-      tls: { selfSigned: { enabled: true } }
+      imageTagStrategy: { type: 'gitSha', length: 7 }
     }
   },
   services: {
@@ -68,11 +67,15 @@ const config: TsOpsConfig = {
   },
   pipeline: {
     build: {
-      run: async ({ exec, env, service, git }) => {
-        await exec(`docker build -t ${service.containerImage}:${git.shortSha} .`, { env })
+      run: async ({ exec, service, git }) => {
+        await exec(`docker build -t ${service.containerImage}:${git.shortSha} .`)
       }
     },
-    test: { run: async ({ exec }) => exec('pnpm test') },
+    test: {
+      run: async ({ exec }) => {
+        await exec('pnpm test')
+      }
+    },
     deploy: {
       run: async ({ kubectl, environment, manifests }) => {
         await kubectl.apply({
@@ -80,23 +83,18 @@ const config: TsOpsConfig = {
           namespace: environment.namespace,
           manifests
         })
-      },
-      diff: async ({ kubectl, environment, manifests }) =>
-        kubectl.diff({
-          context: environment.cluster.context,
-          namespace: environment.namespace,
-          manifests
-        })
+      }
     }
   },
-  secrets: { provider: { type: 'vault', connection: {} }, map: {} },
+  secrets: {
+    provider: { type: 'vault', connection: {} },
+    map: {}
+  },
   notifications: {
     channels: {},
     onEvents: {}
   }
-}
-
-export default config
+})
 ```
 
 2. Run your first build:
@@ -111,6 +109,12 @@ pnpm tsops build api
 pnpm tsops deploy api --diff-only
 ```
 
+## Examples
+
+- `examples/simple` – single-service pipeline with plain Docker builds.
+- `examples/fullstack` – separate frontend and backend services with Next.js and Node.
+- `examples/monorepo` – TurboRepo monorepo with shared Dockerfile, backend secret management, and local Docker Desktop Kubernetes manifests.
+
 ## CLI Usage
 
 ```bash
@@ -119,9 +123,12 @@ pnpm tsops --help
 
 Key commands:
 
-- `tsops build <service>` – run the build pipeline. Options: `-e, --environment`, repeated `--env KEY=VALUE` overrides.
+- `tsops build [service]` – run the build pipeline (defaults to all services). Options: `-e, --environment`, repeated `--env KEY=VALUE` overrides.
 - `tsops test` – execute the shared test pipeline.
-- `tsops deploy <service>` – run the deploy pipeline. Options: `--diff`, `--diff-only`, `--skip-hooks`, `--no-notify`, `--image-tag`.
+- `tsops run [service]` – build, test, and deploy (defaults to all services). Options include build/test skips plus deploy flags.
+- `tsops render [service]` – render manifests without applying (defaults to all services). Options: `-e, --environment`, `--image-tag`, `-f/--format`, `-o/--output`.
+- `tsops deploy [service]` – run the deploy pipeline (defaults to all services). Options: `--diff`, `--diff-only`, `--skip-hooks`, `--no-notify`, `--image-tag`.
+- `tsops delete [service]` – remove previously applied manifests (defaults to all services). Options: `-e, --environment`, `--image-tag`, `--ignore-not-found`, `--grace-period`.
 
 Global options:
 
@@ -155,12 +162,12 @@ Optional constructor overrides:
 
 ## Configuration Primer
 
-- **Services** – define container images, manifests, environment overrides, ingress routes, and dependencies.
+- **Services** – define container images, manifests, environment overrides, ingress routes, dependencies, and optional Docker build metadata (`build: { type: 'dockerfile', context, dockerfile, buildArgs }`).
 - **Environments** – encode cluster context, namespace, image tagging strategy, ingress controller preferences, and TLS settings.
-- **Pipeline** – async `build`, `test`, and `deploy` runners receive shared Git metadata, environment info, and helpers.
+- **Pipeline (optional)** – override async `build`, `test`, and `deploy` runners; otherwise TsOps handles Docker builds, skips tests, and applies manifests automatically.
 - **Hooks** – optional `beforeDeploy`, `afterDeploy`, and `onFailure` hooks run with `exec` + `kubectl` access.
-- **Notifications** – configure channels and routing for `deploySuccess` / `deployFailure` (or any custom events).
-- **Secrets** – declare secret providers and key mappings to hydrate your pipelines.
+- **Notifications (optional)** – configure channels and routing for `deploySuccess` / `deployFailure` (or any custom events).
+- **Secrets (optional)** – describe external secret providers; the core helpers can still manage plain Kubernetes Secrets via `tsops.upsertSecret` / `readSecret` / `deleteSecret` without them.
 
 A detailed reference for every shape lives in [`src/types.ts`](src/types.ts).
 

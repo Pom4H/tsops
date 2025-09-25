@@ -1,5 +1,5 @@
-import { CommandExecutor } from './command-executor.js'
-import type { KubernetesManifest, KubectlClient } from '../types.js'
+import type { CommandExecutor } from './command-executor.js'
+import type { KubernetesManifest, KubectlClient, KubectlDeleteOptions } from '../types.js'
 
 const serializeManifests = (manifests: KubernetesManifest[]): string => {
   if (manifests.length === 0) {
@@ -30,6 +30,23 @@ export const createDefaultKubectlClient = (executor: CommandExecutor): KubectlCl
   diff: async ({ context, namespace, manifests }) => {
     const manifestPayload = serializeManifests(manifests)
     const command = `kubectl --context ${context} --namespace ${namespace} diff -f -`
+    await executor.run(command, { input: manifestPayload })
+  },
+  delete: async (options: KubectlDeleteOptions) => {
+    const { context, namespace, manifests, ignoreNotFound, gracePeriodSeconds } = options
+    if (manifests.length === 0) {
+      return
+    }
+    const manifestPayload = serializeManifests(manifests)
+    const extraFlags: string[] = []
+    if (ignoreNotFound) {
+      extraFlags.push('--ignore-not-found')
+    }
+    if (typeof gracePeriodSeconds === 'number') {
+      extraFlags.push(`--grace-period=${gracePeriodSeconds}`)
+    }
+    const flags = extraFlags.length > 0 ? ' ' + extraFlags.join(' ') : ''
+    const command = `kubectl --context ${context} --namespace ${namespace} delete -f -${flags}`
     await executor.run(command, { input: manifestPayload })
   },
   rolloutStatus: async ({ context, namespace, workload, timeoutSeconds }) => {
