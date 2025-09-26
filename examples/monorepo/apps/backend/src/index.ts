@@ -1,5 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
+import { WebSocketServer } from 'ws'
 
 const port = Number(process.env.PORT ?? 4000)
 const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000'
@@ -70,13 +71,25 @@ const server = createServer((req: IncomingMessage, res: ServerResponse) => {
 
   sendJson(res, {
     service: 'backend',
-    message: 'Hello from the Turbo monorepo backend!',
+    message: 'Hello from the Turbo monorepo backend! Now with WebSocket support.',
     requestId,
     release: releaseId,
     secretPreview: mask(apiToken)
   })
 })
 
+// WebSocket server on the same HTTP server
+const wss = new WebSocketServer({ server, path: '/ws' })
+wss.on('connection', (ws, req) => {
+  const clientId = randomUUID()
+  ws.send(JSON.stringify({ type: 'welcome', clientId, release: releaseId }))
+
+  ws.on('message', (data) => {
+    ws.send(JSON.stringify({ type: 'echo', received: data.toString() }))
+  })
+})
+
 server.listen(port, () => {
   console.log(`Backend listening on port ${port}`)
+  console.log(`WebSocket endpoint available at ws://0.0.0.0:${port}/ws`)
 })

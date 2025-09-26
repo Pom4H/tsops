@@ -97,16 +97,14 @@ const config = defineConfig({
       build: {
         type: 'dockerfile',
         context: __dirname,
-        dockerfile: dockerfilePath,
+        dockerfile: path.join(__dirname, serviceMeta.backend.serviceDir, 'Dockerfile'),
         platform: 'linux/amd64',
         buildArgs: {
           PACKAGE_NAME: serviceMeta.backend.packageName,
           SERVICE_DIR: serviceMeta.backend.serviceDir,
           NODE_VERSION: '20'
         },
-        env: {
-          DOCKER_BUILDKIT: '1'
-        }
+        env: { DOCKER_BUILDKIT: '1' }
       },
       manifests: ({ env, image }) => {
         const labels = { app: 'monorepo-backend' }
@@ -124,13 +122,18 @@ const config = defineConfig({
               replicas: 1,
               selector: { matchLabels: labels },
               template: {
-                metadata: { labels },
+                metadata: {
+                  labels,
+                  annotations: {
+                    'tsops.dev/force-rollout': new Date().toISOString()
+                  }
+                },
                 spec: {
                   containers: [
                     {
                       name: 'backend',
                       image,
-                      imagePullPolicy: 'IfNotPresent',
+                      imagePullPolicy: 'Always',
                       ports: [{ containerPort: serviceMeta.backend.port }],
                       env: [
                         { name: 'PORT', value: String(serviceMeta.backend.port) },
@@ -237,16 +240,15 @@ const config = defineConfig({
       build: {
         type: 'dockerfile',
         context: __dirname,
-        dockerfile: dockerfilePath,
+        dockerfile: path.join(__dirname, serviceMeta.frontend.serviceDir, 'Dockerfile'),
         platform: 'linux/amd64',
         buildArgs: {
           PACKAGE_NAME: serviceMeta.frontend.packageName,
           SERVICE_DIR: serviceMeta.frontend.serviceDir,
-          NODE_VERSION: '20'
+          NODE_VERSION: '20',
+          NEXT_PUBLIC_WS_URL: 'wss://tsops2.worken.online/ws'
         },
-        env: {
-          DOCKER_BUILDKIT: '1'
-        }
+        env: { DOCKER_BUILDKIT: '1' }
       },
       manifests: ({ env, image }) => {
         const labels = { app: 'monorepo-frontend' }
@@ -265,13 +267,18 @@ const config = defineConfig({
               replicas: 1,
               selector: { matchLabels: labels },
               template: {
-                metadata: { labels },
+                metadata: {
+                  labels,
+                  annotations: {
+                    'tsops.dev/force-rollout': new Date().toISOString()
+                  }
+                },
                 spec: {
                   containers: [
                     {
                       name: 'frontend',
                       image,
-                      imagePullPolicy: 'IfNotPresent',
+                      imagePullPolicy: 'Always',
                       ports: [{ containerPort: serviceMeta.frontend.port }],
                       env: [
                         { name: 'PORT', value: String(serviceMeta.frontend.port) },
@@ -284,6 +291,10 @@ const config = defineConfig({
                         {
                           name: 'BACKEND_PUBLIC_URL',
                           value: '/api'
+                        },
+                        {
+                          name: 'NEXT_PUBLIC_WS_URL',
+                          value: `wss://tsops2.worken.online/ws`
                         }
                       ]
                     }

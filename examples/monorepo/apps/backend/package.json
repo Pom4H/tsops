@@ -9,8 +9,11 @@
     "lint": "echo 'no lint configured for backend'",
     "test": "echo 'no tests for backend'"
   },
-  "dependencies": {},
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
   "devDependencies": {
-    "@types/node": "^20.11.5"
+    "@types/node": "^20.11.5",
+    "@types/ws": "^8.5.10"
   }
 }
