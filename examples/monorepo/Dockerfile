@@ -34,4 +34,5 @@ COPY --from=base /repo/apps ./apps
 # Also copy built dist for the target service (start script may use it)
 COPY --from=base /repo/${SERVICE_DIR}/dist ./apps/${SERVICE_DIR}/dist
 
-CMD ["pnpm", "turbo", "run", "start", "--filter=${PACKAGE_NAME}"]
+# Use pnpm dlx to invoke turbo without requiring a global install in runtime
+CMD ["pnpm", "dlx", "turbo", "run", "start", "--filter=${PACKAGE_NAME}"]
