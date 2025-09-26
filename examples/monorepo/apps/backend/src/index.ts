@@ -1,6 +1,6 @@
 import { createServer, IncomingMessage, ServerResponse } from 'node:http'
 import { randomUUID } from 'node:crypto'
-import { WebSocketServer } from 'ws'
+import { WebSocketServer, WebSocket } from 'ws'
 
 const port = Number(process.env.PORT ?? 4000)
 const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:3000'
@@ -85,7 +85,12 @@ wss.on('connection', (ws, req) => {
   ws.send(JSON.stringify({ type: 'welcome', clientId, release: releaseId }))
 
   ws.on('message', (data) => {
-    ws.send(JSON.stringify({ type: 'echo', received: data.toString() }))
+    const payload = JSON.stringify({ type: 'broadcast', from: clientId, received: data.toString() })
+    for (const client of wss.clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(payload)
+      }
+    }
   })
 })
 

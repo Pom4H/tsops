@@ -39,7 +39,7 @@ export default defineConfig({
     dev: {
       cluster: { apiServer: 'https://k8s.dev.example.com', context: 'dev' },
       namespace: 'demo-dev',
-      imageTagStrategy: { type: 'gitSha', length: 7 }
+      imageTagStrategy: { type: 'gitSha' }
     }
   },
   services: {
@@ -64,35 +64,6 @@ export default defineConfig({
         }
       ]
     }
-  },
-  pipeline: {
-    build: {
-      run: async ({ exec, service, git }) => {
-        await exec(`docker build -t ${service.containerImage}:${git.shortSha} .`)
-      }
-    },
-    test: {
-      run: async ({ exec }) => {
-        await exec('pnpm test')
-      }
-    },
-    deploy: {
-      run: async ({ kubectl, environment, manifests }) => {
-        await kubectl.apply({
-          context: environment.cluster.context,
-          namespace: environment.namespace,
-          manifests
-        })
-      }
-    }
-  },
-  secrets: {
-    provider: { type: 'vault', connection: {} },
-    map: {}
-  },
-  notifications: {
-    channels: {},
-    onEvents: {}
   }
 })
 ```
@@ -123,18 +94,23 @@ pnpm tsops --help
 
 Key commands:
 
-- `tsops build [service]` – run the build pipeline (defaults to all services). Options: `-e, --environment`, repeated `--env KEY=VALUE` overrides.
+- `tsops build [service]` – run the build pipeline. Options: `-e, --environment`, repeated `--env KEY=VALUE` overrides.
+- `tsops push [service]` – build and push Docker images to a registry. Options: `-e, --environment`, `--skip-build`, repeated `--env KEY=VALUE`.
 - `tsops test` – execute the shared test pipeline.
-- `tsops run [service]` – build, test, and deploy (defaults to all services). Options include build/test skips plus deploy flags.
-- `tsops render [service]` – render manifests without applying (defaults to all services). Options: `-e, --environment`, `--image-tag`, `-f/--format`, `-o/--output`.
-- `tsops deploy [service]` – run the deploy pipeline (defaults to all services). Options: `--diff`, `--diff-only`, `--skip-hooks`, `--no-notify`, `--image-tag`.
-- `tsops delete [service]` – remove previously applied manifests (defaults to all services). Options: `-e, --environment`, `--image-tag`, `--ignore-not-found`, `--grace-period`.
+- `tsops run [service]` – build, test, and deploy. Options include build/test skips plus deploy flags.
+- `tsops render [service]` – render manifests without applying. Options: `-e, --environment`, `--image-tag`, `-f/--format`, `-o/--output`.
+- `tsops deploy [service]` – run the deploy pipeline. Options: `--diff`, `--diff-only`, `--skip-hooks`, `--no-notify`, `--image-tag`.
+- `tsops delete [service]` – remove previously applied manifests. Options: `-e, --environment`, `--image-tag`, `--ignore-not-found`, `--grace-period`.
+
+Secret management helpers:
+
+- `tsops secret:set <name>` – create or update a Kubernetes Secret. Options: `-e, --environment`, `--type`, repeated `--data KEY=VALUE`, repeated `--label KEY=VALUE`, repeated `--annotation KEY=VALUE`.
+- `tsops secret:get <name>` – read and print a Kubernetes Secret. Options: `-e, --environment`.
+- `tsops secret:delete <name>` – delete a Kubernetes Secret. Options: `-e, --environment`, `--ignore-not-found`.
 
 Global options:
 
 - `-c, --config` – path to a config file (TypeScript or JavaScript). Defaults to `tsops.config.ts`.
-
-Configs written in TypeScript are compiled on the fly by the locally-installed TypeScript compiler. Add it to your project (`pnpm add -D typescript`) or precompile the config to JavaScript. Plain JavaScript configs work as `.js`, `.cjs`, or `.mjs`. Bun and Deno can execute `.ts` configs directly without any extra setup.
 
 ## Programmatic API
 

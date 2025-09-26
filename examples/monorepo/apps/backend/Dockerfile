@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7-labs
-ARG NODE_VERSION=20
+ARG NODE_VERSION=24
 ARG PACKAGE_NAME=@monorepo/backend
 ARG SERVICE_DIR=apps/backend
 

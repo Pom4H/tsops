@@ -1,10 +1,5 @@
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
-
 import { defineConfig } from '../../dist/index.js'
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const dockerfilePath = path.join(__dirname, 'Dockerfile')
 
 const serviceMeta = {
   frontend: {
@@ -96,13 +91,13 @@ const config = defineConfig({
       defaultEnvironment: 'local',
       build: {
         type: 'dockerfile',
-        context: __dirname,
-        dockerfile: path.join(__dirname, serviceMeta.backend.serviceDir, 'Dockerfile'),
+        context: import.meta.dirname,
+        dockerfile: path.join(import.meta.dirname, serviceMeta.backend.serviceDir, 'Dockerfile'),
         platform: 'linux/amd64',
         buildArgs: {
           PACKAGE_NAME: serviceMeta.backend.packageName,
           SERVICE_DIR: serviceMeta.backend.serviceDir,
-          NODE_VERSION: '20'
+          NODE_VERSION: '24'
         },
         env: { DOCKER_BUILDKIT: '1' }
       },
@@ -239,13 +234,13 @@ const config = defineConfig({
       dependsOn: ['backend'],
       build: {
         type: 'dockerfile',
-        context: __dirname,
-        dockerfile: path.join(__dirname, serviceMeta.frontend.serviceDir, 'Dockerfile'),
+        context: import.meta.dirname,
+        dockerfile: path.join(import.meta.dirname, serviceMeta.frontend.serviceDir, 'Dockerfile'),
         platform: 'linux/amd64',
         buildArgs: {
           PACKAGE_NAME: serviceMeta.frontend.packageName,
           SERVICE_DIR: serviceMeta.frontend.serviceDir,
-          NODE_VERSION: '20',
+          NODE_VERSION: '24',
           NEXT_PUBLIC_WS_URL: 'wss://tsops2.worken.online/ws'
         },
         env: { DOCKER_BUILDKIT: '1' }

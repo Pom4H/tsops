@@ -39,7 +39,7 @@ export default function Page() {
 
   return (
     <main style={{ padding: 24 }}>
-      <h1>WebSocket Demo 2</h1>
+      <h1>WebSocket Demo</h1>
       <p>Status: {status}</p>
       <button onClick={sendPing} disabled={status !== 'open'}>
         Send ping
