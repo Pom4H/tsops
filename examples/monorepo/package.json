@@ -2,7 +2,7 @@
   "name": "tsops-example-monorepo",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@8.15.4",
+  "packageManager": "pnpm@10.17.1",
   "scripts": {
     "build": "turbo run build",
     "dev": "turbo run dev",
@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.11.5",
-    "turbo": "^1.12.5",
-    "typescript": "^5.3.3"
+    "turbo": "^2.5.8",
+    "typescript": "^5.9.2"
   }
 }

@@ -9,6 +9,7 @@ import { serializeManifests } from './core/kubectl-client.js'
 import type {
   TsOpsConfig,
   BuildOptions,
+  PushOptions,
   DeployOptions,
   RunOptions,
   RenderOptions,
@@ -26,7 +27,13 @@ type RenderFormat = 'yaml' | 'json'
 
 type GlobalOptions = { config: string }
 
-type BuildCommandOptions = { environment?: string; env?: string[] }
+type BuildCommandOptions = { environment?: string; env?: string[]; push?: boolean }
+
+type PushCommandOptions = {
+  environment?: string
+  skipBuild?: boolean
+  env?: string[]
+}
 
 type RunCommandOptions = {
   environment?: string
@@ -235,6 +242,7 @@ export const createProgram = (): Command => {
     .command('build [service]')
     .description('Run the build pipeline for a service (or all services when omitted)')
     .option('-e, --environment <env>', 'Target environment for the build pipeline')
+    .option('--push', 'Push built images to registry')
     .option(
       '--env <key=value>',
       'Inject environment variable (can be repeated)',
@@ -249,13 +257,49 @@ export const createProgram = (): Command => {
         const envVars = parseKeyValuePairs(commandOptions.env)
         const buildOptions: BuildOptions = {
           environment: commandOptions.environment,
-          env: envVars
+          env: envVars,
+          push: commandOptions.push
         }
 
         if (service) {
           await tsops.build(service, buildOptions)
         } else {
           await tsops.buildAll(commandOptions.environment, buildOptions)
+        }
+      } catch (error) {
+        handleError(error)
+      }
+    })
+
+  program
+    .command('push [service]')
+    .description(
+      'Build and push Docker images to registry for a service (or all services when omitted)'
+    )
+    .option('-e, --environment <env>', 'Target environment for the push pipeline')
+    .option('--skip-build', 'Skip the build phase and only push existing images')
+    .option(
+      '--env <key=value>',
+      'Inject environment variable (can be repeated)',
+      collectKeyValue,
+      []
+    )
+    .action(async (service: string | undefined, commandOptions: PushCommandOptions) => {
+      try {
+        const globalOptions = program.opts<GlobalOptions>()
+        const tsops = await getTsOps(globalOptions.config)
+
+        const envVars = parseKeyValuePairs(commandOptions.env)
+        const pushOptions: PushOptions = {
+          environment: commandOptions.environment,
+          env: envVars,
+          skipBuild: commandOptions.skipBuild
+        }
+
+        if (service) {
+          await tsops.push(service, pushOptions)
+        } else {
+          await tsops.pushAll(commandOptions.environment, pushOptions)
         }
       } catch (error) {
         handleError(error)

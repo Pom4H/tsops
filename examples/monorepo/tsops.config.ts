@@ -47,7 +47,7 @@ const config = defineConfig({
         context: 'docker-desktop'
       },
       namespace: 'tsops-monorepo',
-      imageTagStrategy: { type: 'gitSha', length: 7 },
+      imageTagStrategy: { type: 'gitSha' },
       ingressController: {
         type: 'traefik',
         namespace: 'traefik-system',
@@ -57,6 +57,35 @@ const config = defineConfig({
       tls: {
         selfSigned: {
           enabled: false
+        }
+      }
+    },
+    production: {
+      cluster: {
+        apiServer: process.env.K8_URL!,
+        context: process.env.K8_CONTEXT!
+      },
+      namespace: 'tsops-monorepo-prod',
+      imageTagStrategy: { type: 'gitSha' },
+      registry: {
+        url: process.env.REGISTRY_URL!,
+        username: process.env.REGISTRY_USERNAME,
+        password: process.env.REGISTRY_PASSWORD
+      },
+      ingressController: {
+        type: 'traefik',
+        namespace: 'traefik-system',
+        autoInstall: true,
+        serviceType: 'LoadBalancer'
+      },
+      tls: {
+        selfSigned: {
+          enabled: false
+        },
+        letsEncrypt: {
+          enabled: true,
+          email: process.env.LETSENCRYPT_EMAIL!,
+          staging: false
         }
       }
     }
@@ -69,6 +98,7 @@ const config = defineConfig({
         type: 'dockerfile',
         context: __dirname,
         dockerfile: dockerfilePath,
+        platform: 'linux/amd64',
         buildArgs: {
           PACKAGE_NAME: serviceMeta.backend.packageName,
           SERVICE_DIR: serviceMeta.backend.serviceDir,
@@ -140,6 +170,62 @@ const config = defineConfig({
               ],
               type: 'ClusterIP'
             }
+          },
+          // HTTP IngressRoute for backend (web)
+          {
+            apiVersion: 'traefik.io/v1alpha1',
+            kind: 'IngressRoute',
+            metadata: {
+              name: 'backend-http',
+              namespace: env.namespace
+            },
+            spec: {
+              entryPoints: ['web'],
+              routes: [
+                {
+                  match: `Host(\`tsops2.worken.online\`)`,
+                  kind: 'Rule',
+                  services: [
+                    {
+                      name: 'backend',
+                      port: 'http'
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          // HTTPS IngressRoute for backend (websecure) with TLS
+          {
+            apiVersion: 'traefik.io/v1alpha1',
+            kind: 'IngressRoute',
+            metadata: {
+              name: 'backend-https',
+              namespace: env.namespace
+            },
+            spec: {
+              entryPoints: ['websecure'],
+              routes: [
+                {
+                  match: `Host(\`tsops2.worken.online\`)`,
+                  kind: 'Rule',
+                  services: [
+                    {
+                      name: 'backend',
+                      port: 'http'
+                    }
+                  ]
+                }
+              ],
+              tls: {
+                certResolver: 'letsencrypt',
+                domains: [
+                  {
+                    main: 'tsops2.worken.online'
+                  }
+                ]
+              }
+            }
           }
         ]
       }
@@ -152,6 +238,7 @@ const config = defineConfig({
         type: 'dockerfile',
         context: __dirname,
         dockerfile: dockerfilePath,
+        platform: 'linux/amd64',
         buildArgs: {
           PACKAGE_NAME: serviceMeta.frontend.packageName,
           SERVICE_DIR: serviceMeta.frontend.serviceDir,
@@ -163,7 +250,7 @@ const config = defineConfig({
       },
       manifests: ({ env, image }) => {
         const labels = { app: 'monorepo-frontend' }
-        const host = 'monorepo.localtest.me'
+        const host = 'tsops.worken.online'
         return [
           namespaceManifest(env.namespace),
           {
@@ -224,37 +311,60 @@ const config = defineConfig({
               type: 'ClusterIP'
             }
           },
+          // HTTP IngressRoute (web)
           {
-            apiVersion: 'networking.k8s.io/v1',
-            kind: 'Ingress',
+            apiVersion: 'traefik.io/v1alpha1',
+            kind: 'IngressRoute',
             metadata: {
-              name: 'frontend',
-              namespace: env.namespace,
-              annotations: {
-                'traefik.ingress.kubernetes.io/router.entrypoints': 'web'
-              }
+              name: 'frontend-http',
+              namespace: env.namespace
             },
             spec: {
-              ingressClassName: 'traefik',
-              rules: [
+              entryPoints: ['web'],
+              routes: [
                 {
-                  host,
-                  http: {
-                    paths: [
-                      {
-                        path: '/',
-                        pathType: 'Prefix',
-                        backend: {
-                          service: {
-                            name: 'frontend',
-                            port: { name: 'http' }
-                          }
-                        }
-                      }
-                    ]
-                  }
+                  match: `Host(\`${host}\`)`,
+                  kind: 'Rule',
+                  services: [
+                    {
+                      name: 'frontend',
+                      port: 'http'
+                    }
+                  ]
                 }
               ]
+            }
+          },
+          // HTTPS IngressRoute (websecure) with TLS
+          {
+            apiVersion: 'traefik.io/v1alpha1',
+            kind: 'IngressRoute',
+            metadata: {
+              name: 'frontend-https',
+              namespace: env.namespace
+            },
+            spec: {
+              entryPoints: ['websecure'],
+              routes: [
+                {
+                  match: `Host(\`${host}\`)`,
+                  kind: 'Rule',
+                  services: [
+                    {
+                      name: 'frontend',
+                      port: 'http'
+                    }
+                  ]
+                }
+              ],
+              tls: {
+                certResolver: 'letsencrypt',
+                domains: [
+                  {
+                    main: host
+                  }
+                ]
+              }
             }
           }
         ]
@@ -268,12 +378,11 @@ const config = defineConfig({
           return
         }
 
-        const token = process.env.BACKEND_API_TOKEN
-        if (!token) {
+        const token = process.env.BACKEND_API_TOKEN ?? ''
+        if (!process.env.BACKEND_API_TOKEN) {
           console.warn(
-            '[tsops] BACKEND_API_TOKEN not set; backend secret will not be updated during deploy.'
+            '[tsops] BACKEND_API_TOKEN not set; creating backend secret with empty token.'
           )
-          return
         }
 
         await kubectl.apply({
@@ -300,7 +409,7 @@ const config = defineConfig({
         })
       }
     ]
-  },
+  }
 })
 
 export default config

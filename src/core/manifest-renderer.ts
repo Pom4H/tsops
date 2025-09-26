@@ -43,7 +43,9 @@ export class ManifestRenderer {
         name: environment.name,
         namespace: environment.namespace
       },
-      image: `${service.containerImage}:${imageTag}`
+      image: environment.registry
+        ? `${environment.registry.url}/${service.containerImage}:${imageTag}`
+        : `${service.containerImage}:${imageTag}`
     }
 
     const manifests = this.config.renderManifests

@@ -1,4 +1,9 @@
-import type { EnvironmentConfig, IngressControllerConfig, Logger } from '../types.js'
+import type {
+  EnvironmentConfig,
+  IngressControllerConfig,
+  Logger,
+  LetsEncryptTlsConfig
+} from '../types.js'
 import { CommandExecutor } from './command-executor.js'
 
 export class IngressControllerInstaller {
@@ -21,6 +26,10 @@ export class IngressControllerInstaller {
     const key = `${environment.cluster.context}:${controller.type}:${controller.namespace ?? 'kube-system'}`
     if (this.ensuredControllers.has(key)) {
       return
+    }
+
+    if (environment.tls?.letsEncrypt?.enabled) {
+      await this.ensureCertManager(environment)
     }
 
     switch (controller.type) {
@@ -54,7 +63,11 @@ export class IngressControllerInstaller {
       )
     }
 
-    const manifest = this.buildTraefikManifest(namespace, controller.serviceType ?? 'LoadBalancer')
+    const manifest = this.buildTraefikManifest(
+      namespace,
+      controller.serviceType ?? 'LoadBalancer',
+      environment.tls?.letsEncrypt
+    )
 
     await this.executor.run(`kubectl --context ${context} apply -f -`, {
       input: manifest
@@ -63,7 +76,8 @@ export class IngressControllerInstaller {
 
   private buildTraefikManifest(
     namespace: string,
-    serviceType: 'LoadBalancer' | 'NodePort' | 'ClusterIP'
+    serviceType: 'LoadBalancer' | 'NodePort' | 'ClusterIP',
+    letsEncryptConfig?: LetsEncryptTlsConfig
   ): string {
     const serviceExtra =
       serviceType === 'NodePort'
@@ -99,6 +113,16 @@ rules:
       - services
       - endpoints
       - secrets
+      - configmaps
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
     verbs:
       - get
       - list
@@ -120,6 +144,24 @@ rules:
       - ingresses/status
     verbs:
       - update
+  - apiGroups:
+      - traefik.io
+      - traefik.containo.us
+    resources:
+      - ingressroutes
+      - ingressroutetcps
+      - ingressrouteudps
+      - middlewares
+      - middlewaretcps
+      - tlsoptions
+      - tlsstores
+      - traefikservices
+      - serverstransports
+      - serverstransporttcps
+    verbs:
+      - get
+      - list
+      - watch
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -152,18 +194,41 @@ spec:
       serviceAccountName: traefik
       containers:
         - name: traefik
-          image: traefik:v2.10.7
+          image: traefik:v3.5.2
           args:
             - --entrypoints.web.Address=:80
             - --entrypoints.websecure.Address=:443
             - --providers.kubernetesingress
             - --providers.kubernetesingress.ingressclass=traefik
-            - --api.dashboard=true
+            - --providers.kubernetescrd
+            - --api.dashboard=true${
+              letsEncryptConfig
+                ? `
+            - --certificatesresolvers.letsencrypt.acme.tlschallenge=true
+            - --certificatesresolvers.letsencrypt.acme.email=${letsEncryptConfig.email}
+            - --certificatesresolvers.letsencrypt.acme.storage=/data/acme.json
+            - --certificatesresolvers.letsencrypt.acme.caserver=${letsEncryptConfig.staging ? 'https://acme-staging-v02.api.letsencrypt.org/directory' : 'https://acme-v02.api.letsencrypt.org/directory'}`
+                : ''
+            }
           ports:
             - name: web
               containerPort: 80
             - name: websecure
-              containerPort: 443
+              containerPort: 443${
+                letsEncryptConfig
+                  ? `
+          volumeMounts:
+            - name: acme-storage
+              mountPath: /data`
+                  : ''
+              }
+      ${
+        letsEncryptConfig
+          ? `volumes:
+        - name: acme-storage
+          emptyDir: {}`
+          : ''
+      }
 ---
 apiVersion: v1
 kind: Service
@@ -176,5 +241,19 @@ ${serviceExtra}
   selector:
     app: traefik
 `
+  }
+
+  private async ensureCertManager(
+    environment: EnvironmentConfig & { name: string }
+  ): Promise<void> {
+    const context = environment.cluster.context
+    const letsEncryptConfig = environment.tls?.letsEncrypt
+
+    if (!letsEncryptConfig) {
+      return
+    }
+
+    this.logger.info(`Traefik will use built-in Let's Encrypt resolver for context "${context}"`)
+    this.logger.info(`Email: ${letsEncryptConfig.email}, Staging: ${letsEncryptConfig.staging}`)
   }
 }

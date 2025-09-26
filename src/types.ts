@@ -1,6 +1,6 @@
 export type ImageTagStrategy =
   | { type: 'branchName' }
-  | { type: 'gitSha'; length?: number }
+  | { type: 'gitSha' }
   | { type: 'semver'; prefix?: string }
 
 export interface ClusterConfig {
@@ -14,6 +14,13 @@ export interface MaintenanceWindow {
   endUtc: string
 }
 
+export interface RegistryConfig {
+  url: string
+  username?: string
+  password?: string
+  insecure?: boolean
+}
+
 export interface EnvironmentConfig {
   cluster: ClusterConfig
   namespace: string
@@ -25,6 +32,7 @@ export interface EnvironmentConfig {
   }
   ingressController?: IngressControllerConfig
   tls?: EnvironmentTlsAutomationConfig
+  registry?: RegistryConfig
 }
 
 export interface ManifestMetadata {
@@ -120,8 +128,15 @@ export interface SelfSignedTlsConfig {
   validDays?: number
 }
 
+export interface LetsEncryptTlsConfig {
+  enabled: boolean
+  email: string
+  staging?: boolean
+}
+
 export interface EnvironmentTlsAutomationConfig {
   selfSigned?: SelfSignedTlsConfig
+  letsEncrypt?: LetsEncryptTlsConfig
 }
 
 export interface IngressControllerConfig {
@@ -160,6 +175,7 @@ export interface ServiceDockerBuildConfig {
   cacheFrom?: string[]
   cacheTo?: string[]
   env?: Record<string, string>
+  push?: boolean
 }
 
 export interface ServiceConfig {
@@ -265,6 +281,14 @@ export interface BuildOptions {
   environment?: string
   env?: Record<string, string>
   git?: GitInfo
+  push?: boolean
+}
+
+export interface PushOptions {
+  environment?: string
+  env?: Record<string, string>
+  git?: GitInfo
+  skipBuild?: boolean
 }
 
 export interface TestOptions {

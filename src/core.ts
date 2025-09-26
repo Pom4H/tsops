@@ -25,12 +25,14 @@ import type {
   DeleteOptions,
   RunOptions,
   BuildOptions,
+  PushOptions,
   TestOptions,
   TsOpsConfig,
   Logger,
   SecretWriteOptions,
   SecretReadResult,
-  SecretDeleteOptions
+  SecretDeleteOptions,
+  RegistryConfig
 } from './types.js'
 
 import { CommandExecutor } from './core/command-executor.js'
@@ -152,7 +154,7 @@ export class TsOps {
       ...(options.env ?? {})
     }
 
-    await this.runServiceBuild(service, environment, git, imageTag, envVars)
+    await this.runServiceBuild(service, environment, git, imageTag, envVars, options.push)
 
     const buildPipeline = this.config.pipeline?.build
     if (buildPipeline?.run) {
@@ -185,6 +187,45 @@ export class TsOps {
 
     for (const serviceName of order) {
       await this.build(serviceName, {
+        ...options,
+        environment: environmentName ?? options.environment,
+        git
+      })
+    }
+  }
+
+  async push(serviceName: string, options: PushOptions = {}): Promise<void> {
+    const service = this.resolveService(serviceName)
+    const environment = this.resolveEnvironmentForService(service, options.environment)
+    const git = options.git ?? (await this.detectGitInfo())
+
+    if (!environment.registry) {
+      throw new Error(`No registry configured for environment "${environment.name}"`)
+    }
+
+    if (!options.skipBuild) {
+      await this.build(serviceName, {
+        environment: options.environment,
+        env: options.env,
+        git,
+        push: false // Build locally first
+      })
+    }
+
+    await this.pushServiceImage(service, environment, git, environment.registry)
+  }
+
+  async pushAll(environmentName?: string, options: PushOptions = {}): Promise<void> {
+    const order = this.getServiceDeploymentOrder()
+    if (order.length === 0) {
+      this.logger.warn('No services configured for push; nothing to do.')
+      return
+    }
+
+    const git = options.git ?? (await this.detectGitInfo())
+
+    for (const serviceName of order) {
+      await this.push(serviceName, {
         ...options,
         environment: environmentName ?? options.environment,
         git
@@ -601,16 +642,23 @@ export class TsOps {
     environment: EnvironmentConfig & { name: string },
     git: GitInfo,
     imageTag: string,
-    envVars: Record<string, string>
+    envVars: Record<string, string>,
+    pushToRegistry = false
   ): Promise<void> {
     const buildConfig = service.build
     if (!buildConfig) {
       return
     }
 
+    // Create a copy of buildConfig with push option
+    const buildConfigWithPush = {
+      ...buildConfig,
+      push: pushToRegistry
+    }
+
     switch (buildConfig.type) {
       case 'dockerfile':
-        await this.buildServiceWithDockerfile(service, imageTag, envVars, buildConfig)
+        await this.buildServiceWithDockerfile(service, imageTag, envVars, buildConfigWithPush)
         break
       default: {
         const unknownType = (buildConfig as { type?: string }).type ?? 'unknown'
@@ -661,6 +709,11 @@ export class TsOps {
       commandParts.push('--tag', tag)
     }
 
+    // Add push flag if configured
+    if (buildConfig.push) {
+      commandParts.push('--push')
+    }
+
     commandParts.push(contextPath)
 
     const command = commandParts.map((part) => this.shellQuote(part)).join(' ')
@@ -674,10 +727,57 @@ export class TsOps {
     }
 
     this.logger.info(
-      `Building Docker image ${imageRef} for service "${service.name}" (context: ${relativeContext})`
+      `Building Docker image ${imageRef} for service "${service.name}" (context: ${relativeContext})${buildConfig.push ? ' and pushing to registry' : ''}`
     )
 
     await this.execFn(command, { env: buildEnv })
+  }
+
+  private async pushServiceImage(
+    service: ServiceConfig & { name: string },
+    environment: EnvironmentConfig & { name: string },
+    git: GitInfo,
+    registry: RegistryConfig
+  ): Promise<void> {
+    const imageTag = this.computeImageTag(service, environment, git)
+    const localImageRef = `${service.containerImage}:${imageTag}`
+
+    // Extract image name without registry URL if it's already included
+    const imageName = service.containerImage.startsWith(registry.url + '/')
+      ? service.containerImage.substring(registry.url.length + 1)
+      : service.containerImage
+
+    const registryImageRef = `${registry.url}/${imageName}:${imageTag}`
+    const latestImageRef = `${registry.url}/${imageName}:latest`
+
+    // Login to registry if credentials are provided
+    if (registry.username && registry.password) {
+      await this.loginToRegistry(registry)
+    }
+
+    // Tag the local image for registry
+    await this.execFn(
+      `docker tag ${this.shellQuote(localImageRef)} ${this.shellQuote(registryImageRef)}`
+    )
+    await this.execFn(
+      `docker tag ${this.shellQuote(localImageRef)} ${this.shellQuote(latestImageRef)}`
+    )
+
+    // Push images to registry
+    this.logger.info(`Pushing image ${registryImageRef} to registry`)
+    await this.execFn(`docker push ${this.shellQuote(registryImageRef)}`)
+
+    this.logger.info(`Pushing image ${latestImageRef} to registry`)
+    await this.execFn(`docker push ${this.shellQuote(latestImageRef)}`)
+
+    this.logger.info(`Successfully pushed images for service "${service.name}" to registry`)
+  }
+
+  private async loginToRegistry(registry: RegistryConfig): Promise<void> {
+    const loginCommand = `echo "${registry.password}" | docker login ${registry.insecure ? '--insecure-registry' : ''} ${registry.url} --username ${this.shellQuote(registry.username!)} --password-stdin`
+
+    this.logger.info(`Logging in to registry ${registry.url}`)
+    await this.execFn(loginCommand)
   }
 
   private async defaultDeployRun(ctx: DeployContext): Promise<void> {
