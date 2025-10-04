@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Worken Test - Production</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+        }
+        .container {
+            text-align: center;
+            padding: 3rem;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            max-width: 700px;
+            width: 90%;
+        }
+        h1 { font-size: 3rem; margin-bottom: 1rem; }
+        .subtitle { font-size: 1.3rem; margin-bottom: 2rem; opacity: 0.9; }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .badge {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 1rem;
+            border-radius: 10px;
+            font-weight: bold;
+        }
+        .badge.success { background: #10b981; }
+        button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 1rem 2rem;
+            font-size: 1.1rem;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+            margin: 0.5rem;
+        }
+        button:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+        button:active { transform: translateY(0); }
+        #result {
+            margin-top: 2rem;
+            padding: 1.5rem;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            text-align: left;
+            max-height: 400px;
+            overflow-y: auto;
+            display: none;
+        }
+        #result.show { display: block; }
+        .loading { animation: pulse 1.5s infinite; }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 Worken Test</h1>
+        <p class="subtitle">tsops Production Deployment</p>
+        
+        <div class="status-grid">
+            <div class="badge success">✅ Frontend</div>
+            <div class="badge success">🔒 SSL/TLS</div>
+            <div class="badge success">☸️ K8s</div>
+            <div class="badge success" id="api-status">⏳ API</div>
+        </div>
+
+        <div>
+            <button onclick="testAPI()">🔌 Test API</button>
+            <button onclick="testHealth()">❤️ Health Check</button>
+            <button onclick="showInfo()">ℹ️ Info</button>
+        </div>
+        
+        <div id="result"></div>
+    </div>
+
+    <script>
+        const API_URL = 'https://api.test.worken.online';
+
+        function showResult(content, type = 'info') {
+            const resultDiv = document.getElementById('result');
+            resultDiv.className = type === 'error' ? 'show error' : 'show';
+            resultDiv.innerHTML = content;
+        }
+
+        async function testAPI() {
+            showResult('<div class="loading">🔄 Connecting to API...</div>');
+            
+            try {
+                const response = await fetch(`${API_URL}/api/status`);
+                const data = await response.json();
+                
+                const formatted = `<strong>✅ API Connected!</strong>
+
+<strong>Response:</strong>
+${JSON.stringify(data, null, 2)}
+
+<strong>Status:</strong> ${response.status}
+<strong>Time:</strong> ${new Date().toISOString()}`;
+                
+                showResult(formatted);
+                document.getElementById('api-status').textContent = '✅ API';
+                document.getElementById('api-status').className = 'badge success';
+            } catch (error) {
+                showResult(`<strong>❌ API Error</strong>
+
+${error.message}
+
+<strong>URL:</strong> ${API_URL}
+<strong>Time:</strong> ${new Date().toISOString()}`, 'error');
+                
+                document.getElementById('api-status').textContent = '❌ API';
+            }
+        }
+
+        async function testHealth() {
+            showResult('<div class="loading">🔄 Checking health...</div>');
+            
+            try {
+                const [frontendHealth, apiHealth] = await Promise.all([
+                    fetch('/health').then(r => r.text()),
+                    fetch(`${API_URL}/health`).then(r => r.json()).catch(e => ({ error: e.message }))
+                ]);
+                
+                const formatted = `<strong>❤️ Health Check Results</strong>
+
+<strong>Frontend:</strong> ${frontendHealth || '✅ OK'}
+
+<strong>API:</strong>
+${JSON.stringify(apiHealth, null, 2)}
+
+<strong>SSL:</strong> ${window.location.protocol === 'https:' ? '🔒 Enabled' : '⚠️ Disabled'}
+<strong>Time:</strong> ${new Date().toISOString()}`;
+                
+                showResult(formatted);
+            } catch (error) {
+                showResult(`<strong>❌ Health Check Error</strong>
+
+${error.message}`, 'error');
+            }
+        }
+
+        function showInfo() {
+            const info = `<strong>ℹ️ Application Info</strong>
+
+<strong>Frontend:</strong>
+  URL: ${window.location.href}
+  Protocol: ${window.location.protocol}
+  Host: ${window.location.hostname}
+
+<strong>API:</strong>
+  URL: ${API_URL}
+
+<strong>Deployment:</strong>
+  Tool: tsops
+  Environment: Production
+  SSL: ${window.location.protocol === 'https:' ? 'Enabled ✅' : 'Disabled ⚠️'}
+
+<strong>Features:</strong>
+  • Kubernetes Deployment
+  • Automatic SSL/TLS (cert-manager)
+  • Traefik Ingress
+  • Secrets Management
+  • ConfigMaps
+
+<strong>Browser:</strong>
+  User Agent: ${navigator.userAgent.substring(0, 80)}...
+  
+<strong>Time:</strong> ${new Date().toISOString()}`;
+            
+            showResult(info);
+        }
+
+        // Auto-test on load
+        window.addEventListener('load', () => {
+            console.log('🚀 Frontend loaded');
+            console.log('Testing API connection...');
+            setTimeout(testAPI, 1000);
+        });
+    </script>
+</body>
+</html>
+
+

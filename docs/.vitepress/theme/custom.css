@@ -1,0 +1,355 @@
+/**
+ * tsops Custom Theme
+ * Beautiful, modern design for technical documentation
+ */
+
+:root {
+  /* Brand Colors */
+  --vp-c-brand-1: #3178c6;
+  --vp-c-brand-2: #2563eb;
+  --vp-c-brand-3: #1d4ed8;
+  --vp-c-brand-soft: rgba(49, 120, 198, 0.14);
+  
+  /* Custom gradients */
+  --gradient-brand: linear-gradient(135deg, #3178c6 0%, #2563eb 100%);
+  --gradient-soft: linear-gradient(135deg, rgba(49, 120, 198, 0.1) 0%, rgba(37, 99, 235, 0.1) 100%);
+}
+
+/* Hero Section Enhancement */
+.VPHero {
+  padding-top: 80px !important;
+  padding-bottom: 80px !important;
+}
+
+.VPHero .name {
+  background: var(--gradient-brand);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.VPHero .tagline {
+  font-size: 1.4rem;
+  font-weight: 500;
+  max-width: 600px;
+  margin: 0 auto;
+  opacity: 0.9;
+}
+
+/* Feature Cards */
+.VPFeatures .VPFeature {
+  transition: all 0.3s ease;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  padding: 1.5rem;
+}
+
+.VPFeatures .VPFeature:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.1);
+  border-color: var(--vp-c-brand-1);
+}
+
+.VPFeatures .icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+}
+
+.VPFeatures .title {
+  font-weight: 600;
+  color: var(--vp-c-brand-1);
+}
+
+/* Code Blocks Enhancement */
+div[class*='language-'] {
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+  margin: 1.5rem 0;
+}
+
+div[class*='language-'] code {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+/* Tables */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+table thead {
+  background: var(--gradient-soft);
+}
+
+table th {
+  padding: 12px 16px;
+  font-weight: 600;
+  text-align: left;
+  border-bottom: 2px solid var(--vp-c-brand-1);
+}
+
+table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+
+table tr:hover {
+  background: var(--vp-c-bg-soft);
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 0.25rem 0.75rem;
+  border-radius: 12px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  margin: 0 0.25rem;
+}
+
+.badge.success {
+  background: #10b981;
+  color: white;
+}
+
+.badge.warning {
+  background: #f59e0b;
+  color: white;
+}
+
+.badge.error {
+  background: #ef4444;
+  color: white;
+}
+
+.badge.info {
+  background: var(--vp-c-brand-1);
+  color: white;
+}
+
+/* Custom Containers */
+.custom-block {
+  border-radius: 8px;
+  padding: 1rem 1.5rem;
+  margin: 1.5rem 0;
+}
+
+.custom-block.tip {
+  background: var(--gradient-soft);
+  border-left: 4px solid var(--vp-c-brand-1);
+}
+
+.custom-block.warning {
+  background: rgba(245, 158, 11, 0.1);
+  border-left: 4px solid #f59e0b;
+}
+
+.custom-block.danger {
+  background: rgba(239, 68, 68, 0.1);
+  border-left: 4px solid #ef4444;
+}
+
+/* Navigation Enhancement */
+.VPNav {
+  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.dark .VPNav {
+  background: rgba(26, 26, 26, 0.9);
+}
+
+/* Sidebar Enhancement */
+.VPSidebar {
+  padding: 1.5rem;
+}
+
+.VPSidebarItem .text {
+  transition: color 0.2s ease;
+}
+
+.VPSidebarItem.is-active .text {
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+}
+
+/* Button Enhancement */
+.VPButton {
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  padding: 0.75rem 1.5rem;
+}
+
+.VPButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(49, 120, 198, 0.2);
+}
+
+.VPButton.brand {
+  background: var(--gradient-brand);
+}
+
+/* Search Enhancement */
+.VPNavBarSearch {
+  border-radius: 20px;
+}
+
+/* Footer Enhancement */
+.VPFooter {
+  border-top: 1px solid var(--vp-c-divider);
+  padding: 2rem 0;
+  margin-top: 4rem;
+}
+
+/* Responsive Typography */
+@media (max-width: 768px) {
+  .VPHero .name {
+    font-size: 2.5rem !important;
+  }
+  
+  .VPHero .tagline {
+    font-size: 1.1rem;
+  }
+  
+  div[class*='language-'] code {
+    font-size: 0.85rem;
+  }
+}
+
+/* Animations */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.VPFeature,
+.VPButton {
+  animation: fadeInUp 0.6s ease-out;
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--vp-c-bg);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--vp-c-brand-1);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--vp-c-brand-2);
+}
+
+/* Code Group Tabs */
+.vp-code-group .tabs {
+  border-radius: 8px 8px 0 0;
+  background: var(--vp-c-bg-soft);
+}
+
+.vp-code-group .tabs label {
+  transition: all 0.2s ease;
+}
+
+.vp-code-group .tabs label:hover {
+  color: var(--vp-c-brand-1);
+}
+
+/* Links */
+a {
+  transition: color 0.2s ease;
+}
+
+a:hover {
+  color: var(--vp-c-brand-1);
+}
+
+/* Headings */
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+h1 {
+  font-size: 2.5rem;
+  margin-top: 2rem;
+}
+
+h2 {
+  font-size: 2rem;
+  margin-top: 3rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid var(--vp-c-divider);
+}
+
+h3 {
+  font-size: 1.5rem;
+  margin-top: 2rem;
+}
+
+/* Inline Code */
+:not(pre) > code {
+  background: var(--vp-c-bg-soft);
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-weight: 500;
+  color: var(--vp-c-brand-1);
+}
+
+/* Blockquotes */
+blockquote {
+  border-left: 4px solid var(--vp-c-brand-1);
+  padding-left: 1.5rem;
+  margin: 1.5rem 0;
+  font-style: italic;
+  opacity: 0.9;
+}
+
+/* Dark Mode Adjustments */
+.dark {
+  --vp-c-brand-1: #60a5fa;
+  --vp-c-brand-2: #3b82f6;
+  --vp-c-brand-3: #2563eb;
+}
+
+.dark .VPHero .name {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dark div[class*='language-'] {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+/* Print Styles */
+@media print {
+  .VPNav,
+  .VPSidebar,
+  .VPFooter,
+  .prev-next {
+    display: none !important;
+  }
+}
+

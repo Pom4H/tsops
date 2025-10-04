@@ -1,0 +1,37 @@
+{
+  "name": "@tsops/core",
+  "version": "0.1.0",
+  "description": "Core library for tsops - TypeScript toolkit for Kubernetes",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "dependencies": {
+    "@tsops/k8": "workspace:*"
+  },
+  "scripts": {
+    "build": "tsc -b ."
+  },
+  "keywords": [
+    "kubernetes",
+    "k8s",
+    "typescript",
+    "devops"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/tsops.git",
+    "directory": "packages/core"
+  },
+  "license": "MIT",
+  "author": "Roman Popov",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

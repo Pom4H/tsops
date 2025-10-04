@@ -1,0 +1,23 @@
+{
+  "name": "worken-web",
+  "version": "1.0.0",
+  "description": "Worken Test Frontend for tsops production deployment",
+  "main": "serve.js",
+  "scripts": {
+    "start": "node serve.js"
+  },
+  "dependencies": {
+    "hono": "^4.9.9",
+    "@hono/node-server": "^1.19.5",
+    "@opentelemetry/sdk-node": "^0.205.0",
+    "@opentelemetry/auto-instrumentations-node": "^0.64.6",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.205.0",
+    "@opentelemetry/exporter-metrics-otlp-http": "^0.205.0",
+    "@opentelemetry/resources": "^2.1.0",
+    "@opentelemetry/semantic-conventions": "^1.37.0"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
+

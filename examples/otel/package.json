@@ -1,0 +1,8 @@
+{
+  "name": "simple-example",
+  "type": "module",
+  "dependencies": {
+    "@tsops/core": "workspace:",
+    "@tsops/cli": "workspace:"
+  }
+}

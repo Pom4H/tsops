@@ -1,66 +1,27 @@
 {
   "name": "tsops",
-  "version": "1.0.2",
-  "description": "TypeScript-first operations toolkit and CLI for Kubernetes-centric delivery pipelines.",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "private": true,
   "type": "module",
-  "bin": {
-    "tsops": "dist/bin.js"
-  },
-  "files": [
-    "dist",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
-    "format": "prettier --check \"**/*.{ts,tsx,md}\"",
-    "format:fix": "prettier --write \"**/*.{ts,tsx,md}\"",
-    "build": "tsc -p tsconfig.json",
-    "build:watch": "tsc -w -p tsconfig.json",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json",
-    "prepublishOnly": "pnpm run build",
-    "tsops": "node dist/bin.js"
-  },
-  "keywords": [
-    "cli",
-    "kubernetes",
-    "typescript"
-  ],
-  "author": "Roman Popov <atfpom4h@gmail.com>",
-  "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/Pom4H/tsops.git"
-  },
-  "bugs": {
-    "url": "https://github.com/Pom4H/tsops/issues"
-  },
-  "homepage": "https://github.com/Pom4H/tsops#readme",
-  "engines": {
-    "node": ">=22"
-  },
-  "dependencies": {
-    "commander": "^14.0.1"
+    "build": "tsc -b",
+    "build:watch": "tsc -b --watch",
+    "clean": "rm -rf packages/*/dist",
+    "lint": "eslint packages",
+    "lint:fix": "eslint packages --fix",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "devDependencies": {
-    "@types/node": "^24.5.2",
-    "prettier": "^3.6.2",
-    "typescript": "^5.9.2",
-    "vitest": "^3.2.4"
-  },
-  "peerDependencies": {
-    "typescript": ">=5.0.0"
-  },
-  "peerDependenciesMeta": {
-    "typescript": {
-      "optional": true
-    }
-  },
-  "publishConfig": {
-    "access": "public"
+    "@eslint/js": "^9.37.0",
+    "@tsops/cli": "workspace:*",
+    "@types/node": "^24.6.2",
+    "@typescript-eslint/eslint-plugin": "^8.45.0",
+    "@typescript-eslint/parser": "^8.45.0",
+    "eslint": "9.37.0",
+    "typescript": "^5.9.3",
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.22"
   },
   "packageManager": "pnpm@10.17.1"
 }

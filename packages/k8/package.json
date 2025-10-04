@@ -1,0 +1,40 @@
+{
+  "name": "@tsops/k8",
+  "version": "0.1.0",
+  "description": "Kubernetes manifest builders for tsops",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": "./dist/index.js",
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b .",
+    "generate:k8s-types": "node dist/scripts/generate-k8s-types.js"
+  },
+  "dependencies": {
+    "commander": "^14.0.1",
+    "openapi-typescript": "^7.9.1"
+  },
+  "keywords": [
+    "kubernetes",
+    "k8s",
+    "manifest",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/your-username/tsops.git",
+    "directory": "packages/k8"
+  },
+  "license": "MIT",
+  "author": "Roman Popov",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
