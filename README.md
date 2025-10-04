@@ -131,10 +131,6 @@ pnpm lint
 pnpm docs:dev
 ```
 
-## Publishing
-
-See [PUBLISHING.md](./PUBLISHING.md) for details on how to publish packages to npm.
-
 ## License
 
 MIT © Roman Popov
