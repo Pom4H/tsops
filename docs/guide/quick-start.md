@@ -17,9 +17,14 @@ import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'hello',
+  
   namespaces: {
-    prod: { domain: 'example.com' }
+    prod: { 
+      domain: 'example.com',
+      production: true 
+    }
   },
+  
   clusters: {
     production: {
       apiServer: 'https://your-k8s:6443',
@@ -27,10 +32,12 @@ export default defineConfig({
       namespaces: ['prod']
     }
   },
+  
   images: {
     registry: 'ghcr.io/yourorg',
     tagStrategy: 'git-sha'
   },
+  
   apps: {
     web: {
       build: {
@@ -39,7 +46,10 @@ export default defineConfig({
         dockerfile: './web/Dockerfile'
       },
       network: ({ domain }) => `www.${domain}`,
-      env: ({ production }) => ({ NODE_ENV: production ? 'production' : 'development' })
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }],
+      env: ({ production }) => ({ 
+        NODE_ENV: production ? 'production' : 'development' 
+      })
     }
   }
 })
@@ -75,11 +85,16 @@ server.listen(3000, () => {
 })
 ```
 
-## 5. Deploy
+## 5. Plan & Deploy
+
+Preview the rollout, then apply it:
 
 ```bash
+pnpm tsops plan --namespace prod
 pnpm tsops deploy --namespace prod
 ```
+
+`tsops plan` shows global validation, per-app manifest diffs, and any orphaned resources that would be removed. Add `--dry-run` to avoid contacting Docker or kubectl while testing the workflow.
 
 ## 6. Verify
 
@@ -93,8 +108,7 @@ Your app is now running in Kubernetes!
 
 ## Next Steps
 
-- [Add secrets](/guide/secrets)
-- [Configure networking](/guide/networking)
-- [Multi-environment setup](/guide/multi-environment)
-
-
+- [Getting Started guide](/guide/getting-started)
+- [Context helpers tour](/guide/context-helpers)
+- [Secrets & ConfigMaps](/guide/secrets)
+- [What is tsops?](/guide/what-is-tsops)

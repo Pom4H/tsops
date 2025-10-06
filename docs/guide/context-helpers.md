@@ -188,48 +188,6 @@ For external:
 
 ---
 
-### `subdomain(prefix, baseDomain?)`
-
-Generate subdomain from base domain.
-
-#### Signature
-
-```typescript
-subdomain(prefix: string, baseDomain?: string): string
-```
-
-#### Examples
-
-```typescript
-export default defineConfig({
-  namespaces: {
-    prod: { domain: 'example.com' }
-  },
-  
-  apps: {
-    api: {
-      // Uses namespace's domain variable
-      network: ({ domain }) => `api.${domain}`,
-      // -> 'api.example.com'
-      
-      env: ({ template, domain }) => ({
-        // Custom host
-        WEBHOOK_URL: template('https://{host}', { host: `webhooks.${domain}` }),
-        // -> 'https://webhooks.custom.com'
-      })
-    }
-  }
-})
-```
-
-#### Pattern
-
-```
-{prefix}.{baseDomain || namespace.domain}
-```
-
----
-
 ### `label(key, value?)`
 
 Generate Kubernetes label selector following best practices.
@@ -243,7 +201,7 @@ label(key: string, value?: string): string
 #### Examples
 
 ```typescript
-env: ({ label, project, appName }) => ({
+env: ({ label }) => ({
   // Auto-generated value (project-app)
   APP_LABEL: label('name'),
   // -> 'app.kubernetes.io/name=my-project-api'
@@ -398,9 +356,9 @@ env<T extends string = string>(key: string, fallback?: T): T
 
 ```typescript
 secrets: {
-  'api-secrets': ({ env, isProduction }) => ({
+  'api-secrets': ({ env, production }) => ({
     // Required in production, fallback in dev
-    JWT_SECRET: env('JWT_SECRET', isProduction ? undefined : 'dev-jwt-secret'),
+    JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt-secret'),
     
     // Always has fallback
     DEBUG: env('DEBUG', 'false'),
@@ -491,7 +449,7 @@ export default defineConfig({
   
   apps: {
     api: {
-      host: ({ subdomain }) => subdomain('api'),
+      network: ({ domain }) => `api.${domain}`,
       
       env: ({
         // Metadata
@@ -502,7 +460,6 @@ export default defineConfig({
         
         // Generators
         serviceDNS,
-        subdomain,
         label,
         resource,
         
@@ -517,7 +474,8 @@ export default defineConfig({
         // Namespace variables
         production,
         dbHost,
-        replicas
+        replicas,
+        domain
       }) => ({
         // Metadata
         PROJECT: project,

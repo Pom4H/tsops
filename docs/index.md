@@ -18,58 +18,33 @@ hero:
     - theme: alt
       text: GitHub
       link: https://github.com/Pom4H/tsops
-
-features:
-  - icon: 🎯
-    title: Type-Safe Configuration
-    details: Write your Kubernetes configuration in TypeScript with full type safety and IntelliSense support.
-    
-  - icon: ✨
-    title: Context Helpers
-    details: Built-in helpers for service DNS and secrets — no more hardcoded values.
-    
-  - icon: 🔒
-    title: Secret Validation
-    details: Automatic validation of secrets before deployment with fallback to cluster secrets.
-    
-  - icon: 🚀
-    title: Single Source of Truth
-    details: Define once, use everywhere - from deployment to runtime with @tsops/runtime.
-    
-  - icon: 📦
-    title: Docker Build Integration
-    details: Built-in Docker image building and pushing with smart tag strategies.
-    
-  - icon: 🌐
-    title: Multi-Environment
-    details: Easy management of dev, staging, and production environments with shared configuration.
-    
-  - icon: 🎨
-    title: Clean DX
-    details: Beautiful CLI output, helpful error messages, and zero-config setup.
-    
-  - icon: 🔄
-    title: envFrom Support
-    details: Reference entire secrets/configMaps as environment variables with a single function call.
-    
-  - icon: 🛡️
-    title: Production Ready
-    details: Battle-tested in production with comprehensive validation and error handling.
+  
 ---
 
 ## Installation
 
-Install as a runtime dependency. The `defineConfig()` helper returns a runtime config object that your applications can import directly as a single source of truth (endpoints, env, hosts).
+:::: code-group
 
-```bash
+```bash [npm]
 npm install tsops
-# or
+```
+
+```bash [pnpm]
 pnpm add tsops
-# or
+```
+
+```bash [yarn]
 yarn add tsops
 ```
 
+```bash [bun]
+bun add tsops
+```
+
+::::
+
 ## Quick Example
+Create this file at the root of your project as `tsops.config.ts`.
 
 ```typescript
 import { defineConfig } from 'tsops'
@@ -78,65 +53,54 @@ export default defineConfig({
   project: 'my-app',
   
   namespaces: {
-    prod: { 
-      domain: 'example.com',
-      production: true,
-      replicas: 3 
-    },
-    dev: { 
-      domain: 'dev.example.com',
-      production: false,
-      replicas: 1 
+    dev: { domain: 'dev.example.com', production: false },
+    prod: { domain: 'example.com', production: true },
+  },
+  
+  clusters: {
+    local: {
+      apiServer: 'https://kubernetes.docker.internal:6443',
+      context: 'docker-desktop',
+      namespaces: ['dev']
     }
   },
   
-  secrets: {
-    'api-secrets': ({ env }) => ({
-      // Use env() helper with smart fallbacks
-      JWT_SECRET: env('JWT_SECRET', 'dev-jwt'),
-      API_KEY: env('API_KEY')
-    })
+  images: {
+    registry: 'ghcr.io/yourorg',
+    tagStrategy: 'git-sha'
   },
   
   apps: {
-    api: {
-      network: ({ domain }) => `api.${domain}`,
-      ports: [{ name: 'http', port: 80, targetPort: 8080 }],
-      env: ({ serviceDNS, secret, appName, template, production, replicas }) => ({
-        // Flags
+    web: {
+      network: ({ domain }) => domain,
+      build: {
+        type: 'dockerfile',
+        context: './web',
+        dockerfile: './web/Dockerfile'
+      },
+      env: ({ production, serviceDNS }) => ({
         NODE_ENV: production ? 'production' : 'development',
-        
-        // Metadata
-        SERVICE_NAME: appName,
-        
-        // Dependencies
-        REDIS_HOST: serviceDNS('redis'),
-        REDIS_URL: serviceDNS('redis', 6379),
-        POSTGRES_URL: template('postgresql://{host}/{db}', {
-          host: serviceDNS('postgres', 5432),
-          db: 'mydb'
-        }),
-        
-        // Secrets
-        JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
-        
-        // Namespace variables
-        WORKER_COUNT: String(replicas * 2)
+        OTEL_EXPORTER_OTLP_ENDPOINT: serviceDNS('otelCollector')
       })
     },
-    web: {
-      network: ({ domain }) => `web.${domain}`,
-      ports: [{ name: 'http', port: 80, targetPort: 3000 }],
-      env: ({ template, serviceDNS, production }) => ({
-        NODE_ENV: production ? 'production' : 'development',
-        API_URL: template('http://{host}', {
-          host: serviceDNS('api', 8080)
-        })
+    api: {
+      network: ({ domain }) => `api.${domain}`,
+      build: {
+        type: 'dockerfile',
+        context: './api',
+        dockerfile: './api/Dockerfile'
+      },
+      env: ({ serviceDNS }) => ({
+        OTEL_EXPORTER_OTLP_ENDPOINT: serviceDNS('otelCollector')
       })
+    },
+    otelCollector: {
+      image: 'otel/opentelemetry-collector:latest'
     }
   }
 })
 ```
+
 
  
 
@@ -149,8 +113,8 @@ Import your `tsops.config.ts` in any service to access resolved endpoints and en
 import config from './tsops.config'
 
 // Automatically respects TSOPS_NAMESPACE (dev/prod)
-const backendBase = config.getInternalEndpoint('backend')
-// e.g. http://myproj-backend.dev.svc.cluster.local:8080
+const backendBase = config.getExternalEndpoint('api')
+// e.g. https://api.dev.example.com
 
 export default async function Page() {
   const res = await fetch(`${backendBase}/api/message`, { cache: 'no-store' })
@@ -166,20 +130,47 @@ export default async function Page() {
 
 ## Why tsops?
 
-<div class="features-grid">
-
-### 🎯 **Type Safety**
-No more YAML typos. Get instant feedback with TypeScript's type system and catch errors before deployment.
-
-### 🚀 **Developer Experience**
-Beautiful CLI, helpful error messages, and zero-config setup. Start deploying in minutes, not hours.
-
-### 🔒 **Secure by Default**
-Automatic secret validation, fallback to cluster secrets, and clear error messages when something's missing.
-
-### 📦 **All-in-One**
-Plan, build, and deploy - all from a single tool. No need to juggle multiple CLIs and tools.
-
+<div class="why-grid">
+  <div class="why-card">
+    <div class="why-icon">🎯</div>
+    <div class="why-title">TypeScript-First</div>
+    <div class="why-desc">Author Kubernetes strategy in TypeScript with full IntelliSense, literal inference, and compile-time guarantees.</div>
+  </div>
+  <div class="why-card">
+    <div class="why-icon">📋</div>
+    <div class="why-title">Diff-First Planner</div>
+    <div class="why-desc">Use <code>planWithChanges()</code> or the CLI to validate namespaces, view manifest diffs, and spot errors before deploy.</div>
+  </div>
+  <div class="why-card">
+    <div class="why-icon">✨</div>
+    <div class="why-title">Smart Helpers</div>
+    <div class="why-desc">Access helpers like <code>serviceDNS()</code>, <code>secret()</code>, and <code>template()</code> directly inside app definitions.</div>
+  </div>
+  <div class="why-card">
+    <div class="why-icon">🔒</div>
+    <div class="why-title">Secret Guardrails</div>
+    <div class="why-desc">Catch placeholder values and missing keys automatically; reuse existing cluster secrets when appropriate.</div>
+  </div>
+  <div class="why-card">
+    <div class="why-icon">🌐</div>
+    <div class="why-title">Auto Networking</div>
+    <div class="why-desc">Generate ingress, Traefik routes, and TLS certificates by returning a domain from <code>network</code> definitions.</div>
+  </div>
+  <div class="why-card">
+    <div class="why-icon">🔁</div>
+    <div class="why-title">Runtime Reuse</div>
+    <div class="why-desc">Import the same config at runtime, switch namespaces with <code>TSOPS_NAMESPACE</code>, and resolve endpoints on demand.</div>
+  </div>
+  <div class="why-card">
+    <div class="why-icon">⚙️</div>
+    <div class="why-title">CI/CD Ready</div>
+    <div class="why-desc">Git-aware environment providers, deterministic image tags, and <code>--dry-run</code> flows slot neatly into pipelines.</div>
+  </div>
+  <div class="why-card">
+    <div class="why-icon">🧹</div>
+    <div class="why-title">Drift-Free Clusters</div>
+    <div class="why-desc">Automated orphan detection and cleanup keep Kubernetes in sync with your declared configuration.</div>
+  </div>
 </div>
 
 ## What People Say
@@ -199,50 +190,85 @@ Plan, build, and deploy - all from a single tool. No need to juggle multiple CLI
 ## Ready to Get Started?
 
 <div class="cta-grid">
-
-### [📚 Read the Guide](/guide/getting-started)
-Learn the basics and deploy your first app
-
-### [💡 See Examples](/examples/)
-Explore real-world use cases
-
-### [🔧 API Reference](/api/)
-Dive into the full API
-
+  <div class="cta-card">
+    <a href="/guide/getting-started">📚 Read the Guide</a>
+    <p>Learn the basics and deploy your first app.</p>
+  </div>
+  <div class="cta-card">
+    <a href="/examples/">💡 See Examples</a>
+    <p>Explore monorepo, fullstack, and observability setups.</p>
+  </div>
+  <div class="cta-card">
+    <a href="/api/">🔧 API Reference</a>
+    <p>Full API for helpers, types, and CLI.</p>
+  </div>
 </div>
 
 <style>
-.features-grid {
+.why-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-  gap: 2rem;
-  margin: 2rem 0;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin: 2rem 0 1rem;
 }
 
-.features-grid > div {
-  padding: 1.5rem;
+.why-card {
+  padding: 1.25rem;
   border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
+  border-radius: 12px;
+  background: var(--vp-c-bg-soft);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.why-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(0,0,0,0.06);
+}
+
+.why-icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.why-title {
+  margin-top: 0.6rem;
+  font-weight: 700;
+}
+
+.why-desc {
+  margin-top: 0.35rem;
+  color: var(--vp-c-text-2);
 }
 
 .cta-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1.5rem;
+  gap: 1rem;
   margin: 2rem 0;
 }
 
-.cta-grid > div {
-  padding: 2rem;
+.cta-card {
+  padding: 1.25rem 1.5rem;
   background: var(--vp-c-bg-soft);
-  border-radius: 8px;
-  text-align: center;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+  text-align: left;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
-.cta-grid a {
-  font-size: 1.2rem;
-  font-weight: 600;
+.cta-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 28px rgba(0,0,0,0.06);
+}
+
+.cta-card a {
+  display: inline-block;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+
+.cta-card p {
+  margin-top: 0.4rem;
+  color: var(--vp-c-text-2);
 }
 </style>
-
-

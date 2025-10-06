@@ -6,89 +6,132 @@ Complete API documentation for tsops.
 
 ### defineConfig()
 
-Define your tsops configuration with full type safety.
+Define your tsops configuration with full type safety and runtime helpers.
 
 ```typescript
 import { defineConfig } from 'tsops'
 
 export default defineConfig({
-  project: 'my-app',
-  domain: { prod: 'example.com' },
-  // ...
+  project: 'demo',
+
+  namespaces: {
+    dev: { domain: 'dev.example.com', production: false, replicas: 1 },
+    prod: { domain: 'example.com', production: true, replicas: 3 }
+  },
+
+  clusters: {
+    prod: {
+      apiServer: 'https://prod.local:6443',
+      context: 'prod',
+      namespaces: ['prod']
+    }
+  },
+
+  images: {
+    registry: 'ghcr.io/acme',
+    tagStrategy: 'git-sha',
+    includeProjectInName: true
+  },
+
+  secrets: {
+    'api-secrets': ({ env, production }) => ({
+      JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-secret')
+    })
+  },
+
+  configMaps: {
+    settings: { LOG_LEVEL: 'info' }
+  },
+
+  apps: {
+    api: {
+      build: {
+        type: 'dockerfile',
+        context: './api',
+        dockerfile: './api/Dockerfile'
+      },
+      network: ({ domain }) => `api.${domain}`,
+      env: ({ secret, serviceDNS }) => ({
+        JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
+        DATABASE_URL: serviceDNS('postgres', 5432)
+      }),
+      ports: [{ name: 'http', port: 80, targetPort: 8080 }]
+    }
+  }
 })
 ```
 
-[Full Reference →](/api/define-config)
+`defineConfig` ensures all namespaces share the same shape and returns an object that preserves your configuration plus runtime helpers (`getApp`, `getEnv`, `getExternalEndpoint`, ...).
 
 ### TsOps
 
-Main class for executing tsops commands.
+Programmatic API for planning, building, and deploying.
 
 ```typescript
-import { TsOps } from 'tsops'
-import config from './tsops.config'
+import { TsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from 'tsops'
+import config from './tsops.config.js'
 
-const tsops = new TsOps(config, { dryRun: false })
+const tsops = new TsOps(config, {
+  dryRun: true,
+  env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
+})
 
-// Plan
-await tsops.plan({ namespace: 'production' })
-
-// Build
-await tsops.build({ app: 'api' })
-
-// Deploy
-await tsops.deploy({ namespace: 'production', app: 'api' })
+const plan = await tsops.planWithChanges({ namespace: 'prod' })
+const buildResult = await tsops.build({ app: 'api' })
+await tsops.deploy({ namespace: 'prod', app: 'api' })
 ```
+
+Use `plan()` for resolved entries only, or `planWithChanges()` to include Kubernetes validation, diffs, and orphan detection.
 
 ## CLI
 
 ### plan
 
-Generate deployment plan.
+Validate manifests, diff cluster state, and list orphaned resources without applying changes.
 
 ```bash
 tsops plan [options]
 ```
 
 **Options:**
-- `-n, --namespace <name>` - Target namespace
-- `--app <name>` - Target app
-- `-c, --config <path>` - Config file path
-- `--dry-run` - Skip external commands
+- `-n, --namespace <name>` - Target a single namespace
+- `--app <name>` - Target a single app
+- `-c, --config <path>` - Config file path (defaults to `tsops.config`)
+- `--dry-run` - Skip Docker/kubectl execution, log actions only
 
-[Full Reference →](/api/cli#plan)
+The output groups:
+- Global resources (namespaces, secrets, configMaps) validated once per unique artifact
+- Per-app changes with diffs (suppressed when `--dry-run` is used)
+- Orphaned resources that would be deleted by `deploy`
+- A summary that fails the command if validation errors occur
 
 ### build
 
-Build Docker images.
+Resolve image references and invoke Docker builds/pushes.
 
 ```bash
 tsops build [options]
 ```
 
 **Options:**
-- `--app <name>` - Target app
-- `-n, --namespace <name>` - Namespace (for dev/prod context)
+- `--app <name>` - Target a single app
+- `-n, --namespace <name>` - Use namespace context (influences env functions)
 - `-c, --config <path>` - Config file path
-- `--dry-run` - Skip external commands
-
-[Full Reference →](/api/cli#build)
+- `--dry-run` - Log Docker commands without executing
 
 ### deploy
 
-Deploy to Kubernetes.
+Generate manifests, validate secret placeholders, apply resources atomically, and clean up orphans.
 
 ```bash
 tsops deploy [options]
 ```
 
 **Options:**
-- `-n, --namespace <name>` - Target namespace
-- `--app <name>` - Target app
+- `-n, --namespace <name>` - Target a single namespace
+- `--app <name>` - Target a single app
 - `-c, --config <path>` - Config file path
-- `--dry-run` - Skip external commands
-
-[Full Reference →](/api/cli#deploy)
+- `--dry-run` - Log kubectl actions without executing
 
 ## Context Helpers
 
@@ -110,22 +153,14 @@ cluster: ClusterMetadata // Cluster info
 serviceDNS(app: string, options?: number | ServiceDNSOptions): string
 ```
 
-Generate Kubernetes service DNS with support for protocols, headless services, and external services.
+Generate Kubernetes service DNS with support for protocols, headless/stateful services, and external lookups.
 
 **Examples:**
 ```typescript
 serviceDNS('api', 3000)  // Simple with port
-serviceDNS('api', { port: 3000, protocol: 'https' })  // With protocol
-serviceDNS('postgres', { headless: true, podIndex: 0 })  // StatefulSet
+serviceDNS('api', { port: 3000, protocol: 'https' })  // With protocol prefix
+serviceDNS('postgres', { headless: true, podIndex: 0 })  // StatefulSet pod DNS
 ```
-
-### subdomain()
-
-```typescript
-subdomain(prefix: string, baseDomain?: string): string
-```
-
-Generate subdomain from base domain.
 
 ### secret()
 
@@ -157,7 +192,7 @@ configMap(name: string, key: string): ConfigMapRef  // Reference specific key
 label(key: string, value?: string): string
 ```
 
-Generate Kubernetes label selector.
+Generate Kubernetes labels following project conventions.
 
 ### resource()
 
@@ -189,65 +224,104 @@ Simple template string helper.
 
 ### TsOpsConfig
 
-Main configuration type.
+Simplified shape of the main configuration type.
 
 ```typescript
-interface TsOpsConfig<
-  TProject extends string,
-  TNamespaceName extends string,
-  TDomain extends Record<string, string>,
-  TCluster extends string,
-  TApp extends string,
-  TRegion extends string
-> {
-  project: TProject
-  domain: TDomain
-  namespaces: Record<TNamespaceName, NamespaceDefinition<TRegion>>
-  clusters?: Record<TCluster, ClusterDefinition<TNamespaceName>>
-  images?: ImagesConfig
-  apps: Record<TApp, AppDefinition<TNamespaceName, TDomain>>
+interface TsOpsConfig {
+  project: string
+  namespaces: Record<string, NamespaceVars>
+  clusters: Record<string, {
+    apiServer: string
+    context: string
+    namespaces: readonly string[]
+  }>
+  images: {
+    registry: string
+    tagStrategy: 'git-sha' | 'git-tag' | 'timestamp' | string
+    repository?: string
+    includeProjectInName?: boolean
+  }
+  secrets?: Record<string, SecretDefinition>
+  configMaps?: Record<string, ConfigMapDefinition>
+  apps: Record<string, AppDefinition>
 }
 ```
+
+`NamespaceVars` must be the same shape for every namespace and becomes part of the helper context.
 
 ### AppDefinition
 
-Application definition.
+Application definition (runtime helpers use the same generics internally).
 
 ```typescript
-interface AppDefinition<
-  TNamespaceName extends string,
-  TDomain extends Record<string, string>
-> {
-  host?: string | ((ctx: AppHostContextWithHelpers<TDomain>) => string)
+interface AppDefinition {
   image?: string
-  build?: BuildDefinition
-  env?: AppEnv<TNamespaceName, TDomain>
-  secrets?: AppSecretsDefinition<TNamespaceName, TDomain>
-  configMaps?: AppConfigMapsDefinition<TNamespaceName, TDomain>
-  network?: AppNetworkDefinition<TNamespaceName, TDomain>
-  // ...
+  build?: DockerfileBuild | Record<string, unknown>
+  env?: Record<string, EnvValue> | ((ctx: AppContext) => Record<string, EnvValue> | SecretRef | ConfigMapRef)
+  secrets?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
+  configMaps?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
+  network?: string | boolean | AppNetworkOptions | ((ctx: AppContext) => string | boolean | AppNetworkOptions)
+  deploy?: 'all' | readonly string[] | { include?: readonly string[]; exclude?: readonly string[] }
+  ports?: ServicePort[]
+  podAnnotations?: Record<string, string>
+  volumes?: Volume[]
+  volumeMounts?: VolumeMount[]
+  args?: string[]
 }
 ```
+
+When `network` returns a domain string, tsops automatically provisions ingress/Traefik routes and exposes that host through runtime helpers (`getExternalEndpoint`). Set `network` to `false` to skip ingress generation.
 
 ## Runtime
 
 ### getEnv()
 
-Get environment variables at runtime.
+Resolve environment variables at runtime directly from your config object.
 
 ```typescript
-import { getEnv } from '@tsops/runtime'
-import config from './tsops.config'
+import config from './tsops.config.js'
 
-const env = await getEnv(config, 'api', process.env.NAMESPACE!)
+process.env.TSOPS_NAMESPACE = 'prod'
+
+const env = config.getEnv('api')
+console.log(env.DATABASE_URL)
 ```
 
-[Full Reference →](/api/runtime)
+### getInternalEndpoint()
+
+Get internal Kubernetes DNS endpoint for an app.
+
+```typescript
+const endpoint = config.getInternalEndpoint('api')
+// => 'http://demo-api.prod.svc.cluster.local:8080'
+```
+
+### getExternalEndpoint()
+
+Get the public URL (if `network` configured an external host).
+
+```typescript
+const external = config.getExternalEndpoint('api')
+// => 'https://api.prod.example.com' | undefined
+```
+
+### getApp()
+
+Get the full resolved configuration including metadata.
+
+```typescript
+const app = config.getApp('api')
+console.log(app.env)               // Resolved environment variables
+console.log(app.internalEndpoint)  // Internal K8s endpoint
+console.log(app.host)              // Domain without protocol (use getExternalEndpoint for https://)
+console.log(app.image)             // Docker image reference
+```
+
+The active namespace is determined by `TSOPS_NAMESPACE`; when unset, the first namespace in your config is used.
 
 ## Next Steps
 
-- [defineConfig Reference](/api/define-config)
-- [Context Helpers](/api/context-helpers)
-- [CLI Commands](/api/cli)
-
-
+- [Getting Started Guide](/guide/getting-started)
+- [Context Helpers](/guide/context-helpers)
+- [Secrets & ConfigMaps](/guide/secrets)
+- [What is tsops?](/guide/what-is-tsops)

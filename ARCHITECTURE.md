@@ -1,345 +1,148 @@
 # tsops Architecture
 
-This document provides a comprehensive overview of the tsops architecture, designed to be LLM-friendly and easy to understand even with limited context.
+This document explains how the tsops monorepo is organised today. It is meant to be machine-friendly (LLM agents) while still useful for humans.
 
-## Overview
-
-tsops is a TypeScript-first toolkit for deploying applications to Kubernetes. It follows clean architecture principles with clear separation of concerns.
-
-## System Architecture
+## 1. High-Level View
 
 ```
-┌───────────────────────────────────────────────────────────┐
-│                           tsops                           │
-│  ┌────────────────────────────────────────────────────┐   │
-│  │  Command Parser (commander)                        │   │
-│  │  - plan / build / deploy commands                  │   │
-│  │  - Option parsing & validation                     │   │
-│  └─────────────────────────┬──────────────────────────┘   │
-└───────────────────────────────────────────────────────────┘
-                             │
-                             ▼
-┌───────────────────────────────────────────────────────────┐
-│                        @tsops/core                        │
-│  ┌─────────────────────────────────────────────────────┐  │
-│  │              TsOps (Main Orchestrator)              │  │
-│  │  • Dependency injection container                   │  │
-│  │  • Coordinates operations (plan/build/deploy)       │  │
-│  └───┬─────────────────────────────────────────┬───────┘  │
-│      │                                         │          │
-│  ┌───▼──────────┐  ┌──────────────┐  ┌─────────▼──────┐   │
-│  │   Planner    │  │   Builder    │  │    Deployer    │   │
-│  │              │  │              │  │                │   │
-│  │ • Resolves   │  │ • Builds     │  │ • Generates    │   │
-│  │   config     │  │   Docker     │  │   manifests    │   │
-│  │ • Creates    │  │   images     │  │ • Applies      │   │
-│  │   plan       │  │ • Pushes     │  │   via kubectl  │   │
-│  └───┬──────────┘  └──────┬───────┘  └────────┬───────┘   │
-│      │                    │                   │           │
-│  ┌───▼────────────────────▼───────────────────▼───────┐   │
-│  │            ConfigResolver (Facade)                 │   │
-│  │  ┌──────────┬──────────┬──────────┬──────────┐     │   │
-│  │  │ Project  │  Domain  │Namespaces│  Images  │     │   │
-│  │  │ Resolver │ Resolver │ Resolver │ Resolver │     │   │
-│  │  └──────────┴──────────┴──────────┴──────────┘     │   │
-│  │  ┌──────────────────────────────────────────────┐  │   │
-│  │  │        Apps Resolver                         │  │   │
-│  │  │  • host / env / network resolution           │  │   │
-│  │  │  • Uses network-normalizers.ts               │  │   │
-│  │  └──────────────────────────────────────────────┘  │   │
-│  └────────────────────────────────────────────────────┘   │
-│      │                    │                   │           │
-│  ┌───▼──────────┐  ┌──────▼───────┐  ┌────────▼───────┐   │
-│  │    Docker    │  │   Kubectl    │  │ ManifestBuilder│   │
-│  │  (Adapter)   │  │  (Adapter)   │  │  (@tsops/k8)   │   │
-│  └───┬──────────┘  └──────┬───────┘  └────────┬───────┘   │
-│      │                    │                   │           │
-│  ┌───▼────────────────────▼───────────────────▼────────┐  │
-│  │           Infrastructure Layer                      │  │
-│  │  • CommandRunner - executes shell commands          │  │
-│  │  • EnvironmentProvider - accesses env vars          │  │
-│  │  • Logger - output & debugging                      │  │
-│  └─────────────────────────────────────────────────────┘  │
-└───────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────────┐
-│                         @tsops/k8                          │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │           ManifestBuilder (Orchestrator)            │   │
-│  └───┬──────────────────────────────────────────┬──────┘   │
-│      │                                          │          │
-│  ┌───▼───────┬───────────┬───────────┬──────────▼──────┐   │
-│  │Deployment │  Service  │  Ingress  │  IngressRoute   │   │
-│  │  Builder  │  Builder  │  Builder  │    Builder      │   │
-│  └───────────┴───────────┴───────────┴─────────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │          Certificate Builder                        │   │
-│  └─────────────────────────────────────────────────────┘   │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │      Generated Kubernetes API Types                 │   │
-│  └─────────────────────────────────────────────────────┘   │
-└────────────────────────────────────────────────────────────┘
-                     │
-                     ▼
-            ┌────────────────┐
-            │  Docker CLI    │
-            │  kubectl CLI   │
-            └────────────────┘
+┌───────────────────── CLI (`packages/cli`) ─────────────────────┐
+│  Commander program `tsops`                                     │
+│  • loads user config (tsops.config.*)                          │
+│  • instantiates `TsOps` (from @tsops/core)                     │
+│  • exposes commands: plan | build | deploy                     │
+└──────────────────────────────┬─────────────────────────────────┘
+                               │ options
+                               ▼
+┌────────────────────── Core Orchestrator (`TsOps`) ─────────────┐
+│  wires dependencies once:                                      │
+│   - ConfigResolver (project/namespaces/images/apps)            │
+│   - Operations: Planner • Builder • Deployer                   │
+│   - Adapters: Docker • Kubectl • CommandRunner • Logger        │
+│   - Runtime config helpers (getEnv/getApp/…)                   │
+└─────────────┬─────────────────────┬────────────────────────────┘
+              │                     │
+     ┌────────▼────────┐   ┌────────▼────────┐
+     │ Planner.plan()  │   │ Builder.build() │   ...
+     │ • resolve apps  │   │ • docker build  │
+     │ • merge context │   │ • push images   │
+     └────────┬────────┘   └────────┬────────┘
+              │                     │
+      ┌───────▼────────┐   ┌────────▼─────────┐
+      │ Deployer.deploy│   │ Deployer.plan…   │
+      │ • `planWithChanges` (diff)             │
+      │ • namespace secrets/configMaps checks │
+      │ • manifest batches via ManifestBuilder│
+      │ • orphan cleanup through Kubectl      │
+      └───────────────────────────────────────┘
 ```
 
-## Layer Responsibilities
+## 2. Packages at a Glance
 
-### 1. CLI Layer (`tsops`)
-- **Purpose**: User interface for tsops
-- **Responsibilities**:
-  - Parse command-line arguments using `commander`
-  - Load configuration files (TypeScript/JavaScript)
-  - Invoke TsOps operations
-  - Format and display results
-- **Dependencies**: `@tsops/core`
+| Package | Purpose | Entry Point |
+| --- | --- | --- |
+| `packages/cli` (`tsops`) | Commander CLI. Wraps TsOps and provides UX, diff formatting, Git-aware env provider. | `src/index.ts` |
+| `packages/core` (`@tsops/core`) | Configuration resolvers, runtime helpers, Docker/Kubectl adapters, Planner/Builder/Deployer. | `src/tsops.ts` |
+| `packages/k8` (`@tsops/k8`) | Manifest builders for Deployments, Services, Ingress, Traefik IngressRoute, Certificates. | `src/manifest-builder.ts` |
+| `tests` | Vitest suite verifying runtime helpers, config inference. | `config.test.ts` |
 
-### 2. Orchestration Layer (`@tsops/core`)
+The monorepo is managed with **pnpm workspaces + Turborepo** (`turbo.json`). Global scripts such as `pnpm build`, `pnpm lint`, and `pnpm test` map to `turbo run <task>` across packages.
 
-#### TsOps Class
-- **Purpose**: Main entry point and dependency injection container
-- **Responsibilities**:
-  - Initialize all dependencies
-  - Provide high-level API: `plan()`, `build()`, `deploy()`
-  - Allow dependency injection for testing
+## 3. Config & Resolver Layer
 
-#### Operations
-- **Planner**: Resolves configuration into deployment plan
-- **Builder**: Orchestrates Docker image builds
-- **Deployer**: Generates manifests and applies them
+`createConfigResolver(config, { env })` composes specialised resolvers. Each resolver is a pure abstraction so the rest of the system stays declarative.
 
-### 3. Configuration Layer (`@tsops/core/config`)
+- **ProjectResolver** — naming helpers (`${project}-${app}`), service names.
+- **NamespaceResolver** — namespace iteration/filtering, helper context creation (exposes `serviceDNS`, `label`, `resource`, `secret`, `configMap`, `env`, `template`, namespace vars, cluster metadata).
+- **ImagesResolver** — builds deterministic image refs. Supports strategies: `'git-sha' | 'git-tag' | 'timestamp' | string | { kind: string; … }`. Decorated with `GitEnvironmentProvider(ProcessEnvironmentProvider)` so Git metadata is available by default.
+- **AppsResolver** — resolves app definitions per namespace: build info, env (with Secret/ConfigMap refs), secrets/configMaps data, network configuration. Delegates to `network-normalizers.ts` to materialise ingress/Traefik/cert manifests and to `images` resolver for defaults.
 
-All resolvers follow the same pattern:
-1. Take raw config as input
-2. Depend only on other resolvers they need
-3. Expose domain-specific methods
+`defineConfig` (in `config/definer.ts`) reuses the same resolver stack lazily to provide runtime helpers (`getEnv`, `getApp`, `getInternalEndpoint`, `getExternalEndpoint`, `getNamespace`). Runtime resolution respects `TSOPS_NAMESPACE` or defaults to the first namespace.
 
-#### ConfigResolver (Facade)
-Coordinates all sub-resolvers and provides unified access.
+## 4. Operations Layer
 
-#### Sub-Resolvers
-- **ProjectResolver**: Project naming (e.g., `project-appname`)
-- **DomainResolver**: Domain selection by region
-- **NamespaceResolver**: Namespace selection, dev/prod detection
-- **ImagesResolver**: Docker image reference building with tag strategies
-- **AppsResolver**: Application configuration resolution
+### Planner (`operations/planner.ts`)
+- Selects namespaces/apps respecting `deploy` filters (`'all'`, allow/deny lists).
+- Builds plan entries containing env, secrets, configMaps, network, ports, volumes and image references.
 
-### 4. Adapter Layer (`@tsops/core/adapters`)
+### Builder (`operations/builder.ts`)
+- For each selected app, runs Docker builds/pushes (unless `dryRun`).
+- Uses image resolver to compute registry repo/tag (optionally includes project prefix).
 
-Adapters wrap external tools and follow a consistent interface:
+### Deployer (`operations/deployer.ts`)
+- Central entry for `deploy()` and `planWithChanges()`.
+- `deploy()` batches manifests:
+  1. Ensure namespace (idempotent).
+  2. Validate secrets (checks for placeholders/missing env values, reuses cluster secrets when possible).
+  3. Apply secrets/configMaps atomically.
+  4. Build full manifest set via `@tsops/k8` and apply as a batch.
+  5. Detect and delete orphaned resources labelled `tsops/managed=true` but absent from plan.
+- `planWithChanges()` reuses the planner, but instead of applying it:
+  - Generates dry manifest objects for namespaces/secrets/configMaps/apps.
+  - Asks Kubectl adapter to diff (client-side unless namespace already exists).
+  - Produces a structured summary used by the CLI to display global/app/orphan sections.
 
-- **Docker**: Wraps `docker build` and `docker push`
-- **Kubectl**: Wraps `kubectl apply`
+## 5. Adapter & Infrastructure Layer
 
-Both depend on:
-- `CommandRunner` (for execution)
-- `Logger` (for output)
-- `dryRun` flag (for safe testing)
+- **CommandRunner / DefaultCommandRunner** — thin wrapper over `child_process` allowing injection/mocking.
+- **Logger / ConsoleLogger** — simple interface for structured logs (used mostly by Builder/Deployer, CLI adds its own formatting).
+- **EnvironmentProvider hierarchy** — `ProcessEnvironmentProvider` ⟶ `GitEnvironmentProvider` ensures Git data exists when tag strategy needs it.
+- **Docker Adapter** — executes `docker build`/`docker push`, honours `dryRun`.
+- **Kubectl Adapter** — applies, diffs, deletes Kubernetes manifests. Provides helpers like `applyBatch`, `planManifest`, `delete`, `getSecretData` (used during secret validation).
 
-### 5. Infrastructure Layer (`@tsops/core`)
+## 6. Manifest Generation (`@tsops/k8`)
 
-Pure abstractions with no business logic:
+`ManifestBuilder.build(appName, context)` returns:
+- Deployment manifest (with envFrom/valueFrom expansions, volumes, args, annotations, probes TBD).
+- Service manifest (ports as declared in app config).
+- Optional Ingress manifest (default HTTP/TLS).
+- Optional Traefik IngressRoute manifest when custom routing is defined.
+- Optional Certificate manifest (cert-manager) when TLS requested.
 
-- **CommandRunner**: Executes shell commands
-  - `DefaultCommandRunner`: Uses Node.js `child_process`
-  - Interface allows mocking for tests
+Individual builders live under `packages/k8/src/builders/` and are side-effect free. Utilities in `packages/k8/src/utils.ts` handle label/name generation consistent with project resolver.
 
-- **EnvironmentProvider**: Accesses environment variables
-  - `ProcessEnvironmentProvider`: Uses `process.env`
-  - Interface allows mocking for tests
+## 7. Data Flows
 
-- **Logger**: Output interface
-  - `ConsoleLogger`: Logs to console
-  - Interface allows custom implementations
+### CLI `plan`
+1. CLI parses flags → loads config via dynamic `import()` + extension search; throws actionable errors when TypeScript module cannot load without transpilation.
+2. Instantiate `TsOps(config, { dryRun?, env: GitEnvironmentProvider(ProcessEnvironmentProvider) })`.
+3. Call `tsops.planWithChanges(filters)`.
+4. Deployer builds plan, validates global artifacts once, calls Kubectl to diff.
+5. CLI groups output: Global Resources (namespaces / secrets / configMaps), Application Resources (create/update/unchanged/errors), Orphaned resources scheduled for deletion. Exits non-zero if validation failed.
 
-### 6. Kubernetes Layer (`@tsops/k8`)
+### CLI `deploy`
+1. CLI resolves config and flags (same as `plan`).
+2. `tsops.deploy(filters)` obtains plan from Planner.
+3. Deployer iterates plan entries (namespace/app) and performs the batching steps above.
+4. Returns applied manifest references + deleted orphans. CLI prints summary; warnings emitted if secrets used cluster fallbacks.
 
-- **ManifestBuilder**: Coordinates all manifest builders
-- **Individual Builders**: Pure functions that generate manifests
-  - `buildDeployment()`: Creates Deployment
-  - `buildService()`: Creates Service
-  - `buildIngress()`: Creates Ingress
-  - `buildIngressRoute()`: Creates Traefik IngressRoute
-  - `buildCertificate()`: Creates cert-manager Certificate
+### Runtime helpers
+1. Application code `import config from './tsops.config.js'` (compiled to ESM).
+2. `config.getEnv('api')` triggers lazy runtime config creation for the current namespace, reusing resolvers to evaluate env/secrets/configMaps/network.
+3. Helpers cache until `TSOPS_NAMESPACE` changes.
 
-## Data Flow
+## 8. Versioning & Release Notes
 
-### Example: `tsops deploy --namespace prod --app api`
+- Source of truth: `CHANGELOG.md` (Keep a Changelog format). Latest release `tsops` 1.2.0 / `@tsops/core` 0.3.0 (2025‑10‑06) introduced `planWithChanges`, secret docs refresh, runtime helper tests.
+- Release process uses Changesets: run `pnpm changeset`, `pnpm changeset:version`, `pnpm release:publish` (builds all packages, publishes with `--no-git-checks`).
+- Workspace protocol is `workspace:*`; ensure internal versions remain compatible before publishing.
 
-1. **CLI** parses arguments → `{ namespace: 'prod', app: 'api' }`
-2. **CLI** loads config file → `TsOpsConfig`
-3. **CLI** creates `TsOps` instance with config
-4. **CLI** calls `tsops.deploy({ namespace: 'prod', app: 'api' })`
-5. **TsOps** delegates to `Deployer.deploy()`
-6. **Deployer** calls `Planner.plan()` to get deployment plan
-7. **Planner** uses `ConfigResolver` to:
-   - Select namespace: `'prod'`
-   - Select app: `'api'`
-   - Resolve host: `api.example.com`
-   - Resolve image: `ghcr.io/org/api:abc123`
-   - Resolve env: `{ NODE_ENV: 'production' }`
-   - Resolve network config
-8. **Deployer** calls `ManifestBuilder.build()` with plan entry
-9. **ManifestBuilder** generates manifests using individual builders
-10. **Deployer** calls `Kubectl.apply()` for each manifest
-11. **Kubectl** uses `CommandRunner` to execute `kubectl apply`
-12. **Deployer** returns result with applied manifest references
-13. **CLI** formats and displays results
+## 9. Design Principles Recap
 
-## Design Patterns
+- **Dependency Injection everywhere** (constructors take interfaces, enabling deterministic tests and alternative adapters).
+- **Pure data transformations** in resolvers/manifest builders (no IO).
+- **Diff-first UX**: plan before deploy, detect drifts, clean orphans.
+- **Runtime reuse of config**: same TypeScript definition powers deployment and app runtime env.
+- **LLM-friendly layout**: short files, clear naming, rich documentation in `docs/` with consistent stories.
 
-### 1. Dependency Injection
-All classes receive dependencies through constructors, making them testable and flexible.
+## 10. Useful Links
 
-```typescript
-class Builder {
-  constructor(private deps: {
-    docker: Docker
-    logger: Logger
-    resolver: ConfigResolver
-  }) {}
-}
-```
+- CLI implementation: `packages/cli/src/index.ts`
+- TsOps orchestrator: `packages/core/src/tsops.ts`
+- Resolvers: `packages/core/src/config/`
+- Operations: `packages/core/src/operations/`
+- Runtime helpers: `packages/core/src/config/definer.ts`
+- Manifest builder: `packages/k8/src/manifest-builder.ts`
+- Docs homepage: `docs/index.md`
+- Comprehensive config test: `tests/config.test.ts`
 
-### 2. Strategy Pattern
-Tag strategies and network configuration support multiple implementations:
-
-```typescript
-tagStrategy: 'git-sha' | 'git-tag' | 'timestamp' | string | { kind: string, value?: string }
-```
-
-### 3. Facade Pattern
-`ConfigResolver` provides a unified interface to all sub-resolvers.
-
-### 4. Adapter Pattern
-`Docker` and `Kubectl` adapt CLI tools to TypeScript interfaces.
-
-### 5. Builder Pattern
-Manifest builders compose complex Kubernetes resources step by step.
-
-## Key Design Decisions
-
-### Why Separate Resolvers?
-Each resolver has a single responsibility and can be understood in isolation. This follows the Single Responsibility Principle and makes the code easier to navigate for both humans and LLMs.
-
-### Why EnvironmentProvider?
-Direct access to `process.env` creates hidden dependencies and makes testing harder. The abstraction allows:
-- Testing with mock values
-- Different environments (Node, browser, edge workers)
-- Clear visibility of what env vars are used
-
-### Why Network Normalizers?
-The `resolveNetwork` function was becoming too large. Extracting normalizers:
-- Reduces cognitive load
-- Makes each piece testable in isolation
-- Follows the Law of Demeter (each function talks to its direct collaborators)
-
-### Why Commander Instead of Manual Parsing?
-Manual argument parsing is error-prone and lacks features like:
-- Auto-generated help text
-- Type checking
-- Subcommand support
-- Option validation
-
-## Testing Strategy
-
-### Unit Tests
-Each resolver, builder, and service should be testable in isolation:
-
-```typescript
-// Example: Testing ImagesResolver with mock env
-const mockEnv: EnvironmentProvider = {
-  get: (key) => (key === 'GIT_SHA' ? 'abc123' : undefined)
-}
-
-const resolver = createImagesResolver(config, projectResolver, mockEnv)
-expect(resolver.buildRef('api')).toBe('ghcr.io/org/api:abc123')
-```
-
-### Integration Tests
-Test operations with real dependencies:
-
-```typescript
-const tsops = new TsOps(config, {
-  runner: mockCommandRunner,
-  logger: mockLogger,
-  env: mockEnv,
-  dryRun: true
-})
-
-const result = await tsops.deploy({ namespace: 'test' })
-expect(result.entries).toHaveLength(1)
-```
-
-## Common Patterns
-
-### Adding a New Resolver
-
-1. Create interface in `config/` directory
-2. Create factory function: `createXResolver(config, ...deps)`
-3. Add to `ConfigResolver` interface
-4. Wire up in `createConfigResolver()`
-
-### Adding a New Operation
-
-1. Create class in `operations/` directory
-2. Accept dependencies through constructor
-3. Export result type
-4. Wire up in `TsOps` constructor
-5. Expose method on `TsOps` class
-
-### Adding a New Manifest Type
-
-1. Create builder function in `k8/builders/`
-2. Add to `ManifestSet` type
-3. Update `ManifestBuilder.build()` to call new builder
-4. Add to supported manifests in `Kubectl`
-
-## Performance Considerations
-
-- **Lazy Evaluation**: Resolvers don't compute until needed
-- **Batching**: Operations are batched per namespace/app
-- **Caching**: Consider adding cache to frequently-called resolvers
-- **Parallelization**: Build operations could run in parallel
-
-## Error Handling
-
-Errors should be thrown at the earliest point where validation can occur:
-
-- **Config validation**: Throw during resolver creation
-- **Missing values**: Throw during resolution
-- **Command failures**: Propagate from CommandRunner
-
-All errors include context:
-```typescript
-throw new Error(`App "${appName}" requires a host but none is configured`)
-```
-
-## Future Improvements
-
-1. **Validation Layer**: Add schema validation for config files
-2. **Plugin System**: Allow custom resolvers and builders
-3. **Watch Mode**: Live-reload on config changes
-4. **Rollback Support**: Track deployments and enable rollback
-5. **Multi-Cluster**: Parallel deployment to multiple clusters
-6. **Helm Integration**: Generate or use Helm charts
-
-## Conclusion
-
-The architecture prioritizes:
-- **Clarity**: Each piece has one clear purpose
-- **Testability**: Dependencies are injected and abstracted
-- **Extensibility**: New features can be added without changing existing code
-- **LLM-friendliness**: Small, focused modules that can be understood independently
-
-For more details on specific packages, see:
-- [`packages/core/README.md`](packages/core/README.md)
-- [`packages/k8/README.md`](packages/k8/README.md)
-- [`packages/cli/README.md`](packages/cli/README.md)
-
+Stay aligned with this document when introducing new operations, resolvers, or adapters—update the relevant sections as part of feature PRs.

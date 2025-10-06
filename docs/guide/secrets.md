@@ -8,16 +8,32 @@ tsops provides powerful secret management with automatic validation.
 
 ### Basic Usage
 
+Define secrets at the config root level (not within apps):
+
 ```typescript
 export default defineConfig({
+  project: 'my-app',
+  
+  namespaces: {
+    dev: { production: false },
+    prod: { production: true }
+  },
+  
+  // Secrets are defined at config root level
+  secrets: {
+    'api-secrets': ({ production, env }) => ({
+      JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt'),
+      DB_PASSWORD: env('DB_PASSWORD', production ? undefined : 'dev-password'),
+      API_KEY: env('API_KEY', production ? undefined : 'dev-key')
+    })
+  },
+  
   apps: {
     api: {
-      secrets: ({ production }) => ({
-        'api-secrets': {
-          JWT_SECRET: production ? process.env.PROD_JWT! : 'dev-jwt',
-          DB_PASSWORD: production ? process.env.PROD_DB_PWD! : 'dev-password',
-          API_KEY: production ? process.env.API_KEY! : 'dev-key'
-        }
+      // Reference secrets in env using secret() helper
+      env: ({ secret }) => ({
+        JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
+        DB_PASSWORD: secret('api-secrets', 'DB_PASSWORD')
       })
     }
   }
@@ -29,26 +45,18 @@ export default defineConfig({
 Use `secret()` helper to inject all keys from a secret:
 
 ```typescript
+// Define secrets at config root level
+secrets: {
+  'api-secrets': ({ production, env }) => ({
+    JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt'),
+    DB_PASSWORD: env('DB_PASSWORD', production ? undefined : 'dev-password')
+  })
+},
+
 apps: {
   api: {
-    // Reference entire secret
-    env: ({ secret, production }) => {
-      if (production) {
-        return secret('api-secrets')  // ← envFrom: secretRef
-      }
-      return {
-        JWT_SECRET: 'dev-jwt',
-        DB_PASSWORD: 'dev-password'
-      }
-    },
-    
-    // Define the secret
-    secrets: ({ production }) => ({
-      'api-secrets': {
-        JWT_SECRET: production ? process.env.PROD_JWT! : 'dev-jwt',
-        DB_PASSWORD: production ? process.env.PROD_DB_PWD! : 'dev-password'
-      }
-    })
+    // Reference entire secret as envFrom
+    env: ({ secret }) => secret('api-secrets')  // ← envFrom: secretRef
   }
 }
 ```
@@ -68,10 +76,10 @@ Mix static values with secret references:
 ```typescript
 apps: {
   api: {
-    env: ({ secretKey }) => ({
-      PORT: '3000',                                      // Static
-      JWT_SECRET: secretKey('api-secrets', 'JWT_SECRET'),  // From secret
-      DB_PASSWORD: secretKey('api-secrets', 'DB_PASSWORD') // From secret
+    env: ({ secret }) => ({
+      PORT: '3000',                                    // Static
+      JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),  // From secret
+      DB_PASSWORD: secret('api-secrets', 'DB_PASSWORD') // From secret
     })
   }
 }
@@ -153,38 +161,45 @@ Similar to secrets, but for non-sensitive configuration.
 
 ### Basic Usage
 
+ConfigMaps are defined at config root level, similar to secrets:
+
 ```typescript
-apps: {
-  api: {
-    configMaps: () => ({
-      'api-config': {
-        LOG_LEVEL: 'info',
-        MAX_CONNECTIONS: '100',
-        FEATURE_FLAGS: 'auth,payments,notifications'
-      }
-    })
+export default defineConfig({
+  // ConfigMaps at root level
+  configMaps: {
+    'api-config': {
+      LOG_LEVEL: 'info',
+      MAX_CONNECTIONS: '100',
+      FEATURE_FLAGS: 'auth,payments,notifications'
+    }
+  },
+  
+  apps: {
+    api: {
+      // Reference in env
+      env: ({ configMap }) => ({
+        LOG_LEVEL: configMap('api-config', 'LOG_LEVEL')
+      })
+    }
   }
-}
+})
 ```
 
 ### envFrom: Reference Entire ConfigMap
 
 ```typescript
+// Define at root level
+configMaps: {
+  'api-config': {
+    LOG_LEVEL: 'info',
+    FEATURE_FLAGS: 'auth,payments'
+  }
+},
+
 apps: {
   api: {
-    env: ({ configMap, production }) => {
-      if (production) {
-        return configMap('api-config')
-      }
-      return { LOG_LEVEL: 'debug' }
-    },
-    
-    configMaps: () => ({
-      'api-config': {
-        LOG_LEVEL: 'info',
-        FEATURE_FLAGS: 'auth,payments'
-      }
-    })
+    // Reference entire configMap as envFrom
+    env: ({ configMap }) => configMap('api-config')
   }
 }
 ```
@@ -194,9 +209,9 @@ apps: {
 ```typescript
 apps: {
   api: {
-    env: ({ configMapKey }) => ({
-      LOG_LEVEL: configMapKey('api-config', 'LOG_LEVEL'),
-      MAX_CONNECTIONS: configMapKey('api-config', 'MAX_CONNECTIONS')
+    env: ({ configMap }) => ({
+      LOG_LEVEL: configMap('api-config', 'LOG_LEVEL'),
+      MAX_CONNECTIONS: configMap('api-config', 'MAX_CONNECTIONS')
     })
   }
 }
@@ -207,11 +222,11 @@ apps: {
 ### ✅ Use environment variables for secrets
 
 ```typescript
-secrets: ({ production }) => ({
-  'api-secrets': {
-    JWT_SECRET: production ? process.env.PROD_JWT! : 'dev-jwt'
-  }
-})
+secrets: {
+  'api-secrets': ({ production, env }) => ({
+    JWT_SECRET: env('PROD_JWT', production ? undefined : 'dev-jwt')
+  })
+}
 ```
 
 Then deploy with:
@@ -223,35 +238,27 @@ PROD_JWT=xxx PROD_DB_PWD=yyy pnpm tsops deploy --namespace prod
 ### ✅ Different secrets per environment
 
 ```typescript
-secrets: ({ production, dev }) => {
-  if (production) {
-    return {
-      'api-secrets': {
-        JWT_SECRET: process.env.PROD_JWT!,
-        DB_PASSWORD: process.env.PROD_DB_PWD!
-      }
-    }
-  }
-  
-  if (dev) {
-    return {
-      'api-secrets': {
-        JWT_SECRET: 'dev-jwt-secret',
-        DB_PASSWORD: 'dev-password'
-      }
-    }
-  }
+secrets: {
+  'api-secrets': ({ production, env }) => ({
+    JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt-secret'),
+    DB_PASSWORD: env('DB_PASSWORD', production ? undefined : 'dev-password')
+  })
 }
 ```
 
 ### ✅ Use serviceDNS in secrets
 
 ```typescript
-secrets: ({ serviceDNS, production }) => ({
-  'api-secrets': {
-    DATABASE_URL: `postgres://user:${process.env.DB_PWD}@${serviceDNS('postgres', 5432)}/db`
-  }
-})
+secrets: {
+  'api-secrets': ({ serviceDNS, env }) => ({
+    DATABASE_URL: template('postgresql://{user}:{pwd}@{host}/{db}', {
+      user: 'myuser',
+      pwd: env('DB_PASSWORD'),
+      host: serviceDNS('postgres', 5432),
+      db: 'myapp'
+    })
+  })
+}
 ```
 
 ### ❌ Don't hardcode secrets
@@ -275,26 +282,33 @@ secrets: {
 
 ## Runtime Access
 
-Use `@tsops/runtime` to access secrets at runtime:
+Access resolved environment variables at runtime directly from your config object:
 
 ```typescript
 // server.ts
-import { getEnv } from '@tsops/runtime'
 import config from './tsops.config'
 
-async function start() {
-  const env = await getEnv(config, 'api', process.env.NAMESPACE!)
-  
-  console.log('JWT_SECRET:', env.JWT_SECRET)
-  console.log('DB_PASSWORD:', env.DB_PASSWORD)
-}
+// Set TSOPS_NAMESPACE to determine which namespace to use
+process.env.TSOPS_NAMESPACE = 'prod'
+
+// Get resolved environment for an app
+const env = config.getEnv('api')
+console.log('JWT_SECRET:', env.JWT_SECRET)
+console.log('DB_PASSWORD:', env.DB_PASSWORD)
+
+// Or get full app info including endpoints
+const app = config.getApp('api')
+console.log('Internal endpoint:', app.internalEndpoint)
+console.log('External endpoint:', config.getExternalEndpoint('api'))
+console.log('Environment:', app.env)
 ```
 
 This provides:
 - ✅ Single source of truth
-- ✅ Type-safe environment access
+- ✅ Type-safe environment access  
 - ✅ Works in dev and production
 - ✅ No duplication
+- ✅ Built-in - no extra packages needed
 
 ## Security Checklist
 
@@ -309,7 +323,6 @@ This provides:
 ## Next Steps
 
 - [Context Helpers](/guide/context-helpers)
-- [Multi-Environment](/guide/multi-environment)
-- [Runtime Package](/api/runtime)
-
+- [Getting Started](/guide/getting-started)
+- [API Reference](/api/)
 

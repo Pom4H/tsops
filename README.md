@@ -21,48 +21,48 @@ Then create a `tsops.config.ts` file:
 import { defineConfig } from 'tsops'
 
 export default defineConfig({
-  project: 'myapp',
-  
+  project: 'orchard',
+
   namespaces: {
-    dev: {
-      domain: 'dev.myapp.com',
-      replicas: 1
-    },
-    prod: {
-      domain: 'myapp.com',
-      replicas: 3
-    }
+    dev: { domain: 'dev.example.com', production: false },
+    prod: { domain: 'example.com', production: true }
   },
-  
+
   clusters: {
-    'us-cluster': {
-      apiServer: 'https://k8s.us.example.com',
-      context: 'us-k8s',
+    platform: {
+      apiServer: 'https://k8s.example.com',
+      context: 'prod',
       namespaces: ['dev', 'prod']
     }
   },
-  
+
   images: {
-    registry: 'ghcr.io/myorg',
-    tagStrategy: 'git-sha'
+    registry: 'ghcr.io/example',
+    tagStrategy: 'git-sha',
+    includeProjectInName: true
   },
-  
+
+  secrets: {
+    'api-secrets': ({ env, production }) => ({
+      JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-secret')
+    })
+  },
+
   apps: {
     api: {
-      // External host derived from namespace domain
-      network: ({ domain }) => `api.${domain}`,
       build: {
         type: 'dockerfile',
-        context: '.',
-        dockerfile: 'Dockerfile'
+        context: './apps/api',
+        dockerfile: './apps/api/Dockerfile'
       },
-      env: ({ serviceDNS, template, replicas }) => ({
-        NODE_ENV: replicas > 1 ? 'production' : 'development',
-        REPLICAS: String(replicas),
-        REDIS_HOST: serviceDNS('redis'),
+      network: ({ domain }) => `api.${domain}`,
+      ports: [{ name: 'http', port: 80, targetPort: 8080 }],
+      env: ({ production, serviceDNS, template, secret }) => ({
+        NODE_ENV: production ? 'production' : 'development',
         DATABASE_URL: template('postgresql://{host}/app', {
           host: serviceDNS('postgres', 5432)
-        })
+        }),
+        JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
       })
     }
   }
@@ -85,14 +85,16 @@ tsops deploy --namespace prod
 tsops deploy --namespace prod --app api
 ```
 
+`tsops plan` resolves your configuration, validates shared resources once, previews per-app manifest updates with diffs, and lists orphaned resources that would be removed. Add `--dry-run` to inspect without invoking Docker or kubectl. `tsops deploy` reuses that plan, blocks on missing secret values, applies manifests atomically, and cleans up orphans at the end.
+
 ## Features
 
 - 🎯 **Type-safe configuration** - Full TypeScript support with autocompletion
+- 📋 **Diff-first planning** - Validate namespaces/secrets/configMaps once and view per-app manifest diffs
 - 🐳 **Docker integration** - Build and push images automatically
-- ☸️ **Kubernetes manifests** - Generate deployments, services, ingresses
-- 🔒 **Secrets management** - Manage secrets securely
-- 🌍 **Multi-region support** - Deploy to multiple clusters
-- 🚀 **CI/CD friendly** - Perfect for GitHub Actions, GitLab CI, etc.
+- ☸️ **Manifests & networking** - Generate deployments, services, ingresses, and Traefik routes from a single definition
+- 🔒 **Secret validation** - Catch placeholders and missing keys before deploy
+- 🧹 **Orphan cleanup** - Detect and delete resources not declared in code
 
 ## Documentation
 
@@ -123,6 +125,18 @@ pnpm lint
 
 # Run docs locally
 pnpm docs:dev
+```
+
+## Runtime Helpers
+
+Import the compiled config in your application to reuse resolved values at runtime. The active namespace is selected via the `TSOPS_NAMESPACE` environment variable (defaults to the first namespace).
+
+```typescript
+import config from './tsops.config.js'
+
+const env = config.getEnv('api')
+const internal = config.getInternalEndpoint('api') // http://project-api.dev.svc.cluster.local:3000
+const external = config.getExternalEndpoint('api') // https://api.dev.example.com (if network configured)
 ```
 
 ## License

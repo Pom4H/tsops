@@ -13,11 +13,11 @@ Get up and running with tsops in minutes.
 
 ::: code-group
 
-```bash [pnpm]
+```bash [npm]
 npm install tsops
 ```
 
-```bash [npm]
+```bash [pnpm]
 pnpm add tsops
 ```
 
@@ -39,7 +39,14 @@ export default defineConfig({
   
   namespaces: {
     production: {
-      domain: 'example.com'
+      domain: 'example.com',
+      production: true,
+      replicas: 3
+    },
+    dev: {
+      domain: 'dev.example.com',
+      production: false,
+      replicas: 1
     }
   },
   
@@ -47,7 +54,7 @@ export default defineConfig({
     production: {
       apiServer: 'https://your-k8s-api.com:6443',
       context: 'production',
-      namespaces: ['production']
+      namespaces: ['production', 'dev']
     }
   },
   
@@ -65,6 +72,8 @@ export default defineConfig({
       },
       
       network: ({ domain }) => `api.${domain}`,
+      
+      ports: [{ name: 'http', port: 80, targetPort: 8080 }],
       
       env: ({ serviceDNS, template, production }) => ({
         NODE_ENV: production ? 'production' : 'development',
@@ -102,10 +111,32 @@ See what will be deployed:
 pnpm tsops plan
 ```
 
-Output:
+Sample output:
 ```
-- api @ production (prod) -> ghcr.io/yourorg/api:abc123, host=api.example.com
+📋 Generating deployment plan and validating manifests...
+
+🌐 Global Resources
+
+   ➕ Namespaces to create:
+      • production
+
+────────────────────────────────────────────
+
+📦 Application Resources
+
+   api @ production (api.example.com)
+   Image: ghcr.io/yourorg/api:abc123
+
+      ➕ Will create:
+         • Deployment/my-app-api
+         • Service/my-app-api
+         • Ingress/my-app-api
+
+────────────────────────────────────────────
+✅ Validation passed. Run "tsops deploy" to apply these changes.
 ```
+
+Tip: add `--dry-run` to preview the plan without contacting Docker or kubectl.
 
 ### Step 2: Build
 
@@ -123,8 +154,10 @@ Deploy to Kubernetes:
 pnpm tsops deploy --namespace production
 ```
 
-Output:
+Sample output:
 ```
+✅ Deployed applications:
+
 - api @ production
   • Namespace/production
   • Secret/api-secrets
@@ -149,16 +182,16 @@ my-app-api-7d8f9c5b6d-xyz12   1/1     Running   0          30s
 ## What's Next?
 
 ### [🎯 Quick Start](/guide/quick-start)
-5-minute tutorial to deploy a real app
-
-### [📚 Configuration Guide](/guide/configuration)
-Learn all configuration options
+Deploy a complete demo in five minutes
 
 ### [✨ Context Helpers](/guide/context-helpers)
-Master the helper functions
+Master the helper functions available inside app definitions
 
-### [🔒 Secrets](/guide/secrets)
-Secure secret management
+### [🔒 Secrets & ConfigMaps](/guide/secrets)
+Secure secret management with automatic validation
+
+### [📖 What is tsops?](/guide/what-is-tsops)
+Understand the architecture and problem space
 
 ## Common Issues
 
@@ -192,5 +225,3 @@ pnpm add -D typescript
 - 💬 [GitHub Discussions](https://github.com/yourusername/tsops/discussions)
 - 🐛 [Report Bug](https://github.com/yourusername/tsops/issues)
 - 💡 [Feature Request](https://github.com/yourusername/tsops/issues/new?template=feature_request.md)
-
-

@@ -71,8 +71,8 @@ Built-in helpers for common patterns:
   serviceDNS('postgres', 5432)
   // → 'my-app-postgres.production.svc.cluster.local:5432'
   
-  // replaced by `network` host builder
-  `api.${domain}`
+  // Use namespace variables for domain
+  network: ({ domain }) => `api.${domain}`
   // → 'api.example.com'
   
   secret('api-secrets')
@@ -86,9 +86,9 @@ Automatic validation before deployment:
 
 ```typescript
 secrets: {
-  'api-secrets': {
-    JWT_SECRET: process.env.PROD_JWT  // ← Validated!
-  }
+  'api-secrets': ({ env }) => ({
+    JWT_SECRET: env('PROD_JWT')  // ← Validated!
+  })
 }
 ```
 
@@ -106,8 +106,9 @@ Use the same config for deployment AND runtime:
 env: ({ secret }) => secret('api-secrets')
 
 // Runtime (in your app)
-import { getEnv } from '@tsops/runtime'
-const env = await getEnv(config, 'api', 'production')
+import config from './tsops.config'
+process.env.TSOPS_NAMESPACE = 'production'
+const env = config.getEnv('api')
 ```
 
 ## Comparison
@@ -138,8 +139,8 @@ tsops is perfect for:
 ### [🚀 Get Started](/guide/getting-started)
 Install tsops and deploy your first app
 
-### [📖 Core Concepts](/guide/configuration)
-Learn about configuration and helpers
+### [📖 Context Helpers](/guide/context-helpers)
+Learn about configuration helpers and runtime utilities
 
 ### [💡 Examples](/examples/)
 See real-world use cases
@@ -160,4 +161,3 @@ See real-world use cases
   border-radius: 8px;
 }
 </style>
-
