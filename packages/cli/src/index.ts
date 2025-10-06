@@ -338,7 +338,10 @@ function resolveConfigPath(inputPath: string): string {
     ? inputPath
     : path.resolve(process.cwd(), inputPath)
 
-  const hasExplicitExtension = path.extname(absoluteInput) !== ''
+  // Treat bare names (like "tsops.config") as extension-less and try known extensions
+  // If a real extension is present (e.g., .ts, .mjs), use it as-is
+  const ext = path.extname(absoluteInput)
+  const hasExplicitExtension = ext !== '' && ext !== '.config'
   const candidates = hasExplicitExtension
     ? [absoluteInput]
     : CONFIG_EXTENSION_ORDER.map((extension) =>
@@ -351,7 +354,18 @@ function resolveConfigPath(inputPath: string): string {
     }
   }
 
-  throw new Error(`Unable to locate config file at ${absoluteInput}`)
+  // Provide a helpful error that lists what we tried and which extensions are supported
+  const supportedExtensions = CONFIG_EXTENSION_ORDER.filter((e) => e !== '').join(', ')
+  const triedMessage = candidates.map((c) => `  - ${c}`).join('\n')
+  const hint = hasExplicitExtension
+    ? 'Ensure the path is correct and points to a file.'
+    : `Add an extension (${supportedExtensions}) or use --config to specify a full path.`
+
+  throw new Error(
+    `Unable to locate config file at ${absoluteInput}.\n` +
+    `Tried:\n${triedMessage}\n` +
+    `${hint}`
+  )
 }
 
 function isTypeScriptFile(filePath: string): boolean {
