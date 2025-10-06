@@ -14,7 +14,7 @@ on:
         default: ''
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
@@ -55,6 +55,23 @@ jobs:
 
       - name: Build packages
         run: pnpm -r build
+
+      - name: Prepare release notes (from CHANGELOG)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG="${GITHUB_REF#refs/tags/}"
+          VERSION="${TAG#v}"
+          node -e "const fs=require('fs');const v=process.env.VERSION;const s=fs.readFileSync('CHANGELOG.md','utf8');const esc=s=>s.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&');const re=new RegExp('^## \\['+esc(v)+'\\]\\\n([\\s\\S]*?)(?=^## \\[','m');const m=s.match(re)||s.match(new RegExp('^## \\['+esc(v)+'\\]\\\n([\\s\\S]*)$','m'));if(!m){console.error('Release notes not found for '+v);process.exit(1);}fs.writeFileSync('RELEASE_NOTES.md',m[1].trim()+"\n");" 
+        env:
+          VERSION: ${{ github.ref_name }}
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          body_path: RELEASE_NOTES.md
 
       - name: Verify tag matches CLI version
         if: startsWith(github.ref, 'refs/tags/v')
