@@ -1,6 +1,6 @@
 {
   "name": "@tsops/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Core library for tsops - TypeScript toolkit for Kubernetes",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,7 +13,10 @@
     "@tsops/k8": "workspace:*"
   },
   "scripts": {
-    "build": "tsc -b ."
+    "build": "tsc -b .",
+    "dev": "tsc -b --watch",
+    "clean": "rm -rf dist",
+    "lint": "pnpm -w exec eslint ."
   },
   "keywords": [
     "kubernetes",
@@ -23,7 +26,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/your-username/tsops.git",
+    "url": "git+https://github.com/Pom4H/tsops.git",
     "directory": "packages/core"
   },
   "license": "MIT",

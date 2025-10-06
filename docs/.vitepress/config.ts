@@ -31,7 +31,7 @@ export default defineConfig({
       { 
         text: 'v1.1.0', 
         items: [
-          { text: 'Changelog', link: 'https://github.com/yourusername/tsops/blob/main/CHANGELOG.md' },
+          { text: 'Changelog', link: 'https://github.com/Pom4H/tsops/blob/main/CHANGELOG.md' },
           { text: 'Contributing', link: '/guide/contributing' }
         ]
       }
@@ -93,7 +93,7 @@ export default defineConfig({
     },
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/yourusername/tsops' }
+      { icon: 'github', link: 'https://github.com/Pom4H/tsops' }
     ],
 
     footer: {
@@ -106,7 +106,7 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: 'https://github.com/yourusername/tsops/edit/main/docs/:path'
+      pattern: 'https://github.com/Pom4H/tsops/edit/main/docs/:path'
     }
   }
 })

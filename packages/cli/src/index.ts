@@ -225,6 +225,33 @@ async function main(): Promise<void> {
         }
       }
 
+      // Display orphaned resources (resources in cluster but not in config)
+      if (result.orphaned && result.orphaned.length > 0) {
+        hasChanges = true
+        console.log('\n🗑️  Orphaned Resources (will be deleted)\n')
+        
+        // Group by namespace
+        type OrphanedResource = typeof result.orphaned[number]
+        const byNamespace = new Map<string, OrphanedResource[]>()
+        for (const resource of result.orphaned) {
+          if (!byNamespace.has(resource.namespace)) {
+            byNamespace.set(resource.namespace, [])
+          }
+          const nsResources = byNamespace.get(resource.namespace)
+          if (nsResources) {
+            nsResources.push(resource)
+          }
+        }
+        
+        for (const [namespace, resources] of byNamespace) {
+          console.log(`   Namespace: ${namespace}`)
+          for (const resource of resources) {
+            console.log(`      🗑️  ${resource.kind}/${resource.name}`)
+          }
+          console.log()
+        }
+      }
+
       // Summary
       console.log('\n' + '─'.repeat(60))
       if (hasErrors) {
@@ -272,9 +299,15 @@ async function main(): Promise<void> {
       })
       const result = await tsops.deploy({ namespace: options.namespace, app: options.app })
 
+      console.log('✅ Deployed applications:')
       for (const entry of result.entries) {
-        console.log(`- ${entry.app} @ ${entry.namespace}`)
+        console.log(`\n- ${entry.app} @ ${entry.namespace}`)
         entry.appliedManifests.forEach((manifest: string) => console.log(`  • ${manifest}`))
+      }
+
+      if (result.deletedManifests && result.deletedManifests.length > 0) {
+        console.log('\n🗑️  Deleted orphaned resources:')
+        result.deletedManifests.forEach((manifest: string) => console.log(`  • ${manifest}`))
       }
     })
 

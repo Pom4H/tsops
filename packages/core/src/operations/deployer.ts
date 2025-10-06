@@ -38,6 +38,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    * 2. Creates secrets (atomically - all or nothing)
    * 3. Creates ConfigMaps (atomically - all or nothing)
    * 4. Creates Deployment, Service, and network resources (atomically - all or nothing)
+   * 5. Deletes orphaned resources (resources in cluster but not in config)
    * 
    * All manifests within each group are applied atomically using kubectl batch apply.
    * If any manifest fails, the entire group fails and no changes are made.
@@ -154,7 +155,27 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
       entries.push({ ...entry, appliedManifests: applied })
     }
 
-    return { entries }
+    // 5. Delete orphaned resources (resources in cluster but not in config)
+    const orphanedResources = await this.findOrphanedResources(plan, options)
+    const deletedManifests: string[] = []
+    
+    if (orphanedResources.length > 0) {
+      this.logger.info(`Found ${orphanedResources.length} orphaned resources to delete`)
+      
+      for (const resource of orphanedResources) {
+        try {
+          const ref = await this.kubectl.delete(resource.kind, resource.name, resource.namespace)
+          deletedManifests.push(ref)
+        } catch (error) {
+          this.logger.error(`Failed to delete ${resource.kind}/${resource.name}`, {
+            namespace: resource.namespace,
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
+      }
+    }
+
+    return { entries, deletedManifests: deletedManifests.length > 0 ? deletedManifests : undefined }
   }
 
   /**
@@ -255,6 +276,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    * 1. Collects all unique namespaces, secrets, and configmaps across all apps
    * 2. Validates and diffs each global artifact once (no duplicates)
    * 3. For each app, validates and diffs app-specific resources (Deployment, Service, Ingress, etc.)
+   * 4. Finds orphaned resources (resources in cluster but not in config) that should be deleted
    * 
    * This approach ensures that shared resources (like secrets used by multiple apps)
    * are only checked once, avoiding duplicates in the plan output.
@@ -262,7 +284,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    * @param options - Filtering options
    * @param options.namespace - Target a single namespace (optional)
    * @param options.app - Target a single app (optional)
-   * @returns Plan with global artifacts and per-app resource changes
+   * @returns Plan with global artifacts, per-app resource changes, and orphaned resources
    */
   async planWithChanges(options: { namespace?: string; app?: string } = {}): Promise<PlanWithChangesResult> {
     const plan = await this.planner.plan(options)
@@ -401,14 +423,86 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
       })
     }
 
+    // Step 6: Find orphaned resources (resources in cluster but not in config)
+    const orphanedChanges = await this.findOrphanedResources(plan, options)
+
     return {
       global: {
         namespaces: namespaceChanges,
         secrets: secretChanges,
         configMaps: configMapChanges
       },
-      apps: appResourceChanges
+      apps: appResourceChanges,
+      orphaned: orphanedChanges
     }
+  }
+
+  /**
+   * Finds resources in the cluster that are managed by tsops but not in the current config
+   * @param plan - Current deployment plan
+   * @param options - Filtering options
+   * @returns Array of orphaned resources to delete
+   */
+  private async findOrphanedResources(
+    plan: { entries: Array<{ namespace: string; app: string }> },
+    options: { namespace?: string; app?: string }
+  ): Promise<ManifestChange[]> {
+    const orphaned: ManifestChange[] = []
+    
+    // Collect all namespaces we should check
+    const namespacesToCheck = new Set(plan.entries.map(e => e.namespace))
+    
+    // If namespace filter is set, only check that namespace
+    if (options.namespace) {
+      namespacesToCheck.clear()
+      namespacesToCheck.add(options.namespace)
+    }
+
+    // For each namespace, find orphaned app resources
+    for (const namespace of namespacesToCheck) {
+      // Collect all apps that should exist in this namespace
+      const expectedApps = new Set(
+        plan.entries
+          .filter(e => e.namespace === namespace)
+          .map(e => e.app)
+      )
+
+      // Resource types to check for orphaned resources
+      const resourceTypes = ['Deployment', 'Service', 'Ingress', 'IngressRoute', 'Certificate']
+      
+      for (const kind of resourceTypes) {
+        try {
+          // Get all managed resources of this kind in the namespace
+          const resources = await this.kubectl.list(kind, namespace, 'tsops/managed=true')
+          
+          for (const resource of resources) {
+            const resourceName = String(resource.metadata?.name ?? '')
+            const labels = resource.metadata?.labels as Record<string, string> | undefined
+            const appLabel = labels?.['tsops/app']
+            
+            // Check if this resource belongs to an app that's no longer in the config
+            if (appLabel && !expectedApps.has(appLabel)) {
+              // If app filter is set, only include if it matches
+              if (!options.app || options.app === appLabel) {
+                orphaned.push({
+                  kind,
+                  name: resourceName,
+                  namespace,
+                  action: 'delete',
+                  validated: true
+                })
+              }
+            }
+          }
+        } catch (error) {
+          this.logger.debug(`Failed to list ${kind} in namespace ${namespace}`, {
+            error: error instanceof Error ? error.message : String(error)
+          })
+        }
+      }
+    }
+
+    return orphaned
   }
 
   /**

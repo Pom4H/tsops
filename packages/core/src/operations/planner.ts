@@ -49,7 +49,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         if (!this.resolver.apps.shouldDeploy(app, namespace)) continue
 
         const context = this.resolver.namespaces.createHostContext(namespace, { appName })
-        let host = this.resolver.apps.resolveHost(app, context)
+        let host: string | undefined = undefined
         const env = this.resolver.apps.resolveEnv(app, namespace, context)
         const secrets = this.resolver.apps.resolveSecrets(app, namespace, context)
         const configMaps = this.resolver.apps.resolveConfigMaps(app, namespace, context)

@@ -10,7 +10,7 @@ tsops is a TypeScript-first toolkit for deploying applications to Kubernetes. It
 
 ```
 ┌───────────────────────────────────────────────────────────┐
-│                         @tsops/cli                        │
+│                           tsops                           │
 │  ┌────────────────────────────────────────────────────┐   │
 │  │  Command Parser (commander)                        │   │
 │  │  - plan / build / deploy commands                  │   │
@@ -90,7 +90,7 @@ tsops is a TypeScript-first toolkit for deploying applications to Kubernetes. It
 
 ## Layer Responsibilities
 
-### 1. CLI Layer (`@tsops/cli`)
+### 1. CLI Layer (`tsops`)
 - **Purpose**: User interface for tsops
 - **Responsibilities**:
   - Parse command-line arguments using `commander`

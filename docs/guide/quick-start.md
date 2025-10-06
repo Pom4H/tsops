@@ -5,7 +5,7 @@ Deploy your first app to Kubernetes in 5 minutes.
 ## 1. Install
 
 ```bash
-pnpm add -D @tsops/core @tsops/k8 @tsops/cli
+pnpm add tsops
 ```
 
 ## 2. Create Config
@@ -13,13 +13,12 @@ pnpm add -D @tsops/core @tsops/k8 @tsops/cli
 Create `tsops.config.ts`:
 
 ```typescript
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'hello',
-  domain: { prod: 'example.com' },
   namespaces: {
-    prod: { region: 'prod' }
+    prod: { domain: 'example.com' }
   },
   clusters: {
     production: {
@@ -39,10 +38,8 @@ export default defineConfig({
         context: './web',
         dockerfile: './web/Dockerfile'
       },
-      host: ({ subdomain }) => subdomain('www'),
-      env: ({ production }) => ({
-        NODE_ENV: production ? 'production' : 'development'
-      })
+      network: ({ domain }) => `www.${domain}`,
+      env: ({ production }) => ({ NODE_ENV: production ? 'production' : 'development' })
     }
   }
 })

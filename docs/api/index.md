@@ -9,7 +9,7 @@ Complete API documentation for tsops.
 Define your tsops configuration with full type safety.
 
 ```typescript
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'my-app',
@@ -25,7 +25,7 @@ export default defineConfig({
 Main class for executing tsops commands.
 
 ```typescript
-import { TsOps } from '@tsops/core'
+import { TsOps } from 'tsops'
 import config from './tsops.config'
 
 const tsops = new TsOps(config, { dryRun: false })

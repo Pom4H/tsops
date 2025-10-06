@@ -49,13 +49,14 @@ export interface BuildResult {
 
 export interface DeployResult {
   entries: (PlanEntry & { appliedManifests: string[] })[]
+  deletedManifests?: string[]
 }
 
 export interface ManifestChange {
   kind: string
   name: string
   namespace: string
-  action: 'create' | 'update' | 'unchanged'
+  action: 'create' | 'update' | 'unchanged' | 'delete'
   diff?: string
   validated: boolean
   validationError?: string
@@ -78,4 +79,5 @@ export interface AppResourceChanges {
 export interface PlanWithChangesResult {
   global: GlobalArtifacts
   apps: AppResourceChanges[]
+  orphaned: ManifestChange[]
 }

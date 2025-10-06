@@ -165,10 +165,7 @@ env: ({ serviceDNS }) => ({
 
 ```typescript
 env: ({ serviceDNS }) => ({
-  SERVICE_URL: serviceDNS('api', { 
-    port: 3000, 
-    clusterDomain: 'custom.local' 
-  }),
+  SERVICE_URL: serviceDNS('api', { port: 3000, clusterDomain: 'custom.local' }),
   // -> 'my-project-api.production.svc.custom.local:3000'
 })
 ```
@@ -462,7 +459,7 @@ Replaces `{key}` with corresponding value from `vars` object. Missing keys are r
 ## Complete Example
 
 ```typescript
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'my-app',

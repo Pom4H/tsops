@@ -28,7 +28,7 @@ tsops provides:
 
 ```typescript
 // tsops.config.ts
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'my-app',

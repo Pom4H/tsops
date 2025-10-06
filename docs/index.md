@@ -17,7 +17,7 @@ hero:
       link: /examples/
     - theme: alt
       text: GitHub
-      link: https://github.com/yourusername/tsops
+      link: https://github.com/Pom4H/tsops
 
 features:
   - icon: 🎯
@@ -26,7 +26,7 @@ features:
     
   - icon: ✨
     title: Context Helpers
-    details: Built-in helpers for service DNS, subdomains, and secrets - no more hardcoded values.
+    details: Built-in helpers for service DNS and secrets — no more hardcoded values.
     
   - icon: 🔒
     title: Secret Validation
@@ -50,7 +50,7 @@ features:
     
   - icon: 🔄
     title: envFrom Support
-    details: Reference entire secrets as environment variables with a single function call.
+    details: Reference entire secrets/configMaps as environment variables with a single function call.
     
   - icon: 🛡️
     title: Production Ready
@@ -60,7 +60,7 @@ features:
 ## Quick Example
 
 ```typescript
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'my-app',
@@ -88,39 +88,38 @@ export default defineConfig({
   
   apps: {
     api: {
-      env: ({ 
-        serviceDNS,     // Enhanced with protocols & options
-        secret,         // Simplified API (no secretKey needed)
-        appName,        // Current app name
-        template,       // Template strings
-        production,     // Namespace variables
-        replicas        // Namespace variables
-      }) => ({
-        // Namespace-based environment flags
+      network: ({ domain }) => `api.${domain}`,
+      ports: [{ name: 'http', port: 80, targetPort: 8080 }],
+      env: ({ serviceDNS, secret, appName, template, production, replicas }) => ({
+        // Flags
         NODE_ENV: production ? 'production' : 'development',
         
         // Metadata
         SERVICE_NAME: appName,
         
-        // Simple service DNS
+        // Dependencies
+        REDIS_HOST: serviceDNS('redis'),
         REDIS_URL: serviceDNS('redis', 6379),
-        
-        // With protocol (new!)
-        POSTGRES_URL: serviceDNS('postgres', { 
-          port: 5432, 
-          protocol: 'postgresql' 
+        POSTGRES_URL: template('postgresql://{host}/{db}', {
+          host: serviceDNS('postgres', 5432),
+          db: 'mydb'
         }),
         
-        // Secret references (unified API)
+        // Secrets
         JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
-        
-        // Template helper (new!)
-        DATABASE_URL: template('postgresql://{host}/mydb', {
-          host: serviceDNS('postgres')
-        }),
         
         // Namespace variables
         WORKER_COUNT: String(replicas * 2)
+      })
+    },
+    web: {
+      network: ({ domain }) => `web.${domain}`,
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }],
+      env: ({ template, serviceDNS, production }) => ({
+        NODE_ENV: production ? 'production' : 'development',
+        API_URL: template('http://{host}', {
+          host: serviceDNS('api', 8080)
+        })
       })
     }
   }

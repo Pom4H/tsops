@@ -14,15 +14,15 @@ Get up and running with tsops in minutes.
 ::: code-group
 
 ```bash [pnpm]
-pnpm add -D @tsops/core @tsops/k8 @tsops/cli
+npm install --save-dev tsops
 ```
 
 ```bash [npm]
-npm install --save-dev @tsops/core @tsops/k8 @tsops/cli
+pnpm add -D tsops
 ```
 
 ```bash [yarn]
-yarn add -D @tsops/core @tsops/k8 @tsops/cli
+yarn add -D tsops
 ```
 
 :::
@@ -32,18 +32,14 @@ yarn add -D @tsops/core @tsops/k8 @tsops/cli
 Create `tsops.config.ts` in your project root:
 
 ```typescript
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'my-app',
   
-  domain: {
-    prod: 'example.com'
-  },
-  
   namespaces: {
     production: {
-      region: 'prod'
+      domain: 'example.com'
     }
   },
   
@@ -68,11 +64,13 @@ export default defineConfig({
         dockerfile: './api/Dockerfile'
       },
       
-      host: ({ subdomain }) => subdomain('api'),
+      network: ({ domain }) => `api.${domain}`,
       
-      env: ({ serviceDNS, production }) => ({
+      env: ({ serviceDNS, template, production }) => ({
         NODE_ENV: production ? 'production' : 'development',
-        DB_URL: serviceDNS('postgres', 5432)
+        DB_URL: template('postgresql://{host}/mydb', {
+          host: serviceDNS('postgres', 5432)
+        })
       })
     }
   }

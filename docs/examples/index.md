@@ -7,7 +7,7 @@ Real-world examples of tsops in action.
 Basic Node.js app with Docker build and Kubernetes deployment.
 
 ```typescript
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'my-app',
@@ -241,7 +241,7 @@ export interface AppConfig {
 }
 
 // tsops.config.ts
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 import type { AppConfig } from './packages/shared/types'
 
 export default defineConfig({

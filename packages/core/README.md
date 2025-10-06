@@ -138,5 +138,5 @@ pnpm build:watch # Watch mode
 ## Related Packages
 
 - **@tsops/k8** – Kubernetes manifest builders
-- **@tsops/cli** – Command-line interface
+- **tsops** – Command-line interface
 

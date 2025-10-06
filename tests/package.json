@@ -1,0 +1,14 @@
+{
+  "name": "tsops-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "echo nothing to build",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "@types/node": "^24.6.2"
+  }
+}

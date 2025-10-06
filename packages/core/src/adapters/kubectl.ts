@@ -343,4 +343,64 @@ export class Kubectl {
       return ''
     }
   }
+
+  /**
+   * Get all resources of a specific kind with a label selector
+   * @param kind - Resource kind (e.g., 'Deployment', 'Service')
+   * @param namespace - Namespace
+   * @param labelSelector - Label selector (e.g., 'tsops/managed=true')
+   * @returns Array of resource manifests
+   */
+  async list(kind: string, namespace: string, labelSelector?: string): Promise<SupportedManifest[]> {
+    if (this.dryRun) {
+      return []
+    }
+
+    try {
+      const args = ['get', kind, '-n', namespace, '-o', 'json']
+      if (labelSelector) {
+        args.push('-l', labelSelector)
+      }
+
+      const output = await this.runner.run('kubectl', args, {
+        inheritStdio: false,
+        captureOutput: true
+      })
+
+      const result = JSON.parse(output)
+      return result.items || []
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Delete a resource
+   * @param kind - Resource kind
+   * @param name - Resource name
+   * @param namespace - Namespace
+   * @returns Resource reference
+   */
+  async delete(kind: string, name: string, namespace: string): Promise<string> {
+    const ref = `${kind}/${name}`
+
+    this.logger.info('kubectl delete', {
+      namespace,
+      kind,
+      name
+    })
+
+    if (this.dryRun) {
+      this.logger.debug('Dry run enabled – skipping kubectl delete', { ref, namespace })
+      return `${ref} (dry-run)`
+    }
+
+    await this.runner.run('kubectl', ['delete', kind, name, '-n', namespace], {
+      inheritStdio: false,
+      onStdout: (data) => this.logger.debug('kubectl stdout', { output: data.trim() }),
+      onStderr: (data) => this.logger.warn('kubectl stderr', { output: data.trim() })
+    })
+
+    return ref
+  }
 }

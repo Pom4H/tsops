@@ -8,5 +8,6 @@ export * from './environment-provider.js'
 export * from './adapters/docker.js'
 export * from './adapters/kubectl.js'
 export * from './adapters/git.js'
+export * from './runtime-config.js'
 
 export { defineConfig } from './config/definer.js'

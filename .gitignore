@@ -3,3 +3,5 @@ dist
 cache
 .turbo
 .env
+.DS_Store
+tsconfig.tsbuildinfo

@@ -39,10 +39,6 @@ export interface AppsResolver<
 > {
   select(target?: string): AppEntry<TConfig>[]
   shouldDeploy(app: ResolverApp<TConfig>, namespace: string): boolean
-  resolveHost(
-    app: ResolverApp<TConfig>,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps'], TConfig['apps']>
-  ): string | undefined
   resolveEnv(
     app: ResolverApp<TConfig>,
     namespace: string,
@@ -130,20 +126,7 @@ export function createAppsResolver<
     return true
   }
 
-  /**
-   * Resolves the host name for an app.
-   * @param app - The application definition
-   * @param context - Host context with helpers
-   * @returns Resolved host name or undefined
-   */
-  function resolveHost(
-    app: ResolverApp<TConfig>,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps']>
-  ): string | undefined {
-    if (!app.host) return undefined
-    if (typeof app.host === 'string') return app.host
-    return app.host(context)
-  }
+  // host removed: external host inferred from network only
 
   /**
    * Resolves environment variables for an app in a specific namespace.
@@ -388,7 +371,6 @@ export function createAppsResolver<
   return {
     select,
     shouldDeploy,
-    resolveHost,
     resolveEnv,
     resolveSecrets,
     resolveConfigMaps,

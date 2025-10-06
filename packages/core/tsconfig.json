@@ -1,11 +1,14 @@
 {
-  "extends": "../../tsconfig.base.json",
+  "extends": "../../tsconfig.json",
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": "src",
     "composite": true,
     "tsBuildInfoFile": "dist/tsconfig.tsbuildinfo"
   },
-  "include": ["**/*.ts"],
+  "references": [
+    { "path": "../k8" }
+  ],
+  "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"]
 }

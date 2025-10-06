@@ -89,7 +89,7 @@ export function createNamespaceResolver<
     }
     
     // Enhanced serviceDNS with options support
-    const serviceDNS = (app: string, options?: number | ServiceDNSOptions): string => {
+    const serviceDNS = (app: Extract<keyof TConfig['apps'], string>, options?: number | ServiceDNSOptions): string => {
       // Backward compatibility: number -> port
       if (typeof options === 'number') {
         const dns = `${projectName}-${app}.${namespace}.svc.cluster.local`

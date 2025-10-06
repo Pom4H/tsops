@@ -3,6 +3,6 @@
   "type": "module",
   "dependencies": {
     "@tsops/core": "workspace:",
-    "@tsops/cli": "workspace:"
+    "tsops": "workspace:"
   }
 }

@@ -1,27 +1,26 @@
 {
-  "name": "tsops",
+  "name": "tsops-monorepo",
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "tsc -b",
-    "build:watch": "tsc -b --watch",
-    "clean": "rm -rf packages/*/dist",
-    "lint": "eslint packages",
-    "lint:fix": "eslint packages --fix",
-    "docs:dev": "vitepress dev docs",
-    "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "clean": "turbo run clean",
+    "lint": "turbo run lint",
+    "lint:fix": "turbo run lint -- --fix",
+    "test": "turbo run test",
+    "docs:dev": "pnpm -F tsops-docs dev",
+    "docs:build": "pnpm -F tsops-docs build",
+    "docs:preview": "pnpm -F tsops-docs preview"
   },
   "devDependencies": {
     "@eslint/js": "^9.37.0",
-    "@tsops/cli": "workspace:*",
     "@types/node": "^24.6.2",
     "@typescript-eslint/eslint-plugin": "^8.45.0",
     "@typescript-eslint/parser": "^8.45.0",
     "eslint": "9.37.0",
-    "typescript": "^5.9.3",
-    "vitepress": "^1.6.4",
-    "vue": "^3.5.22"
+    "turbo": "^2.5.8",
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@10.17.1"
 }

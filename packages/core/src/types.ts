@@ -37,7 +37,6 @@ type ReservedContextKeys =
   | 'configMap' 
   | 'secretKey'
   | 'configMapKey'
-  | 'host'
   | 'service'
 
 /**
@@ -596,7 +595,6 @@ export type AppDefinition<
   TConfigMaps = undefined,
   TApps = undefined
 > = {
-  host?: string | ((ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>) => string)
   image?: string
   build?: BuildDefinition
   env?: AppEnv<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
@@ -677,7 +675,8 @@ export type TsOpsConfig<
   TNamespaces extends Record<string, NamespaceDefinition>,
   TClusters extends Record<string, ClusterDefinition<Extract<keyof TNamespaces, string>>>,
   TImages extends ImagesConfig,
-  TApps extends Record<string, AppDefinition<ExtractNamespaceVars<TNamespaces>, TProject, Extract<keyof TNamespaces, string>, TSecrets, TConfigMaps, TApps>>,
+  // Avoid recursive constraint to preserve literal app key inference
+  TApps extends Record<string, unknown>,
   TSecrets extends Record<string, unknown> | undefined = undefined,
   TConfigMaps extends Record<string, unknown> | undefined = undefined
 > = {

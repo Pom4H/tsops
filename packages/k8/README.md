@@ -146,5 +146,5 @@ To regenerate Kubernetes types from OpenAPI spec, see the scripts directory in t
 ## Related Packages
 
 - **@tsops/core** – Core orchestration and configuration
-- **@tsops/cli** – Command-line interface
+- **tsops** – Command-line interface
 
