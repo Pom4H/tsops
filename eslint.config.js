@@ -35,19 +35,12 @@ export default [
       '@typescript-eslint': tseslint
     },
     rules: {
-      ...tseslint.configs.recommended.rules,
-      '@typescript-eslint/no-explicit-any': 'warn',
-      '@typescript-eslint/no-unsafe-assignment': 'warn',
-      '@typescript-eslint/no-unsafe-member-access': 'warn',
-      '@typescript-eslint/no-unsafe-call': 'warn',
-      '@typescript-eslint/no-unsafe-return': 'warn',
-      '@typescript-eslint/no-unused-vars': 'warn',
-      'no-undef': 'off',
-      'no-irregular-whitespace': 'off'
+      ...tseslint.configs.recommended.rules
     }
   },
   {
     ignores: [
+      '**/*.js',
       'node_modules/**',
       'dist/**',
       'packages/*/dist/**',
