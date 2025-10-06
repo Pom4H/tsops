@@ -61,7 +61,17 @@ jobs:
         run: |
           TAG="${GITHUB_REF#refs/tags/}"
           VERSION="${TAG#v}"
-          node -e "const fs=require('fs');const v=process.env.VERSION;const s=fs.readFileSync('CHANGELOG.md','utf8');const esc=s=>s.replace(/[.*+?^${}()|[\\]\\]/g,'\\$&');const re=new RegExp('^## \\['+esc(v)+'\\]\\\n([\\s\\S]*?)(?=^## \\[','m');const m=s.match(re)||s.match(new RegExp('^## \\['+esc(v)+'\\]\\\n([\\s\\S]*)$','m'));if(!m){console.error('Release notes not found for '+v);process.exit(1);}fs.writeFileSync('RELEASE_NOTES.md',m[1].trim()+"\n");" 
+          node <<'NODE'
+          const fs = require('fs');
+          const version = process.env.VERSION;
+          const text = fs.readFileSync('CHANGELOG.md','utf8');
+          const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+          const re1 = new RegExp('^## \\['+esc(version)+'\\]\\n([\\s\\S]*?)(?=^## \\[)','m');
+          const re2 = new RegExp('^## \\['+esc(version)+'\\]\\n([\\s\\S]*)$','m');
+          const m = text.match(re1) || text.match(re2);
+          if (!m) { console.error('Release notes not found for '+version); process.exit(1); }
+          fs.writeFileSync('RELEASE_NOTES.md', m[1].trim()+"\n");
+          NODE
         env:
           VERSION: ${{ github.ref_name }}
 
