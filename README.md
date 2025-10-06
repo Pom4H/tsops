@@ -49,27 +49,21 @@ export default defineConfig({
   
   apps: {
     api: {
-      host: ({ domain }) => `api.${domain}`,
+      // External host derived from namespace domain
+      network: ({ domain }) => `api.${domain}`,
       build: {
         type: 'dockerfile',
         context: '.',
         dockerfile: 'Dockerfile'
       },
-      env: ({ replicas }) => ({
+      env: ({ serviceDNS, template, replicas }) => ({
         NODE_ENV: replicas > 1 ? 'production' : 'development',
-        REPLICAS: String(replicas)
-      }),
-      network: {
-        ingress: {
-          className: 'nginx'
-        },
-        certificate: {
-          issuerRef: {
-            kind: 'ClusterIssuer',
-            name: 'letsencrypt-prod'
-          }
-        }
-      }
+        REPLICAS: String(replicas),
+        REDIS_HOST: serviceDNS('redis'),
+        DATABASE_URL: template('postgresql://{host}/app', {
+          host: serviceDNS('postgres', 5432)
+        })
+      })
     }
   }
 })
@@ -102,7 +96,7 @@ tsops deploy --namespace prod --app api
 
 ## Documentation
 
-Full documentation is available at [your-docs-url]
+Full documentation is available at [GitHub Pages](https://pom4h.github.io/tsops/)
 
 ## Packages
 
