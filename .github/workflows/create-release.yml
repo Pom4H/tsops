@@ -1,0 +1,40 @@
+name: Create Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version (e.g., 1.2.3)'
+        required: true
+      notes:
+        description: 'Release notes (optional, Markdown)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  create_release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create annotated tag
+        run: |
+          V="${{ inputs.version }}"
+          case "$V" in v*) ;; *) V="v$V" ;; esac
+          if [ -n "${{ inputs.notes }}" ]; then
+            printf "%s\n" "${{ inputs.notes }}" > RELEASE_NOTES.md
+            git tag -a "$V" -m "$(cat RELEASE_NOTES.md)"
+          else
+            git tag -a "$V" -m "$V"
+          fi
+          git push origin "$V"
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
+          body: ${{ inputs.notes }}
+          draft: false
+          prerelease: false
