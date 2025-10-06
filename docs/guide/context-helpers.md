@@ -209,13 +209,13 @@ export default defineConfig({
   apps: {
     api: {
       // Uses namespace's domain variable
-      host: ({ subdomain }) => subdomain('api'),
+      network: ({ domain }) => `api.${domain}`,
       // -> 'api.example.com'
       
-      env: ({ subdomain }) => ({
-        // Custom domain
-        WEBHOOK_URL: subdomain('webhooks', 'custom.com'),
-        // -> 'webhooks.custom.com'
+      env: ({ template, domain }) => ({
+        // Custom host
+        WEBHOOK_URL: template('https://{host}', { host: `webhooks.${domain}` }),
+        // -> 'https://webhooks.custom.com'
       })
     }
   }

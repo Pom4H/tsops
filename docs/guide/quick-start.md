@@ -78,7 +78,7 @@ server.listen(3000, () => {
 ## 5. Deploy
 
 ```bash
-GIT_SHA=$(git rev-parse HEAD) pnpm tsops deploy --namespace prod
+pnpm tsops deploy --namespace prod
 ```
 
 ## 6. Verify

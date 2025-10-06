@@ -57,6 +57,18 @@ features:
     details: Battle-tested in production with comprehensive validation and error handling.
 ---
 
+## Installation
+
+Install as a runtime dependency. The `defineConfig()` helper returns a runtime config object that your applications can import directly as a single source of truth (endpoints, env, hosts).
+
+```bash
+npm install tsops
+# or
+pnpm add tsops
+# or
+yarn add tsops
+```
+
 ## Quick Example
 
 ```typescript
@@ -124,6 +136,32 @@ export default defineConfig({
     }
   }
 })
+```
+
+ 
+
+## Use in your app (runtime)
+
+Import your `tsops.config.ts` in any service to access resolved endpoints and env at runtime.
+
+```ts
+// frontend/app/page.ts (or any service file)
+import config from './tsops.config'
+
+// Automatically respects TSOPS_NAMESPACE (dev/prod)
+const backendBase = config.getInternalEndpoint('backend')
+// e.g. http://myproj-backend.dev.svc.cluster.local:8080
+
+export default async function Page() {
+  const res = await fetch(`${backendBase}/api/message`, { cache: 'no-store' })
+  const data = res.ok ? await res.json() : { message: `HTTP ${res.status}` }
+  return (
+    <main>
+      <h1>Frontend</h1>
+      <p>Backend says: {data.message}</p>
+    </main>
+  )
+}
 ```
 
 ## Why tsops?

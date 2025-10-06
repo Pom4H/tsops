@@ -25,7 +25,7 @@ export default defineConfig({
         dockerfile: './web/Dockerfile'
       },
       
-      host: ({ subdomain }) => subdomain('www'),
+      network: ({ domain }) => `www.${domain}`,
       
       env: ({ production }) => ({
         NODE_ENV: production ? 'production' : 'development',
@@ -36,7 +36,7 @@ export default defineConfig({
 })
 ```
 
-[Full Example →](/examples/simple-app)
+[Full Example →](/examples/fullstack)
 
 ## Full-Stack Application
 
@@ -46,14 +46,14 @@ Frontend + Backend + Database with secrets and service discovery.
 export default defineConfig({
   apps: {
     frontend: {
-      host: ({ subdomain }) => subdomain('app'),
+      network: ({ domain }) => `app.${domain}`,
       env: ({ serviceDNS }) => ({
         API_URL: serviceDNS('backend', 3000)
       })
     },
     
     backend: {
-      host: ({ subdomain }) => subdomain('api'),
+      network: ({ domain }) => `api.${domain}`,
       env: ({ serviceDNS, secret, production }) => {
         if (production) {
           return secret('backend-secrets')
@@ -94,7 +94,7 @@ Multiple services with shared configuration.
 export default defineConfig({
   apps: {
     gateway: {
-      host: ({ subdomain }) => subdomain('api'),
+      network: ({ domain }) => `api.${domain}`,
       env: ({ serviceDNS }) => ({
         AUTH_SERVICE: serviceDNS('auth', 3001),
         USER_SERVICE: serviceDNS('users', 3002),
@@ -128,7 +128,7 @@ export default defineConfig({
 })
 ```
 
-[Full Example →](/examples/microservices)
+[Full Example →](/examples/monitoring)
 
 ## With Monitoring
 
@@ -153,12 +153,12 @@ export default defineConfig({
     
     prometheus: {
       image: 'prom/prometheus:latest',
-      host: ({ subdomain }) => subdomain('prometheus')
+      network: ({ domain }) => `prometheus.${domain}`
     },
     
     grafana: {
       image: 'grafana/grafana:latest',
-      host: ({ subdomain }) => subdomain('grafana'),
+      network: ({ domain }) => `grafana.${domain}`,
       env: ({ serviceDNS }) => ({
         GF_DATABASE_URL: serviceDNS('postgres', 5432),
         GF_DATASOURCES_PROMETHEUS: serviceDNS('prometheus', 9090),
@@ -193,7 +193,7 @@ export default defineConfig({
   
   apps: {
     api: {
-      host: ({ subdomain }) => subdomain('api'),
+      network: ({ domain }) => `api.${domain}`,
       
       env: ({ production, dev, serviceDNS, secret }) => {
         if (production) {
@@ -277,12 +277,9 @@ export default defineConfig({
 
 ## Browse All Examples
 
-- [Simple App](/examples/simple-app) - Basic setup
 - [Full-Stack](/examples/fullstack) - Complete application
-- [Microservices](/examples/microservices) - Service mesh
-- [With Secrets](/examples/with-secrets) - Secret management
 - [Monitoring](/examples/monitoring) - Observability stack
-- [Multi-Environment](/examples/multi-env) - Dev/Stage/Prod
+- [Monorepo](/examples/monorepo) - Multi-app repo
 
 ## Example Repository
 
@@ -292,7 +289,7 @@ All examples are available in the [tsops-examples](https://github.com/youruserna
 git clone https://github.com/yourusername/tsops-examples
 cd tsops-examples/simple-app
 pnpm install
-GIT_SHA=test pnpm tsops plan
+pnpm tsops plan
 ```
 
 

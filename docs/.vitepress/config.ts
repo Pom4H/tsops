@@ -1,4 +1,5 @@
 import { defineConfig } from 'vitepress'
+import cliPkg from '../../packages/cli/package.json' with { type: 'json' }
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
@@ -29,7 +30,7 @@ export default defineConfig({
       { text: 'Examples', link: '/examples/' },
       { text: 'API', link: '/api/' },
       { 
-        text: 'v1.1.0', 
+        text: `v${cliPkg.version}`, 
         items: [
           { text: 'Changelog', link: 'https://github.com/Pom4H/tsops/blob/main/CHANGELOG.md' },
           { text: 'Contributing', link: '/guide/contributing' }
@@ -72,10 +73,9 @@ export default defineConfig({
           text: 'Examples',
           items: [
             { text: 'Overview', link: '/examples/' },
-            { text: 'Simple App', link: '/examples/simple-app' },
             { text: 'Full-Stack App', link: '/examples/fullstack' },
-            { text: 'Microservices', link: '/examples/microservices' },
-            { text: 'With Secrets', link: '/examples/with-secrets' },
+            { text: 'Monitoring (OTEL + Loki + Grafana)', link: '/examples/monitoring' },
+            { text: 'Monorepo', link: '/examples/monorepo' },
           ]
         }
       ],

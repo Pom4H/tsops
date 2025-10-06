@@ -8,11 +8,11 @@ TypeScript-first toolkit for planning, building, and deploying to Kubernetes.
 ## Quick Start
 
 ```bash
-# Install globally
-npm install -g tsops
+npm install tsops
 
-# Or as a dev dependency
-npm install -D tsops
+or
+
+pnpm add tsops
 ```
 
 Then create a `tsops.config.ts` file:

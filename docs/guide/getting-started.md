@@ -14,15 +14,15 @@ Get up and running with tsops in minutes.
 ::: code-group
 
 ```bash [pnpm]
-npm install --save-dev tsops
+npm install tsops
 ```
 
 ```bash [npm]
-pnpm add -D tsops
+pnpm add tsops
 ```
 
 ```bash [yarn]
-yarn add -D tsops
+yarn add tsops
 ```
 
 :::
@@ -99,7 +99,7 @@ Add to your `package.json`:
 See what will be deployed:
 
 ```bash
-GIT_SHA=$(git rev-parse HEAD) pnpm tsops plan
+pnpm tsops plan
 ```
 
 Output:
@@ -112,7 +112,7 @@ Output:
 Build Docker images:
 
 ```bash
-GIT_SHA=$(git rev-parse HEAD) pnpm tsops build
+pnpm tsops build
 ```
 
 ### Step 3: Deploy
@@ -120,7 +120,7 @@ GIT_SHA=$(git rev-parse HEAD) pnpm tsops build
 Deploy to Kubernetes:
 
 ```bash
-GIT_SHA=$(git rev-parse HEAD) pnpm tsops deploy --namespace production
+pnpm tsops deploy --namespace production
 ```
 
 Output:
