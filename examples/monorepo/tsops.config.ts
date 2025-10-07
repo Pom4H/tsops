@@ -1,4 +1,4 @@
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 const config = defineConfig({
   project: 'tsops-monorepo-demo',
@@ -24,8 +24,8 @@ const config = defineConfig({
     includeProjectInName: true
   },
   secrets: {
-    'monorepo-backend-env': (ctx: { env: (key: string, fallback?: string) => string }) => ({
-      API_TOKEN: ctx.env('BACKEND_API_TOKEN', '')
+    'monorepo-backend-env': () => ({
+      API_TOKEN: process.env.BACKEND_API_TOKEN ?? 'dev-token'
     })
   },
   apps: {
@@ -44,7 +44,7 @@ const config = defineConfig({
       env: ({ serviceDNS, secret }) => ({
         PORT: '4000',
         FRONTEND_URL: serviceDNS('frontend', { protocol: 'http', port: 80 }),
-        API_TOKEN: secret('monorepo-backend-env', 'API_TOKEN')
+        API_TOKEN: secret('monorepo-backend-env', 'API_TOKEN2')
       }),
       ports: [
         { name: 'http', port: 4000, targetPort: 4000 }

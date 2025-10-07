@@ -1,4 +1,4 @@
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 const config = defineConfig({
   project: 'tsops-otel-demo',
@@ -18,10 +18,10 @@ const config = defineConfig({
     includeProjectInName: true
   },
   secrets: {
-    'otel-api-secrets': (ctx: { env: (key: string, fallback?: string) => string }) => ({
-      JWT_SECRET: ctx.env('JWT_SECRET', 'dev-jwt'),
-      DB_PASSWORD: ctx.env('DB_PASSWORD', 'dev-pass'),
-      API_KEY: ctx.env('API_KEY', 'dev-api-key')
+    'otel-api-secrets': () => ({
+      JWT_SECRET: process.env.JWT_SECRET ?? 'dev-jwt',
+      DB_PASSWORD: process.env.DB_PASSWORD ?? 'dev-pass',
+      API_KEY: process.env.API_KEY ?? 'dev-api-key'
     })
   },
   configMaps: {
@@ -161,5 +161,3 @@ const config = defineConfig({
 })
 
 export default config
-
-

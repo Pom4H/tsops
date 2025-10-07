@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { defineConfig } from '../packages/core/src/index.js'
+import { defineConfig } from 'tsops'
 
 // Create a comprehensive config using most features
 const cfg = defineConfig({
@@ -26,22 +26,22 @@ const cfg = defineConfig({
     includeProjectInName: true
   },
   secrets: {
-    shared: { SHARED_KEY: 'shared' },
-    tokens: ({ project }) => ({ PROJECT: project })
+    'shared-secrets': { SHARED_KEY: 'shared' },
+    'token-secrets': { PROJECT: 'demo' }
   },
   configMaps: {
-    settings: { LOG_LEVEL: 'info' },
-    flags: ({ namespace }) => ({ NAMESPACE: namespace })
+    'app-settings': { LOG_LEVEL: 'info' },
+    'namespace-flags': { NAMESPACE: 'dev' }
   },
   apps: {
     api: {
       build: { type: 'dockerfile', context: '.', dockerfile: 'Dockerfile' },
       env: ({ secret, configMap, serviceDNS, project, domain }) => ({
         NODE_ENV: 'production',
-        TOKEN: secret('tokens', 'PROJECT'),
-        SHARED_KEY: secret('shared', 'SHARED_KEY'),
-        LOG_LEVEL: configMap('settings', 'LOG_LEVEL'),
-        NAMESPACE: configMap('flags', 'NAMESPACE'),
+        TOKEN: secret('token-secrets', 'PROJECT'),
+        SHARED_KEY: secret('shared-secrets', 'SHARED_KEY'),
+        LOG_LEVEL: configMap('app-settings', 'LOG_LEVEL'),
+        NAMESPACE: configMap('namespace-flags', 'NAMESPACE'),
         ENDPOINT: serviceDNS('api', 8080),
         PROJECT: project,
         HOST: `api.${domain}`
@@ -52,7 +52,7 @@ const cfg = defineConfig({
     web: {
       network: ({ domain }) => `web.${domain}`,
       // envFrom: entire configMap
-      env: ({ configMap }) => configMap('flags'),
+      env: ({ configMap }) => configMap('namespace-flags'),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }]
     }
   }
@@ -99,7 +99,7 @@ describe('defineConfig runtime API', () => {
       // env resolution
       expect(api.env.NODE_ENV).toBe('production')
       expect(api.env.SHARED_KEY).toBe('shared')
-      expect(api.env.TOKEN).toBe('demo') // from tokens.PROJECT => project
+      expect(api.env.TOKEN).toBe('demo') // from token-secrets.PROJECT => project
       expect(api.env.LOG_LEVEL).toBe('info')
       expect(api.env.NAMESPACE).toBe('dev')
       expect(api.env.PROJECT).toBe('demo')
@@ -132,8 +132,9 @@ describe('defineConfig runtime API', () => {
       expect(api.serviceName).toBe('demo-api')
       expect(api.internalEndpoint).toBe('http://demo-api.prod.svc.cluster.local:8080')
       expect(cfg.getExternalEndpoint('api')).toBe('https://api.example.com')
-
+      
       const web = cfg.getApp('web')
+      expect(web.serviceName).toBe('demo-web')
       expect(cfg.getExternalEndpoint('web')).toBe('https://web.example.com')
     })
   })
