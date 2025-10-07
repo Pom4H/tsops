@@ -1,4 +1,4 @@
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 const config = defineConfig({
   project: 'tsops-fullstack-demo',

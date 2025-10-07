@@ -7,6 +7,9 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "tsops": "workspace:*"
+  },
   "devDependencies": {
     "vitest": "^3.2.4",
     "@types/node": "^24.6.2"

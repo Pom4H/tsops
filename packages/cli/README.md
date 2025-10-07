@@ -173,7 +173,7 @@ tsops deploy --namespace staging --app api --dry-run
 
 ```typescript
 // tsops.config.ts
-import { defineConfig } from '@tsops/core'
+import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'myapp',

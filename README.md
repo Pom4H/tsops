@@ -43,8 +43,10 @@ export default defineConfig({
   },
 
   secrets: {
-    'api-secrets': ({ env, production }) => ({
-      JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-secret')
+    'api-secrets': ({ production }) => ({
+      JWT_SECRET: production
+        ? process.env.JWT_SECRET ?? ''
+        : 'dev-secret'
     })
   },
 
@@ -68,6 +70,8 @@ export default defineConfig({
   }
 })
 ```
+
+Root-level secrets and configMaps execute in Node, so read environment variables directly via `process.env` (or your own helper) instead of the app-level `env()` helper.
 
 Run commands:
 
@@ -104,9 +108,9 @@ Full documentation is available at [GitHub Pages](https://pom4h.github.io/tsops/
 
 This is a monorepo containing:
 
-- **`tsops`** - Main CLI package (install this one!)
-- **`@tsops/core`** - Core library with programmatic API
-- **`@tsops/k8`** - Kubernetes manifest builders
+- **`tsops`** – CLI and configuration helper exports
+- **`@tsops/core`** – Core library with programmatic API
+- **`@tsops/k8`** – Kubernetes manifest builders
 
 ## Development
 

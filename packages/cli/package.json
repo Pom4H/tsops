@@ -4,12 +4,22 @@
   "description": "TypeScript-first toolkit for planning, building, and deploying to Kubernetes",
   "type": "module",
   "bin": {
-    "tsops": "./dist/index.js"
+    "tsops": "./bin/tsops.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "exports": "./dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./cli": {
+      "types": "./dist/cli.d.ts",
+      "default": "./dist/cli.js"
+    }
+  },
   "files": [
+    "bin",
     "dist",
     "README.md"
   ],
