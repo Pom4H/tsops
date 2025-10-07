@@ -137,6 +137,5 @@ pnpm build:watch # Watch mode
 
 ## Related Packages
 
+- **tsops** – CLI package that also exports `defineConfig`
 - **@tsops/k8** – Kubernetes manifest builders
-- **tsops** – Command-line interface
-
