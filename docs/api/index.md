@@ -34,8 +34,10 @@ export default defineConfig({
   },
 
   secrets: {
-    'api-secrets': ({ env, production }) => ({
-      JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-secret')
+    'api-secrets': ({ production }) => ({
+      JWT_SECRET: production
+        ? process.env.JWT_SECRET ?? ''
+        : 'dev-secret'
     })
   },
 
@@ -61,6 +63,8 @@ export default defineConfig({
 })
 ```
 
+`process.env` access happens at config-evaluation time, so make sure the variables you need are defined before running `tsops`.
+
 `defineConfig` ensures all namespaces share the same shape and returns an object that preserves your configuration plus runtime helpers (`getApp`, `getEnv`, `getExternalEndpoint`, ...).
 
 ### TsOps
@@ -68,7 +72,7 @@ export default defineConfig({
 Programmatic API for planning, building, and deploying.
 
 ```typescript
-import { TsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from 'tsops'
+import { TsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from '@tsops/core'
 import config from './tsops.config.js'
 
 const tsops = new TsOps(config, {

@@ -9,12 +9,12 @@ This document exists exclusively for autonomous agents operating inside the tsop
   - `packages/k8` → manifest builders consumed by core (version inherited via workspace)
 - **Task runner**: Turborepo (`turbo.json`) orchestrates builds/lint/test via `pnpm` scripts.
 - **Primary entry files**
-  - CLI: `packages/cli/src/index.ts`
+  - CLI: `packages/cli/src/cli.ts` (published at `tsops/cli`)
   - Core orchestration: `packages/core/src/tsops.ts`
   - Runtime helpers: `packages/core/src/config/definer.ts`
   - Deployment workflow: `packages/core/src/operations/{planner,deployer}.ts`
   - Architecture reference: `ARCHITECTURE.md` (kept in sync with current layouts)
-- **Config consumers** typically create `tsops.config.ts` using `defineConfig` from `tsops` (CLI re-exports core helper).
+- **Config consumers** typically create `tsops.config.ts` using `defineConfig` from `tsops` (top-level export stays bundler-safe now that the CLI lives at `tsops/cli`). Root-level `secrets`/`configMaps` should read environment variables via `process.env`; the `env()` helper is only available inside app-level `env` resolvers.
 
 ## 2. Release Awareness
 - Latest logged release: see `CHANGELOG.md` (`tsops` 1.2.0, dated 2025-10-06).

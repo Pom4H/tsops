@@ -6,6 +6,8 @@ Learn how to securely manage secrets and configuration in tsops.
 
 tsops provides powerful secret management with automatic validation.
 
+> **Tip:** Root-level secret/configMap definitions run during Node execution, so read environment variables with `process.env`. The `env()` helper is only available inside app-level `env` functions.
+
 ### Basic Usage
 
 Define secrets at the config root level (not within apps):
@@ -21,10 +23,16 @@ export default defineConfig({
   
   // Secrets are defined at config root level
   secrets: {
-    'api-secrets': ({ production, env }) => ({
-      JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt'),
-      DB_PASSWORD: env('DB_PASSWORD', production ? undefined : 'dev-password'),
-      API_KEY: env('API_KEY', production ? undefined : 'dev-key')
+    'api-secrets': ({ production }) => ({
+      JWT_SECRET: production
+        ? process.env.JWT_SECRET ?? ''
+        : 'dev-jwt',
+      DB_PASSWORD: production
+        ? process.env.DB_PASSWORD ?? ''
+        : 'dev-password',
+      API_KEY: production
+        ? process.env.API_KEY ?? ''
+        : 'dev-key'
     })
   },
   
@@ -47,9 +55,13 @@ Use `secret()` helper to inject all keys from a secret:
 ```typescript
 // Define secrets at config root level
 secrets: {
-  'api-secrets': ({ production, env }) => ({
-    JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt'),
-    DB_PASSWORD: env('DB_PASSWORD', production ? undefined : 'dev-password')
+  'api-secrets': ({ production }) => ({
+    JWT_SECRET: production
+      ? process.env.JWT_SECRET ?? ''
+      : 'dev-jwt',
+    DB_PASSWORD: production
+      ? process.env.DB_PASSWORD ?? ''
+      : 'dev-password'
   })
 },
 
@@ -223,8 +235,10 @@ apps: {
 
 ```typescript
 secrets: {
-  'api-secrets': ({ production, env }) => ({
-    JWT_SECRET: env('PROD_JWT', production ? undefined : 'dev-jwt')
+  'api-secrets': ({ production }) => ({
+    JWT_SECRET: production
+      ? process.env.PROD_JWT ?? ''
+      : 'dev-jwt'
   })
 }
 ```
@@ -239,9 +253,13 @@ PROD_JWT=xxx PROD_DB_PWD=yyy pnpm tsops deploy --namespace prod
 
 ```typescript
 secrets: {
-  'api-secrets': ({ production, env }) => ({
-    JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt-secret'),
-    DB_PASSWORD: env('DB_PASSWORD', production ? undefined : 'dev-password')
+  'api-secrets': ({ production }) => ({
+    JWT_SECRET: production
+      ? process.env.JWT_SECRET ?? ''
+      : 'dev-jwt-secret',
+    DB_PASSWORD: production
+      ? process.env.DB_PASSWORD ?? ''
+      : 'dev-password'
   })
 }
 ```
@@ -250,10 +268,10 @@ secrets: {
 
 ```typescript
 secrets: {
-  'api-secrets': ({ serviceDNS, env }) => ({
+  'api-secrets': ({ serviceDNS }) => ({
     DATABASE_URL: template('postgresql://{user}:{pwd}@{host}/{db}', {
       user: 'myuser',
-      pwd: env('DB_PASSWORD'),
+      pwd: process.env.DB_PASSWORD ?? '',
       host: serviceDNS('postgres', 5432),
       db: 'myapp'
     })
@@ -325,4 +343,3 @@ This provides:
 - [Context Helpers](/guide/context-helpers)
 - [Getting Started](/guide/getting-started)
 - [API Reference](/api/)
-

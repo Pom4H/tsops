@@ -86,8 +86,8 @@ Automatic validation before deployment:
 
 ```typescript
 secrets: {
-  'api-secrets': ({ env }) => ({
-    JWT_SECRET: env('PROD_JWT')  // ← Validated!
+  'api-secrets': () => ({
+    JWT_SECRET: process.env.PROD_JWT ?? ''  // ← Validated!
   })
 }
 ```

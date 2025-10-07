@@ -355,17 +355,19 @@ env<T extends string = string>(key: string, fallback?: T): T
 #### Examples
 
 ```typescript
-secrets: {
-  'api-secrets': ({ env, production }) => ({
-    // Required in production, fallback in dev
-    JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt-secret'),
-    
-    // Always has fallback
-    DEBUG: env('DEBUG', 'false'),
-    
-    // Optional
-    SENTRY_DSN: env('SENTRY_DSN')
-  })
+apps: {
+  api: {
+    env: ({ env, production }) => ({
+      // Required in production, fallback in dev
+      JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt-secret'),
+
+      // Always has fallback
+      DEBUG: env('DEBUG', 'false'),
+
+      // Optional
+      SENTRY_DSN: env('SENTRY_DSN')
+    })
+  }
 }
 ```
 
@@ -441,9 +443,11 @@ export default defineConfig({
   images: { /* ... */ },
   
   secrets: {
-    'app-secrets': ({ env, production }) => ({
-      JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-secret'),
-      API_KEY: env('API_KEY')
+    'app-secrets': ({ production }) => ({
+      JWT_SECRET: production
+        ? process.env.JWT_SECRET ?? ''
+        : 'dev-secret',
+      API_KEY: process.env.API_KEY ?? ''
     })
   },
   
