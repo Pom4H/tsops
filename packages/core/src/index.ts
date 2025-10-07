@@ -11,3 +11,4 @@ export * from './adapters/git.js'
 export * from './runtime-config.js'
 
 export { defineConfig } from './config/definer.js'
+export type { TsOpsConfigWithRuntime } from './config/definer.js'

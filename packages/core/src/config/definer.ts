@@ -2,9 +2,7 @@ import type {
   NamespaceDefinition,
   ClusterDefinition,
   ImagesConfig,
-  AppDefinition,
-  TsOpsConfig,
-  ExtractNamespaceVars
+  TsOpsConfig
 } from '../types.js'
 import { createRuntimeConfig, type RuntimeConfig, type ResolvedAppEnv } from '../runtime-config.js'
 
@@ -38,7 +36,7 @@ export interface TsOpsConfigWithRuntime<
    * console.log(app.env)
    * ```
    */
-  getApp<K extends keyof TApps>(appName: K): ResolvedAppEnv
+  getApp(appName: Extract<keyof TApps, string>): ResolvedAppEnv
   
   /**
    * Get resolved environment variables for an app.
@@ -54,7 +52,7 @@ export interface TsOpsConfigWithRuntime<
    * console.log(env.DATABASE_URL)
    * ```
    */
-  getEnv<K extends keyof TApps>(appName: K): Record<string, string>
+  getEnv(appName: Extract<keyof TApps, string>): Record<string, string>
   
   /**
    * Get internal Kubernetes endpoint for an app.
@@ -70,7 +68,7 @@ export interface TsOpsConfigWithRuntime<
    * // => 'http://worken-worken-api.dev.svc.cluster.local:3000'
    * ```
    */
-  getInternalEndpoint<K extends keyof TApps>(appName: K): string
+  getInternalEndpoint(appName: Extract<keyof TApps, string>): string
   
   /**
    * Get external endpoint for an app (if configured).
@@ -88,7 +86,7 @@ export interface TsOpsConfigWithRuntime<
    * // => undefined (if no host)
    * ```
    */
-  getExternalEndpoint<K extends keyof TApps>(appName: K): string | undefined
+  getExternalEndpoint(appName: Extract<keyof TApps, string>): string | undefined
   
   /**
    * Get current namespace name.
@@ -134,7 +132,15 @@ export function defineConfig<
   const TApps extends Record<string, unknown>
 >(
   config: TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>
-) {
+): TsOpsConfigWithRuntime<
+  TProject,
+  TNamespaces,
+  TClusters,
+  TImages,
+  TApps,
+  TSecrets,
+  TConfigMaps
+> {
   type AppName = Extract<keyof TApps, string>
   type TConfig = TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>
   

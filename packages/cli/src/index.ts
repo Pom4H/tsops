@@ -7,6 +7,7 @@ import { Command } from 'commander'
 import { TsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from '@tsops/core'
 
 export { defineConfig } from '@tsops/core'
+export type { TsOpsConfigWithRuntime } from '@tsops/core'
 
 const CONFIG_EXTENSION_ORDER = ['', '.ts', '.mts', '.cts', '.js', '.mjs', '.cjs'] as const
 
