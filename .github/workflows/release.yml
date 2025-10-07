@@ -2,33 +2,35 @@ name: Release
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
 
 permissions:
   contents: write
   pull-requests: write
-  id-token: write
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
         with:
-          version: 10.17.1
+          fetch-depth: 0
+
       - uses: actions/setup-node@v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
-          cache: pnpm
+
+      - run: corepack enable
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r build
-      - name: Create Release PR or Publish
-        uses: changesets/action@v1
+
+      - uses: changesets/action@v1
         with:
-          publish: pnpm -r publish --access public --no-git-checks
+          publish: pnpm -w changeset publish
           createGithubReleases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
