@@ -6,6 +6,7 @@ This document exists exclusively for autonomous agents operating inside the tsop
 - **Monorepo packages**
   - `packages/cli` → `tsops` CLI (`version`: 1.2.0)
   - `packages/core` → `@tsops/core` (`version`: 0.3.0)
+  - `packages/node` → `@tsops/node` (`version`: 0.1.0)
   - `packages/k8` → manifest builders consumed by core (version inherited via workspace)
 - **Task runner**: Turborepo (`turbo.json`) orchestrates builds/lint/test via `pnpm` scripts.
 - **Primary entry files**
@@ -42,7 +43,8 @@ This document exists exclusively for autonomous agents operating inside the tsop
 
 ## 5. File Navigation Cues
 - Config resolution internals: `packages/core/src/config/`
-- Docker/kubectl adapters: `packages/core/src/adapters/`
+- Core ports (Docker/Kubectl contracts): `packages/core/src/ports/`
+- Node adapters (`Docker`, `Kubectl`, command runner): `packages/node/src/`
 - Manifest templates: `packages/k8/src/`
 - Docs site (VitePress): `docs/` (homepage `docs/index.md`, guides under `docs/guide/`)
 - Tests: `tests/config.test.ts` (Vitest, exercises runtime helpers).
@@ -55,7 +57,7 @@ This document exists exclusively for autonomous agents operating inside the tsop
 5. **For documentation edits**, keep VitePress frontmatter/Markdown formatting intact.
 6. **When touching releases**, sync `CHANGELOG.md`, package versions, and Changesets. Check `pnpm workspaces` constraints before version bumps.
 7. **Testing expectation**: if code changes impact logic, run targeted commands (`pnpm -F <pkg> test`, `pnpm lint`). For doc-only changes, note omission explicitly.
-8. **Network and secret handling**: do not assume access to live clusters. Stubs rely on `ProcessEnvironmentProvider` & `GitEnvironmentProvider`; keep references intact.
+8. **Network and secret handling**: do not assume access to live clusters. Stubs rely on `ProcessEnvironmentProvider` & `GitEnvironmentProvider` from `@tsops/node`; keep references intact.
 9. **Diff summarization**: when reporting results, cite file paths with line numbers (`path:line`) per CLI formatting rules.
 
 ## 7. Rapid Issue Triaging

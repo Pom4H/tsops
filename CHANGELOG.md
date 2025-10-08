@@ -9,9 +9,11 @@ and this project adheres to Semantic Versioning (https://semver.org/spec/v2.0.0.
 ### Added
 - Published a dedicated `tsops/cli` entry point so command-line tooling can keep using Node built-ins without affecting bundlers.
 - Added the `@tsops/core/config` export for consumers who need direct access to `defineConfig` without touching Node-specific modules.
+- Introduced the `@tsops/node` package with Node-only adapters (`Docker`, `Kubectl`, `DefaultCommandRunner`, `ProcessEnvironmentProvider`, `GitEnvironmentProvider`) and a `createNodeTsOps` factory.
 
 ### Changed
 - The top-level `tsops` export now provides `defineConfig` directly without importing `node:fs`, so `npm install tsops` is enough for both config helpers and the CLI.
+- `@tsops/core` no longer ships Node-bound implementations; `TsOps` now expects injected `DockerClient`/`KubectlClient` ports so configs stay platform-neutral.
 
 ### Fixed
 - Documentation and starter configs now avoid using helper callbacks inside root-level `secrets`/`configMaps`, removing the confusing `env` typing issues those helpers triggered.

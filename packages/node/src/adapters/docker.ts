@@ -1,6 +1,5 @@
-import { CommandRunner } from '../command-runner.js'
-import { Logger } from '../logger.js'
-import { DockerfileBuild, type AppBuildContext } from '../types.js'
+import type { Logger, DockerfileBuild, AppBuildContext } from '@tsops/core'
+import type { CommandRunner } from '../command-runner.js'
 
 export type DockerBuildContext = AppBuildContext
 
@@ -20,7 +19,7 @@ export class Docker {
   private readonly runner: CommandRunner
   private readonly logger: Logger
   private readonly dryRun: boolean
-  private loggedInRegistries: Set<string> = new Set()
+  private readonly loggedInRegistries: Set<string> = new Set()
 
   constructor(options: DockerServiceOptions) {
     this.runner = options.runner
@@ -35,7 +34,8 @@ export class Docker {
   async login(options: DockerLoginOptions = {}): Promise<void> {
     const registry = options.registry || process.env.DOCKER_REGISTRY || 'docker.io'
     const username = options.username || process.env.DOCKER_USERNAME
-    const password = options.password || process.env.DOCKER_PASSWORD || process.env.DOCKER_TOKEN
+    const password =
+      options.password || process.env.DOCKER_PASSWORD || process.env.DOCKER_TOKEN
 
     // Skip if already logged in to this registry
     if (this.loggedInRegistries.has(registry)) {
@@ -59,18 +59,18 @@ export class Docker {
 
     try {
       // Use password-stdin for secure login
-      await this.runner.run('docker', [
-        'login',
-        registry,
-        '-u',
-        username,
-        '--password-stdin'
-      ], {
-        input: password,
-        inheritStdio: false,
-        onStdout: (data) => this.logger.debug('docker stdout', { output: data.trim() }),
-        onStderr: (data) => this.logger.warn('docker stderr', { output: data.trim() })
-      })
+      await this.runner.run(
+        'docker',
+        ['login', registry, '-u', username, '--password-stdin'],
+        {
+          input: password,
+          inheritStdio: false,
+          onStdout: (data) =>
+            this.logger.debug('docker stdout', { output: data.trim() }),
+          onStderr: (data) =>
+            this.logger.warn('docker stderr', { output: data.trim() })
+        }
+      )
 
       this.loggedInRegistries.add(registry)
       this.logger.info('Docker login successful', { registry })

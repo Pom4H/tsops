@@ -20,18 +20,30 @@ export interface CommandResult {
 }
 
 export interface CommandRunner {
-  run(command: string, args: string[], options: CommandRunnerOptions & { captureOutput: true }): Promise<string>
+  run(
+    command: string,
+    args: string[],
+    options: CommandRunnerOptions & { captureOutput: true }
+  ): Promise<string>
   run(command: string, args: string[], options?: CommandRunnerOptions): Promise<CommandResult>
 }
 
 export class DefaultCommandRunner implements CommandRunner {
-  async run(command: string, args: string[], options: CommandRunnerOptions & { captureOutput: true }): Promise<string>
+  async run(
+    command: string,
+    args: string[],
+    options: CommandRunnerOptions & { captureOutput: true }
+  ): Promise<string>
   async run(command: string, args: string[], options?: CommandRunnerOptions): Promise<CommandResult>
-  async run(command: string, args: string[], options: CommandRunnerOptions = {}): Promise<string | CommandResult> {
+  async run(
+    command: string,
+    args: string[],
+    options: CommandRunnerOptions = {}
+  ): Promise<string | CommandResult> {
     const child = spawn(command, args, {
       cwd: options.cwd ?? process.cwd(),
       env: { ...process.env, ...options.env },
-      stdio: buildStdio(options),
+      stdio: buildStdio(options)
     })
 
     const errorPromise = once(child, 'error').then(([error]) => {
@@ -89,7 +101,9 @@ export class DefaultCommandRunner implements CommandRunner {
   }
 }
 
-function buildStdio(options: CommandRunnerOptions): ['pipe', 'pipe' | 'inherit', 'pipe' | 'inherit'] {
+function buildStdio(
+  options: CommandRunnerOptions
+): ['pipe', 'pipe' | 'inherit', 'pipe' | 'inherit'] {
   if (options.inheritStdio === false) {
     return ['pipe', 'pipe', 'pipe']
   }

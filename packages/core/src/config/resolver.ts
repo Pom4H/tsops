@@ -1,7 +1,6 @@
 import type { TsOpsConfig } from '../types.js'
 import type { EnvironmentProvider } from '../environment-provider.js'
-import { ProcessEnvironmentProvider } from '../environment-provider.js'
-import { GitEnvironmentProvider } from '../adapters/git.js'
+import { GlobalEnvironmentProvider } from '../environment-provider.js'
 import {
   createProjectResolver,
   type ProjectResolver
@@ -37,7 +36,7 @@ export interface ConfigResolver<
 export interface ConfigResolverOptions {
   /**
    * Provider for accessing environment variables.
-   * Defaults to ProcessEnvironmentProvider if not specified.
+   * Defaults to GlobalEnvironmentProvider if not specified.
    */
   env?: EnvironmentProvider
 }
@@ -55,9 +54,9 @@ export interface ConfigResolverOptions {
 export function createConfigResolver<
   TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
 >(config: TConfig, options: ConfigResolverOptions = {}): ConfigResolver<TConfig> {
-  const env = options.env ?? new GitEnvironmentProvider(new ProcessEnvironmentProvider())
+  const env = options.env ?? new GlobalEnvironmentProvider()
   const project = createProjectResolver(config)
-  const namespaces = createNamespaceResolver(config, project)
+  const namespaces = createNamespaceResolver(config, project, env)
   const images = createImagesResolver(config, project, env)
   const apps = createAppsResolver(config, namespaces, project)
 

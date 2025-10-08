@@ -110,6 +110,7 @@ This is a monorepo containing:
 
 - **`tsops`** – CLI and configuration helper exports
 - **`@tsops/core`** – Core library with programmatic API
+- **`@tsops/node`** – Node-specific adapters and `createNodeTsOps`
 - **`@tsops/k8`** – Kubernetes manifest builders
 
 ## Development

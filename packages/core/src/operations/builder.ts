@@ -1,11 +1,11 @@
-import type { Docker } from '../adapters/docker.js'
+import type { DockerClient } from '../ports/docker.js'
 import type { Logger } from '../logger.js'
 import type { BuildDefinition, DockerfileBuild, TsOpsConfig } from '../types.js'
 import type { ConfigResolver } from '../config/resolver.js'
 import type { BuildResult } from './types.js'
 
 interface BuilderDependencies<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
-  docker: Docker
+  docker: DockerClient
   logger: Logger
   dryRun: boolean
   resolver: ConfigResolver<TConfig>
@@ -14,7 +14,7 @@ interface BuilderDependencies<TConfig extends TsOpsConfig<any, any, any, any, an
 export class Builder<
   TConfig extends TsOpsConfig<any, any, any, any, any, any>
 > {
-  private readonly docker: Docker
+  private readonly docker: DockerClient
   private readonly logger: Logger
   private readonly dryRun: boolean
   private readonly resolver: ConfigResolver<TConfig>
