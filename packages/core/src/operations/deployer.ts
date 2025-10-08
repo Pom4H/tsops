@@ -3,14 +3,14 @@ import { buildNamespace, buildSecret, buildConfigMap } from '@tsops/k8'
 import type { TsOpsConfig } from '../types.js'
 import type { DeployResult, PlanWithChangesResult, ManifestChange, AppResourceChanges } from './types.js'
 import { Planner } from './planner.js'
-import { Kubectl, type SupportedManifest } from '../adapters/kubectl.js'
+import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
 import type { ConfigResolver } from '../config/resolver.js'
 import type { Logger } from '../logger.js'
 
 interface DeployerDependencies<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
   manifestBuilder: ManifestBuilder<TConfig>
   planner: Planner<TConfig>
-  kubectl: Kubectl
+  kubectl: KubectlClient
   resolver: ConfigResolver<TConfig>
   logger: Logger
 }
@@ -18,7 +18,7 @@ interface DeployerDependencies<TConfig extends TsOpsConfig<any, any, any, any, a
 export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
   private readonly manifestBuilder: ManifestBuilder<TConfig>
   private readonly planner: Planner<TConfig>
-  private readonly kubectl: Kubectl
+  private readonly kubectl: KubectlClient
   private readonly resolver: ConfigResolver<TConfig>
   private readonly logger: Logger
 

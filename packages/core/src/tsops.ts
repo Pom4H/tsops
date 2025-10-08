@@ -1,24 +1,26 @@
 import { ManifestBuilder } from '@tsops/k8'
-import { CommandRunner, DefaultCommandRunner } from './command-runner.js'
-import { EnvironmentProvider, ProcessEnvironmentProvider } from './environment-provider.js'
-import { Docker } from './adapters/docker.js'
 import { Builder } from './operations/builder.js'
 import { Deployer } from './operations/deployer.js'
 import { ConsoleLogger, Logger } from './logger.js'
 import { Planner } from './operations/planner.js'
-import { Kubectl } from './adapters/kubectl.js'
 import { createConfigResolver, type ConfigResolver } from './config/resolver.js'
 import type { TsOpsConfig } from './types.js'
+import type { DockerClient } from './ports/docker.js'
+import type { KubectlClient } from './ports/kubectl.js'
+import { GlobalEnvironmentProvider, type EnvironmentProvider } from './environment-provider.js'
 
 /**
  * Options for configuring TsOps behavior.
  */
 export interface TsOpsOptions {
   /**
-   * Custom command runner for executing external commands (docker, kubectl).
-   * Defaults to DefaultCommandRunner.
+   * Docker adapter used for build operations.
    */
-  runner?: CommandRunner
+  docker: DockerClient
+  /**
+   * Kubectl adapter used for cluster interactions.
+   */
+  kubectl: KubectlClient
   /**
    * Custom logger for output and debugging.
    * Defaults to ConsoleLogger.
@@ -26,7 +28,7 @@ export interface TsOpsOptions {
   logger?: Logger
   /**
    * Environment provider for accessing environment variables.
-   * Defaults to ProcessEnvironmentProvider.
+   * Defaults to GlobalEnvironmentProvider.
    */
   env?: EnvironmentProvider
   /**
@@ -40,45 +42,51 @@ export interface TsOpsOptions {
  *
  * @example
  * ```typescript
- * import { TsOps } from '@tsops/core'
+ * import { TsOps, ConsoleLogger } from '@tsops/core'
+ * import { Docker, Kubectl, DefaultCommandRunner, GitEnvironmentProvider, ProcessEnvironmentProvider } from '@tsops/node'
  * import config from './tsops.config'
  *
- * const tsops = new TsOps(config, { dryRun: true })
- * const plan = await tsops.plan({ namespace: 'prod' })
- * await tsops.build({ app: 'api' })
- * await tsops.deploy({ namespace: 'prod', app: 'api' })
+ * const runner = new DefaultCommandRunner()
+ * const logger = new ConsoleLogger()
+ * const env = new GitEnvironmentProvider(new ProcessEnvironmentProvider())
+ *
+ * const tsops = new TsOps(config, {
+ *   docker: new Docker({ runner, logger, dryRun: true }),
+ *   kubectl: new Kubectl({ runner, logger, dryRun: true }),
+ *   logger,
+ *   env,
+ *   dryRun: true
+ * })
  * ```
+ *
+ * For simple Node setups use `createNodeTsOps(config)` from `@tsops/node`, which wires these defaults automatically.
  */
 export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> {
   private readonly config: TConfig
-  private readonly runner: CommandRunner
   private readonly logger: Logger
   private readonly env: EnvironmentProvider
   private readonly dryRun: boolean
-  private readonly docker: Docker
-  private readonly kubectl: Kubectl
+  private readonly docker: DockerClient
+  private readonly kubectl: KubectlClient
   private readonly resolver: ConfigResolver<TConfig>
   private readonly manifestBuilder: ManifestBuilder<TConfig>
   private readonly planner: Planner<TConfig>
   private readonly builder: Builder<TConfig>
   private readonly deployer: Deployer<TConfig>
 
-  constructor(config: TConfig, options: TsOpsOptions = {}) {
+  constructor(config: TConfig, options: TsOpsOptions) {
+    if (!options || !options.docker || !options.kubectl) {
+      throw new Error(
+        'TsOps requires docker and kubectl adapters. Install @tsops/node or provide custom adapters.'
+      )
+    }
+
     this.config = config
-    this.runner = options.runner ?? new DefaultCommandRunner()
     this.logger = options.logger ?? new ConsoleLogger()
-    this.env = options.env ?? new ProcessEnvironmentProvider()
+    this.env = options.env ?? new GlobalEnvironmentProvider()
     this.dryRun = options.dryRun ?? false
-    this.docker = new Docker({
-      runner: this.runner,
-      logger: this.logger,
-      dryRun: this.dryRun
-    })
-    this.kubectl = new Kubectl({
-      runner: this.runner,
-      logger: this.logger,
-      dryRun: this.dryRun
-    })
+    this.docker = options.docker
+    this.kubectl = options.kubectl
     this.resolver = createConfigResolver(config, { env: this.env })
     this.manifestBuilder = new ManifestBuilder(config)
     this.planner = new Planner({

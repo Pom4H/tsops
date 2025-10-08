@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@tsops/core": "workspace:*",
+    "@tsops/node": "workspace:*",
     "commander": "^14.0.1"
   },
   "keywords": [

@@ -1,0 +1,46 @@
+{
+  "name": "@tsops/node",
+  "version": "0.1.0",
+  "description": "Node-specific adapters and helpers for tsops",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -b .",
+    "dev": "tsc -b --watch",
+    "clean": "rm -rf dist",
+    "lint": "pnpm -w exec eslint ."
+  },
+  "dependencies": {
+    "@tsops/core": "workspace:*"
+  },
+  "keywords": [
+    "tsops",
+    "node",
+    "kubernetes",
+    "typescript"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pom4H/tsops.git",
+    "directory": "packages/node"
+  },
+  "license": "MIT",
+  "author": "Roman Popov",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

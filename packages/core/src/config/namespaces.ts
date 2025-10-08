@@ -9,6 +9,7 @@ import type {
   ExtractNamespaceVarsFromConfig
 } from '../types.js'
 import type { ProjectResolver } from './project.js'
+import type { EnvironmentProvider } from '../environment-provider.js'
 
 export interface CreateHostContextOptions {
   appName?: string
@@ -36,7 +37,8 @@ export function createNamespaceResolver<
   TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
 >(
   config: TConfig,
-  project: ProjectResolver<TConfig>
+  project: ProjectResolver<TConfig>,
+  envProvider: EnvironmentProvider
 ): NamespaceResolver<TConfig> {
   function select(target?: string): string[] {
     if (target) {
@@ -151,7 +153,7 @@ export function createNamespaceResolver<
     
     // Environment variable getter
     const env = <T extends string = string>(key: string, fallback?: T): T => {
-      const value = process.env[key]
+      const value = envProvider.get(key)
       if (value !== undefined) {
         return value as T
       }

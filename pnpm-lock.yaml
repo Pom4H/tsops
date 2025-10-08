@@ -50,6 +50,9 @@ importers:
       '@tsops/core':
         specifier: workspace:*
         version: link:../core
+      '@tsops/node':
+        specifier: workspace:*
+        version: link:../node
       commander:
         specifier: ^14.0.1
         version: 14.0.1
@@ -68,6 +71,12 @@ importers:
       openapi-typescript:
         specifier: ^7.9.1
         version: 7.9.1(typescript@5.9.3)
+
+  packages/node:
+    dependencies:
+      '@tsops/core':
+        specifier: workspace:*
+        version: link:../core
 
   tests:
     dependencies:

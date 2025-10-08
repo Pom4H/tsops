@@ -5,6 +5,7 @@ import type {
   TsOpsConfig
 } from '../types.js'
 import { createRuntimeConfig, type RuntimeConfig, type ResolvedAppEnv } from '../runtime-config.js'
+import { getEnvironmentVariable } from '../environment-provider.js'
 
 /**
  * Extended config object with runtime helper methods.
@@ -111,7 +112,7 @@ export interface TsOpsConfigWithRuntime<
 function getCurrentNamespace<TNamespaces extends Record<string, NamespaceDefinition>>(
   namespaces: TNamespaces
 ): Extract<keyof TNamespaces, string> {
-  const envNamespace = process.env.TSOPS_NAMESPACE
+  const envNamespace = getEnvironmentVariable('TSOPS_NAMESPACE')
   
   if (envNamespace && envNamespace in namespaces) {
     return envNamespace as Extract<keyof TNamespaces, string>

@@ -29,8 +29,12 @@ jobs:
 
       - uses: changesets/action@v1
         with:
+          version: "pnpm changeset:version"
+          commit: "chore: release"
+          title: "chore: release"
           publish: pnpm -w changeset publish
           createGithubReleases: true
+          setupGitUser: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

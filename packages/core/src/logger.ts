@@ -5,6 +5,8 @@ export interface Logger {
   debug(message: string, meta?: Record<string, unknown>): void
 }
 
+import { getEnvironmentVariable } from './environment-provider.js'
+
 export class ConsoleLogger implements Logger {
   info(message: string, meta: Record<string, unknown> = {}): void {
     console.log(format('info', message, meta))
@@ -20,7 +22,8 @@ export class ConsoleLogger implements Logger {
   }
 
   debug(message: string, meta: Record<string, unknown> = {}): void {
-    if (process.env.DEBUG?.includes('tsops')) {
+    const debugFlag = getEnvironmentVariable('DEBUG')
+    if (debugFlag?.includes('tsops')) {
       console.debug(format('debug', message, meta))
     }
   }

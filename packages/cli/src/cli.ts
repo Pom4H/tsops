@@ -4,7 +4,11 @@ import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
 import { Command } from 'commander'
-import { TsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from '@tsops/core'
+import {
+  createNodeTsOps,
+  GitEnvironmentProvider,
+  ProcessEnvironmentProvider
+} from '@tsops/node'
 
 const CONFIG_EXTENSION_ORDER = ['', '.ts', '.mts', '.cts', '.js', '.mjs', '.cjs'] as const
 
@@ -25,7 +29,7 @@ async function main(): Promise<void> {
     .option('--dry-run', 'skip external commands, log actions only')
     .action(async (options) => {
       const config = await loadConfig(options.config)
-      const tsops = new TsOps(config, { 
+      const tsops = createNodeTsOps(config, {
         dryRun: options.dryRun,
         env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
       })
@@ -271,7 +275,7 @@ async function main(): Promise<void> {
     .option('--dry-run', 'skip external commands, log actions only')
     .action(async (options) => {
       const config = await loadConfig(options.config)
-      const tsops = new TsOps(config, { 
+      const tsops = createNodeTsOps(config, {
         dryRun: options.dryRun,
         env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
       })
@@ -291,7 +295,7 @@ async function main(): Promise<void> {
     .option('--dry-run', 'skip external commands, log actions only')
     .action(async (options) => {
       const config = await loadConfig(options.config)
-      const tsops = new TsOps(config, { 
+      const tsops = createNodeTsOps(config, {
         dryRun: options.dryRun,
         env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
       })

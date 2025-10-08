@@ -27,17 +27,16 @@ High-level operations that implement the main workflows:
 - **`builder.ts`** – Orchestrates Docker image builds
 - **`deployer.ts`** – Generates manifests and applies them via kubectl
 
-### 3. **Adapters Layer** (`adapters/`)
+### 3. **Ports Layer** (`ports/`)
 
-External service integrations:
+Type-only contracts that describe external integrations. Implementations live in platform packages such as `@tsops/node`:
 
-- **`docker-service.ts`** – Docker CLI wrapper
-- **`kubectl-service.ts`** – kubectl CLI wrapper
+- **`docker.ts`** – `DockerClient` interface used by `Builder`
+- **`kubectl.ts`** – `KubectlClient` interface used by `Deployer`
 
 ### 4. **Infrastructure Layer**
 
-- **`command-runner.ts`** – Abstraction for executing shell commands
-- **`environment-provider.ts`** – Abstraction for accessing environment variables
+- **`environment-provider.ts`** – Abstraction for accessing environment variables (bundler-safe defaults)
 - **`logger.ts`** – Logging interface and console implementation
 
 ### 5. **Main Orchestrator**
@@ -82,37 +81,44 @@ No direct access to `process.env` or external state. Everything goes through abs
 
 ## Usage
 
-### Basic Example
+### Basic Example (Node runtime)
 
 ```typescript
-import { TsOps } from '@tsops/core'
+import { createNodeTsOps } from '@tsops/node'
 import config from './tsops.config'
 
-const tsops = new TsOps(config)
+const tsops = createNodeTsOps(config, { dryRun: true })
 
-// Plan deployment
-const plan = await tsops.plan({ namespace: 'prod', app: 'api' })
-
-// Build images
+const plan = await tsops.planWithChanges({ namespace: 'prod' })
 await tsops.build({ app: 'api' })
-
-// Deploy to Kubernetes
 await tsops.deploy({ namespace: 'prod', app: 'api' })
 ```
 
+`createNodeTsOps` wires the Node adapters (`Docker`, `Kubectl`, `DefaultCommandRunner`) together with the default environment provider (`GitEnvironmentProvider(ProcessEnvironmentProvider)`) so the orchestrator stays platform-neutral.
+
 ### With Custom Dependencies
 
-```typescript
-import { TsOps, ProcessEnvironmentProvider } from '@tsops/core'
+You can still instantiate `TsOps` directly when you need to provide bespoke adapters (for example, using mocked runners in tests or targeting a different execution environment):
 
-class MockEnvironmentProvider implements EnvironmentProvider {
-  get(key: string) {
-    return key === 'GIT_SHA' ? 'abc123' : undefined
-  }
-}
+```typescript
+import { TsOps, ConsoleLogger, type Logger } from '@tsops/core'
+import {
+  DefaultCommandRunner,
+  Docker,
+  Kubectl,
+  GitEnvironmentProvider,
+  ProcessEnvironmentProvider
+} from '@tsops/node'
+
+const runner = new DefaultCommandRunner()
+const logger: Logger = new ConsoleLogger()
+const env = new GitEnvironmentProvider(new ProcessEnvironmentProvider())
 
 const tsops = new TsOps(config, {
-  env: new MockEnvironmentProvider(),
+  docker: new Docker({ runner, logger, dryRun: true }),
+  kubectl: new Kubectl({ runner, logger, dryRun: true }),
+  logger,
+  env,
   dryRun: true
 })
 ```
@@ -138,4 +144,5 @@ pnpm build:watch # Watch mode
 ## Related Packages
 
 - **tsops** – CLI package that also exports `defineConfig`
+- **@tsops/node** – Node-specific adapters (`createNodeTsOps`, Docker/kubectl runners)
 - **@tsops/k8** – Kubernetes manifest builders

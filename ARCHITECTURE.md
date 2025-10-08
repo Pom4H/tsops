@@ -17,7 +17,8 @@ This document explains how the tsops monorepo is organised today. It is meant to
 │  wires dependencies once:                                      │
 │   - ConfigResolver (project/namespaces/images/apps)            │
 │   - Operations: Planner • Builder • Deployer                   │
-│   - Adapters: Docker • Kubectl • CommandRunner • Logger        │
+│   - Ports: DockerClient • KubectlClient                        │
+│   - Logger & env providers (platform-neutral)                  │
 │   - Runtime config helpers (getEnv/getApp/…)                   │
 └─────────────┬─────────────────────┬────────────────────────────┘
               │                     │
@@ -41,7 +42,8 @@ This document explains how the tsops monorepo is organised today. It is meant to
 | Package | Purpose | Entry Point |
 | --- | --- | --- |
 | `packages/cli` (`tsops`) | Commander CLI. Wraps TsOps and provides UX, diff formatting, Git-aware env provider. | `src/index.ts` |
-| `packages/core` (`@tsops/core`) | Configuration resolvers, runtime helpers, Docker/Kubectl adapters, Planner/Builder/Deployer. | `src/tsops.ts` |
+| `packages/core` (`@tsops/core`) | Configuration resolvers, runtime helpers, planner/builder/deployer, platform-neutral ports (`DockerClient`, `KubectlClient`). | `src/tsops.ts` |
+| `packages/node` (`@tsops/node`) | Node-specific adapters: command runner, Docker/Kubectl implementations, Git env provider, `createNodeTsOps`. | `src/index.ts` |
 | `packages/k8` (`@tsops/k8`) | Manifest builders for Deployments, Services, Ingress, Traefik IngressRoute, Certificates. | `src/manifest-builder.ts` |
 | `tests` | Vitest suite verifying runtime helpers, config inference. | `config.test.ts` |
 
@@ -53,7 +55,7 @@ The monorepo is managed with **pnpm workspaces + Turborepo** (`turbo.json`). Glo
 
 - **ProjectResolver** — naming helpers (`${project}-${app}`), service names.
 - **NamespaceResolver** — namespace iteration/filtering, helper context creation (exposes `serviceDNS`, `label`, `resource`, `secret`, `configMap`, `env`, `template`, namespace vars, cluster metadata).
-- **ImagesResolver** — builds deterministic image refs. Supports strategies: `'git-sha' | 'git-tag' | 'timestamp' | string | { kind: string; … }`. Decorated with `GitEnvironmentProvider(ProcessEnvironmentProvider)` so Git metadata is available by default.
+- **ImagesResolver** — builds deterministic image refs. Supports strategies: `'git-sha' | 'git-tag' | 'timestamp' | string | { kind: string; … }`. The Node bundle layers in `GitEnvironmentProvider(ProcessEnvironmentProvider)` so Git metadata is available by default.
 - **AppsResolver** — resolves app definitions per namespace: build info, env (with Secret/ConfigMap refs), secrets/configMaps data, network configuration. Delegates to `network-normalizers.ts` to materialise ingress/Traefik/cert manifests and to `images` resolver for defaults.
 
 `defineConfig` (in `config/definer.ts`) reuses the same resolver stack lazily to provide runtime helpers (`getEnv`, `getApp`, `getInternalEndpoint`, `getExternalEndpoint`, `getNamespace`). Runtime resolution respects `TSOPS_NAMESPACE` or defaults to the first namespace.
@@ -83,11 +85,9 @@ The monorepo is managed with **pnpm workspaces + Turborepo** (`turbo.json`). Glo
 
 ## 5. Adapter & Infrastructure Layer
 
-- **CommandRunner / DefaultCommandRunner** — thin wrapper over `child_process` allowing injection/mocking.
-- **Logger / ConsoleLogger** — simple interface for structured logs (used mostly by Builder/Deployer, CLI adds its own formatting).
-- **EnvironmentProvider hierarchy** — `ProcessEnvironmentProvider` ⟶ `GitEnvironmentProvider` ensures Git data exists when tag strategy needs it.
-- **Docker Adapter** — executes `docker build`/`docker push`, honours `dryRun`.
-- **Kubectl Adapter** — applies, diffs, deletes Kubernetes manifests. Provides helpers like `applyBatch`, `planManifest`, `delete`, `getSecretData` (used during secret validation).
+- **Logger / ConsoleLogger** (core) — structured logging used by Builder/Deployer; CLI adds user-facing formatting.
+- **Environment providers** — `GlobalEnvironmentProvider` lives in core; the Node bundle ships `ProcessEnvironmentProvider` + `GitEnvironmentProvider` to enrich Git metadata.
+- **Node adapters (`@tsops/node`)** — `DefaultCommandRunner`, `Docker`, and `Kubectl` wrap CLI tools and honour `dryRun`. They implement the core ports (`DockerClient`, `KubectlClient`) and are composed by `createNodeTsOps`.
 
 ## 6. Manifest Generation (`@tsops/k8`)
 
@@ -104,15 +104,15 @@ Individual builders live under `packages/k8/src/builders/` and are side-effect f
 
 ### CLI `plan`
 1. CLI parses flags → loads config via dynamic `import()` + extension search; throws actionable errors when TypeScript module cannot load without transpilation.
-2. Instantiate `TsOps(config, { dryRun?, env: GitEnvironmentProvider(ProcessEnvironmentProvider) })`.
+2. Instantiate `const tsops = createNodeTsOps(config, { dryRun?, env: GitEnvironmentProvider(ProcessEnvironmentProvider) })`.
 3. Call `tsops.planWithChanges(filters)`.
 4. Deployer builds plan, validates global artifacts once, calls Kubectl to diff.
 5. CLI groups output: Global Resources (namespaces / secrets / configMaps), Application Resources (create/update/unchanged/errors), Orphaned resources scheduled for deletion. Exits non-zero if validation failed.
 
 ### CLI `deploy`
 1. CLI resolves config and flags (same as `plan`).
-2. `tsops.deploy(filters)` obtains plan from Planner.
-3. Deployer iterates plan entries (namespace/app) and performs the batching steps above.
+2. Instantiate or reuse `const tsops = createNodeTsOps(config, { dryRun?, env: ... })`.
+3. `tsops.deploy(filters)` obtains plan from Planner.
 4. Returns applied manifest references + deleted orphans. CLI prints summary; warnings emitted if secrets used cluster fallbacks.
 
 ### Runtime helpers

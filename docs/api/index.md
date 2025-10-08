@@ -72,18 +72,17 @@ export default defineConfig({
 Programmatic API for planning, building, and deploying.
 
 ```typescript
-import { TsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from '@tsops/core'
+import { createNodeTsOps } from '@tsops/node'
 import config from './tsops.config.js'
 
-const tsops = new TsOps(config, {
-  dryRun: true,
-  env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
-})
+const tsops = createNodeTsOps(config, { dryRun: true })
 
 const plan = await tsops.planWithChanges({ namespace: 'prod' })
 const buildResult = await tsops.build({ app: 'api' })
 await tsops.deploy({ namespace: 'prod', app: 'api' })
 ```
+
+`createNodeTsOps` bundles the Node adapters (command runner, Docker, kubectl, Git-aware environment provider). If you are targeting a different runtime, instantiate `TsOps` directly and provide implementations for the `DockerClient` and `KubectlClient` ports exported by `@tsops/core`.
 
 Use `plan()` for resolved entries only, or `planWithChanges()` to include Kubernetes validation, diffs, and orphan detection.
 
