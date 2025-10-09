@@ -9,7 +9,6 @@ import {
   GitEnvironmentProvider,
   ProcessEnvironmentProvider
 } from '@tsops/node'
-import { createPruneCommand } from './commands/prune.js'
 
 const CONFIG_EXTENSION_ORDER = ['', '.ts', '.mts', '.cts', '.js', '.mjs', '.cjs'] as const
 
@@ -314,8 +313,6 @@ async function main(): Promise<void> {
       }
     })
 
-  // Add prune command
-  program.addCommand(createPruneCommand())
 
   await program.parseAsync(process.argv)
 }

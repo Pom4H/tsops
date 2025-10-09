@@ -1,5 +1,5 @@
 /**
- * Fixed defineConfig implementation with proper type inference
+ * Simple defineConfigV2 implementation
  */
 
 import type { 
@@ -9,19 +9,22 @@ import type {
   PublicEndpoint,
   ResourceProfile,
   ServiceDependency,
-  Protocol
+  Protocol,
+  ServiceContext
 } from './types.js'
-import type { 
-  ValidateAllDependencies,
-  ComputeTopology,
-  IsValidConfiguration,
-  GetValidationErrors
-} from './network-topology.js'
 
-/**
- * Create a typed service context that properly infers types
- */
-export function createTypedServiceContext<
+export function defineConfigV2<
+  const TProject extends string,
+  const TNamespaces extends Record<string, any>,
+  const TServices extends Record<string, ServiceDefinition>
+>(
+  config: TsOpsConfigV2<TProject, TNamespaces, TServices>
+): TsOpsConfigV2<TProject, TNamespaces, TServices> {
+  return config
+}
+
+// Helper function to create service context
+export function createServiceContext<
   TProject extends string,
   TNamespaces extends Record<string, any>,
   TServices extends Record<string, ServiceDefinition>
@@ -30,8 +33,7 @@ export function createTypedServiceContext<
   namespace: string,
   namespaceVars: TNamespaces[keyof TNamespaces],
   services: TServices
-) {
-  // Create typed helpers
+): ServiceContext<TProject, TNamespaces, TServices> {
   const net = {
     http: (port: number, path?: string): NetworkEndpoint => ({
       protocol: 'http',
@@ -95,12 +97,12 @@ export function createTypedServiceContext<
       cpu,
       memory,
       storage,
-      replicas
+      replicas: replicas || 1
     })
   }
 
   const service = {
-    url: <TName extends keyof TServices>(name: TName, port?: number): string => {
+    url: (name: keyof TServices, port?: number): string => {
       const service = services[name]
       if (!service) {
         throw new Error(`Service '${String(name)}' not found`)
@@ -112,10 +114,10 @@ export function createTypedServiceContext<
       
       return `${protocol}://${project}-${String(name)}.${namespace}.svc.cluster.local:${servicePort}${path}`
     },
-    internal: <TName extends keyof TServices>(name: TName, port?: number): string => {
+    internal: (name: keyof TServices, port?: number): string => {
       return service.url(name, port)
     },
-    external: <TName extends keyof TServices>(name: TName): string | undefined => {
+    external: (name: keyof TServices): string | undefined => {
       const service = services[name]
       if (!service?.public) return undefined
       
@@ -128,21 +130,21 @@ export function createTypedServiceContext<
 
   const depends = {
     on: <TName extends keyof TServices>(
-      service: TName,
-      port: number,
+      service: TName, 
+      port: number, 
       options?: {
         protocol?: Protocol
         description?: string
         optional?: boolean
       }
-    ): ServiceDependency<TServices> => {
+    ): ServiceDependency => {
       const targetService = services[service]
       if (!targetService) {
         throw new Error(`Service '${String(service)}' not found`)
       }
       
       return {
-        service,
+        service: String(service),
         port,
         protocol: options?.protocol || targetService.listen.protocol,
         description: options?.description,
@@ -188,79 +190,5 @@ export function createTypedServiceContext<
     secret,
     configMap,
     template
-  }
-}
-
-/**
- * Enhanced defineConfig with proper type inference
- */
-export function defineConfigV2Fixed<
-  const TProject extends string,
-  const TNamespaces extends Record<string, any>,
-  const TServices extends Record<string, ServiceDefinition>
->(
-  config: TsOpsConfigV2<TProject, TNamespaces, TServices>
-): TsOpsConfigV2<TProject, TNamespaces, TServices> & {
-  // Add runtime helpers
-  getService: (name: keyof TServices) => ServiceDefinition
-  getDependencies: (name: keyof TServices) => TServices[keyof TServices]['needs']
-  getServiceUrl: (name: keyof TServices, port?: number) => string
-  prune: (serviceName: keyof TServices) => any
-  // Add topology validation
-  validateTopology: () => IsValidConfiguration<ValidateAllDependencies<TServices>>
-  getTopology: () => ComputeTopology<TServices>
-} {
-  // Validate service dependencies at compile time
-  type ValidatedDependencies = ValidateAllDependencies<TServices>
-  type IsValid = IsValidConfiguration<ValidatedDependencies>
-  type Topology = ComputeTopology<TServices>
-  
-  // Create service definitions by calling the services function
-  // We need to create a mock context first to get the services
-  const mockServices = {} as TServices
-  const mockContext = createTypedServiceContext(
-    config.project,
-    'default',
-    {} as TNamespaces[keyof TNamespaces],
-    mockServices
-  )
-  
-  const services = config.services(mockContext as any)
-  
-  return {
-    ...config,
-    
-    getService: (name: keyof TServices) => {
-      return services[name]
-    },
-    
-    getDependencies: (name: keyof TServices) => {
-      return services[name].needs
-    },
-    
-    getServiceUrl: (name: keyof TServices, port?: number) => {
-      const service = services[name]
-      if (!service) {
-        throw new Error(`Service '${String(name)}' not found`)
-      }
-      
-      const servicePort = port || service.listen.port
-      const protocol = service.listen.protocol === 'grpc' ? 'http' : service.listen.protocol
-      const path = service.listen.path || ''
-      
-      return `${protocol}://${config.project}-${String(name)}.default.svc.cluster.local:${servicePort}${path}`
-    },
-    
-    prune: (serviceName: keyof TServices) => {
-      return {} // Simplified for now
-    },
-    
-    validateTopology: (): IsValid => {
-      return true as IsValid
-    },
-    
-    getTopology: (): Topology => {
-      return {} as Topology
-    }
-  }
+  } as ServiceContext<TProject, TNamespaces, TServices>
 }

@@ -11,20 +11,16 @@ export * from './ports/kubectl.js'
 export { defineConfig } from './config/definer.js'
 export type { TsOpsConfigWithRuntime } from './config/definer.js'
 
-// New v2 configuration
-export { defineConfigV2 } from './config/v2/index.js'
-export type { 
-  ServiceDefinition, 
+// V2 Configuration
+export { defineConfigV2, createServiceContext } from './config/v2/index.js'
+export type {
+  ServiceDefinition,
   ServiceContext,
-  BaseServiceContext,
-  TsOpsConfigV2 
+  ServiceKind,
+  Protocol,
+  NetworkEndpoint,
+  PublicEndpoint,
+  ResourceProfile,
+  ServiceDependency,
+  TsOpsConfigV2
 } from './config/v2/index.js'
-
-// Runtime utilities
-export { useConfig, useConfigFromJSON } from './runtime/index.js'
-export type { 
-  ServiceEndpoint, 
-  ServiceConfig, 
-  EnvironmentReference, 
-  PrunedConfig 
-} from './runtime/index.js'
