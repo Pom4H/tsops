@@ -46,7 +46,8 @@ export function defineConfigV2<
       medium: { cpu: '500m', memory: '512Mi', replicas: 2 }
     },
     depends: {
-      on: <N extends string, P extends number>(name: N, port: P): Dep<N, P> => ({
+      // БЫЛО: <N extends string, P extends number>
+      on: <N extends keyof S & string, P extends number>(name: N, port: P): Dep<N, P> => ({
         service: name,
         port
       })
