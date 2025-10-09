@@ -1,0 +1,32 @@
+/**
+ * New configuration schema with typed service dependencies
+ * Export all types and functions for external use
+ */
+
+export { defineConfigV2 } from './define-config-v2.js'
+export type {
+  ServiceDefinition,
+  ServiceContext,
+  ServiceKind,
+  NetworkEndpoint,
+  PublicEndpoint,
+  ResourceProfile,
+  ServiceDependency,
+  TsOpsConfigV2,
+  InferServiceNames,
+  InferServiceDependencies,
+  InferServiceKind,
+  ValidateServiceDependencies,
+  ValidateCircularDependencies,
+  PrunedConfig
+} from './types.js'
+
+export {
+  createNetworkHelpers,
+  createExposeHelpers,
+  createResourceHelpers,
+  createServiceHelpers,
+  createDependencyHelpers,
+  createEnvironmentHelpers,
+  createServiceContext
+} from './helpers.js'
