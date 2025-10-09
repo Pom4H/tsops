@@ -3,7 +3,7 @@
  * Export all types and functions for external use
  */
 
-export { defineConfigV2Fixed as defineConfigV2 } from './define-config-v2-fixed.js'
+export { defineConfigV2Simple as defineConfigV2 } from './define-config-v2-simple.js'
 export type {
   ServiceDefinition,
   ServiceContext,
