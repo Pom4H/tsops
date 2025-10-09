@@ -42,6 +42,8 @@ export interface PrunedConfig {
   service: ServiceConfig
   dependencies: ServiceEndpoint[]
   environment: Record<string, EnvironmentReference>
+  // Namespace-specific variables
+  namespaceVars: Record<string, any>
 }
 
 /**
@@ -81,6 +83,11 @@ export function useConfig(config: PrunedConfig) {
     // Service info
     service: config.service,
     
+    // Namespace variables access
+    namespaceVar: (key: string) => {
+      return config.namespaceVars[key]
+    },
+    
     // Dependency access
     dependency: (serviceName: string) => {
       const dep = config.dependencies.find(d => d.service === serviceName)
@@ -90,7 +97,7 @@ export function useConfig(config: PrunedConfig) {
       return dep
     },
     
-    // Get dependency URL
+    // Get dependency URL (namespace-aware)
     dependencyUrl: (serviceName: string) => {
       return config.dependencies.find(d => d.service === serviceName)?.url
     },
@@ -141,13 +148,19 @@ export function useConfig(config: PrunedConfig) {
     // List all environment variables
     environment: config.environment,
     
+    // List all namespace variables
+    namespaceVars: config.namespaceVars,
+    
     // Check if dependency exists
     hasDependency: (serviceName: string) => {
       return config.dependencies.some(d => d.service === serviceName)
     },
     
     // Get all dependency names
-    dependencyNames: config.dependencies.map(d => d.service)
+    dependencyNames: config.dependencies.map(d => d.service),
+    
+    // Get all namespace variable names
+    namespaceVarNames: Object.keys(config.namespaceVars)
   }
 }
 

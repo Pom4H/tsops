@@ -54,14 +54,21 @@ async function pruneService(service: string, options: PruneOptions): Promise<voi
     throw new Error(`Service '${service}' not found in configuration`)
   }
   
+  // Get namespace variables
+  const namespaceVars = config.namespaces[options.namespace]
+  if (!namespaceVars) {
+    throw new Error(`Namespace '${options.namespace}' not found in configuration`)
+  }
+  
   // Generate pruned configuration
-  const prunedConfig = generatePrunedConfig(config, service, options)
+  const prunedConfig = generatePrunedConfig(config, service, options, namespaceVars)
   
   // Write to file
   await writePrunedConfig(prunedConfig, options)
   
   console.log(`✅ Generated pruned configuration for service: ${service}`)
   console.log(`📁 File: ${options.output}`)
+  console.log(`🏷️  Namespace: ${options.namespace}`)
   
   if (prunedConfig.dependencies.length > 0) {
     console.log(`🔗 Dependencies: ${prunedConfig.dependencies.map(d => d.service).join(', ')}`)
@@ -91,7 +98,7 @@ function resolveConfigPath(inputPath: string): string {
   throw new Error(`Configuration file not found: ${inputPath}`)
 }
 
-function generatePrunedConfig(config: any, serviceName: string, options: PruneOptions): any {
+function generatePrunedConfig(config: any, serviceName: string, options: PruneOptions, namespaceVars: any): any {
   const service = config.services[serviceName]
   if (!service) {
     throw new Error(`Service '${serviceName}' not found`)
@@ -106,7 +113,7 @@ function generatePrunedConfig(config: any, serviceName: string, options: PruneOp
     allDependencies = getTransitiveDependencies(config.services, serviceName)
   }
   
-  // Build dependency info
+  // Build dependency info with namespace-aware URLs
   const dependencyInfo = allDependencies.map((dep: any) => {
     const depService = config.services[dep.service]
     if (!depService) {
@@ -126,7 +133,7 @@ function generatePrunedConfig(config: any, serviceName: string, options: PruneOp
     }
   })
   
-  // Build service info
+  // Build service info with namespace-aware URLs
   const serviceInfo = {
     name: serviceName,
     kind: service.kind,
@@ -137,17 +144,25 @@ function generatePrunedConfig(config: any, serviceName: string, options: PruneOp
     resources: service.resources || { cpu: '100m', memory: '128Mi' }
   }
   
-  // Build environment references
+  // Build environment references with namespace variables
   const environment: Record<string, any> = {
     NODE_ENV: { type: 'static', value: 'production' },
     PORT: { type: 'static', value: String(serviceInfo.port) }
   }
   
-  // Add service URLs
+  // Add service URLs (namespace-aware)
   dependencyInfo.forEach(dep => {
     environment[`${dep.service.toUpperCase()}_URL`] = {
       type: 'static',
       value: dep.url
+    }
+  })
+  
+  // Add namespace variables to environment
+  Object.keys(namespaceVars).forEach(key => {
+    environment[key] = {
+      type: 'static',
+      value: String(namespaceVars[key])
     }
   })
   
@@ -156,7 +171,8 @@ function generatePrunedConfig(config: any, serviceName: string, options: PruneOp
     namespace: options.namespace,
     service: serviceInfo,
     dependencies: dependencyInfo,
-    environment
+    environment,
+    namespaceVars
   }
 }
 
