@@ -74,11 +74,15 @@ export type ServiceContext<
     external: (name: keyof TServices) => string | undefined
   }
   depends: {
-    on: (service: keyof TServices, port: number, options?: {
-      protocol?: Protocol
-      description?: string
-      optional?: boolean
-    }) => ServiceDependency
+    on: <TName extends keyof TServices>(
+      service: TName, 
+      port: number, 
+      options?: {
+        protocol?: Protocol
+        description?: string
+        optional?: boolean
+      }
+    ) => ServiceDependency
   }
   env: (key: string, fallback?: string) => string
   secret: (name: string, key?: string) => any

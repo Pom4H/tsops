@@ -129,11 +129,15 @@ export function createServiceContext<
   }
 
   const depends = {
-    on: (service: keyof TServices, port: number, options?: {
-      protocol?: Protocol
-      description?: string
-      optional?: boolean
-    }): ServiceDependency => {
+    on: <TName extends keyof TServices>(
+      service: TName, 
+      port: number, 
+      options?: {
+        protocol?: Protocol
+        description?: string
+        optional?: boolean
+      }
+    ): ServiceDependency => {
       const targetService = services[service]
       if (!targetService) {
         throw new Error(`Service '${String(service)}' not found`)
