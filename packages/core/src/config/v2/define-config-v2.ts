@@ -10,6 +10,12 @@ import type {
   ValidateCircularDependencies
 } from './types.js'
 import { createServiceContext } from './helpers.js'
+import type { 
+  ValidateAllDependencies,
+  ComputeTopology,
+  IsValidConfiguration,
+  GetValidationErrors
+} from './network-topology.js'
 
 /**
  * Enhanced defineConfig with typed service dependencies and better DX
@@ -65,10 +71,14 @@ export function defineConfigV2<
   getDependencies: (name: keyof TServices) => TServices[keyof TServices]['needs']
   getServiceUrl: (name: keyof TServices, port?: number) => string
   prune: (serviceName: keyof TServices) => PrunedConfig
+  // Add topology validation
+  validateTopology: () => IsValidConfiguration<ValidateAllDependencies<TServices>>
+  getTopology: () => ComputeTopology<TServices>
 } {
   // Validate service dependencies at compile time
-  type ValidatedServices = ValidateServiceDependencies<TServices>
-  type ValidatedConfig = ValidateCircularDependencies<ValidatedServices>
+  type ValidatedDependencies = ValidateAllDependencies<TServices>
+  type IsValid = IsValidConfiguration<ValidatedDependencies>
+  type Topology = ComputeTopology<TServices>
   
   // Create service definitions by calling the services function
   const services = config.services(createServiceContext(
@@ -104,6 +114,16 @@ export function defineConfigV2<
     
     prune: (serviceName: keyof TServices) => {
       return createPrunedConfig(config, services, serviceName)
+    },
+    
+    validateTopology: (): IsValid => {
+      // Runtime validation would go here
+      return true as IsValid
+    },
+    
+    getTopology: (): Topology => {
+      // Runtime topology computation would go here
+      return {} as Topology
     }
   }
 }
