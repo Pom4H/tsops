@@ -54,18 +54,19 @@ export interface ServiceDefinition {
   network?: any
 }
 
+// Extract namespace variables type
+export type ExtractNamespaceVars<TNamespaces extends Record<string, any>> = 
+  TNamespaces[keyof TNamespaces]
+
 // Context helpers for service configuration
 export interface ServiceContext<
   TProject extends string,
   TNamespaces extends Record<string, any>,
   TServices extends Record<string, ServiceDefinition>
-> {
+> extends ExtractNamespaceVars<TNamespaces> {
   // Project metadata
   project: TProject
   namespace: string
-  
-  // Namespace variables (spread from current namespace)
-  [K in keyof TNamespaces[keyof TNamespaces]]: TNamespaces[keyof TNamespaces][K]
   
   // Network helpers
   net: {

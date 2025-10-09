@@ -3,7 +3,6 @@
  * Export all types and functions for external use
  */
 
-export { defineConfigV2 } from './define-config-v2.js'
 export { defineConfigV2Fixed as defineConfigV2 } from './define-config-v2-fixed.js'
 export type {
   ServiceDefinition,
@@ -19,7 +18,8 @@ export type {
   InferServiceKind,
   ValidateServiceDependencies,
   ValidateCircularDependencies,
-  PrunedConfig
+  PrunedConfig,
+  ExtractNamespaceVars
 } from './types.js'
 
 export {
