@@ -15,7 +15,8 @@ export type { TsOpsConfigWithRuntime } from './config/definer.js'
 export { defineConfigV2 } from './config/v2/index.js'
 export type { 
   ServiceDefinition, 
-  ServiceContext, 
+  ServiceContext,
+  BaseServiceContext,
   TsOpsConfigV2 
 } from './config/v2/index.js'
 

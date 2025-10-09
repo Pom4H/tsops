@@ -7,6 +7,7 @@ export { defineConfigV2Fixed as defineConfigV2 } from './define-config-v2-fixed.
 export type {
   ServiceDefinition,
   ServiceContext,
+  BaseServiceContext,
   ServiceKind,
   NetworkEndpoint,
   PublicEndpoint,

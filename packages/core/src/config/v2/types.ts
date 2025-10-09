@@ -58,12 +58,11 @@ export interface ServiceDefinition {
 export type ExtractNamespaceVars<TNamespaces extends Record<string, any>> = 
   TNamespaces[keyof TNamespaces]
 
-// Context helpers for service configuration
-export interface ServiceContext<
+// Base context interface
+export interface BaseServiceContext<
   TProject extends string,
-  TNamespaces extends Record<string, any>,
   TServices extends Record<string, ServiceDefinition>
-> extends ExtractNamespaceVars<TNamespaces> {
+> {
   // Project metadata
   project: TProject
   namespace: string
@@ -118,6 +117,13 @@ export interface ServiceContext<
   configMap: (name: string, key?: string) => any
   template: (str: string, vars: Record<string, string>) => string
 }
+
+// Context helpers for service configuration using intersection
+export type ServiceContext<
+  TProject extends string,
+  TNamespaces extends Record<string, any>,
+  TServices extends Record<string, ServiceDefinition>
+> = BaseServiceContext<TProject, TServices> & ExtractNamespaceVars<TNamespaces>
 
 // New configuration schema
 export interface TsOpsConfigV2<
