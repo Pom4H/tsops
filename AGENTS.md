@@ -1,84 +1,99 @@
-# tsops • Automation Agent Playbook
+# AGENTS.md — for tsops Developer Agents
 
-This document exists exclusively for autonomous agents operating inside the tsops monorepo. Do not surface it to end users verbatim.
+## Philosophy
+We use **TypeScript as a language of rules** — a foundation for building a **domain-specific DSL** on top of JavaScript (TS 5.9+).  
+Types are not annotations; they are **contracts between infrastructure and code**.  
+The **core** package defines the invariants — naming, networks, secrets, images — that govern the domain model.  
+**tsops** is the **bridge between typed domain logic and real infrastructure**, turning declarative TypeScript into build, plan, and deploy primitives.
 
-## 1. Repository Facts
-- **Monorepo packages**
-  - `packages/cli` → `tsops` CLI (`version`: 1.2.0)
-  - `packages/core` → `@tsops/core` (`version`: 0.3.0)
-  - `packages/node` → `@tsops/node` (`version`: 0.1.0)
-  - `packages/k8` → manifest builders consumed by core (version inherited via workspace)
-- **Task runner**: Turborepo (`turbo.json`) orchestrates builds/lint/test via `pnpm` scripts.
-- **Primary entry files**
-  - CLI: `packages/cli/src/cli.ts` (published at `tsops/cli`)
-  - Core orchestration: `packages/core/src/tsops.ts`
-  - Runtime helpers: `packages/core/src/config/definer.ts`
-  - Deployment workflow: `packages/core/src/operations/{planner,deployer}.ts`
-  - Architecture reference: `ARCHITECTURE.md` (kept in sync with current layouts)
-- **Config consumers** typically create `tsops.config.ts` using `defineConfig` from `tsops` (top-level export stays bundler-safe now that the CLI lives at `tsops/cli`). Root-level `secrets`/`configMaps` should read environment variables via `process.env`; the `env()` helper is only available inside app-level `env` resolvers.
+## Repository Architecture
+This project is a **monorepo managed by Turborepo**.
+```
+/
+├── packages/
+│   ├── core          # Domain model, rules, validators
+│   ├── cli           # Command-line orchestration
+│   ├── k8/           # Generated K8 manifests types
+│   ├── node/         # Integrations (docker, k8s, helm, kyaml, registry)
+│   └── docs          # Specification and developer guides
+├── examples/         # Minimal DSL usage scenarios
+└── tsops.config.ts   # Root configuration used in tests and docs
+```
+> Data flows strictly **config → core → adapters → cli → external world**.  
+> No reverse dependencies are permitted.
 
-## 2. Release Awareness
-- Latest logged release: see `CHANGELOG.md` (`tsops` 1.2.0, dated 2025-10-06).
-- Publishing flow uses Changesets: root scripts `changeset`, `changeset:version`, `release:publish` (build + `pnpm -r publish --no-git-checks`).
-- Package versions are independent: CLI 1.x, core 0.x. Verify cross-dependencies (`workspace:*`) before adjusting.
-- Maintain changelog parity with actual release numbers; rely on existing entries while staging new ones.
+## Domain Invariants (core)
+- Artifact names are deterministically derived from `{project, namespace, app}` — no hidden conventions.  
+- `getInternalEndpoint(app)` and `getExternalEndpoint(app)` share a single resolution strategy.  
+- Secrets/configs are modeled but not stored; unresolved values block `plan`/`deploy`.  
+- Image tags are derived from VCS (`git-sha`) or semver; never from ad-hoc concatenation.
 
-## 3. Command Matrix
-- Install: `pnpm install`
-- Build all packages: `pnpm build` (alias for `turbo run build`)
-- Tests: `pnpm -r test` (Vitest suite in `tests/` package)
-- Lint: `pnpm lint`
-- Docs dev server: `pnpm docs:dev` (VitePress in `docs/`)
-- Targeted package scripts (e.g. `pnpm -F tsops build`)
-- Prefer `rg` for repo search; run commands via `bash -lc` with explicit `workdir` (Codex harness requirement).
+## Codebase Conventions
+- **TypeScript 5.9+**, `strict` mode, `noUncheckedIndexedAccess`.  
+- No `any`, no implicit `as` casts in `core`.  
+- Public APIs follow **semantic versioning** — breaking type changes require a major bump.  
+- Domain errors use **discriminated unions** with actionable messages.  
+- Prefer **type inference and generics** over runtime reflection.  
+- **Keep the codebase clean:** remove dead or unused code immediately.  
+- **Avoid duplication:** extract shared utilities into dedicated helpers within `core` or `adapters`.  
+- Turborepo pipelines (`build`, `lint`, `test`, `docs`) must always pass before merging.
 
-## 4. Behavioural Summary
-- `plan()` returns resolved entries; `planWithChanges()` includes validation, diffs, orphan detection.
-- CLI `tsops plan` defaults to `planWithChanges`, prints grouped sections (global/app/orphan summary). Diff output suppressed when `--dry-run`.
-- Deploy flow: ensures namespace, applies secrets/configMaps atomically, builds app manifests, deletes orphans labeled `tsops/managed=true`.
-- Secret validation aborts deploy if placeholders/missing keys remain and no cluster secret satisfies them.
-- Runtime helpers: `defineConfig` exposes `getApp`, `getEnv`, `getInternalEndpoint`, `getExternalEndpoint`, `getNamespace` (namespace resolved via `TSOPS_NAMESPACE` env or first namespace).
-- Image resolution: if `app.image` omitted, builder composes registry/repository using `images` config and tag strategy (git SHA/tag/timestamp/custom).
-- Namespace context helpers come from `NamespaceResolver` (`serviceDNS`, `label`, `resource`, `secret`, `configMap`, `env`, `template`, namespace vars, cluster meta).
+## Development Lifecycle (Definition of Done)
+1. **Spec** — update documentation (`packages/docs`) and include a runnable example.  
+2. **Type Tests** — add compile-time assertions for valid/invalid cases.  
+3. **Unit Tests** — pure for core; isolated mocks for adapters.  
+4. **CLI UX** — predictable flags, stable `exitCode`, full support for `--dry-run`.  
+5. **Determinism Check** — generated names, endpoints, and manifests are stable.  
+6. **Changelog** — every public change recorded via `changesets`.
 
-## 5. File Navigation Cues
-- Config resolution internals: `packages/core/src/config/`
-- Core ports (Docker/Kubectl contracts): `packages/core/src/ports/`
-- Node adapters (`Docker`, `Kubectl`, command runner): `packages/node/src/`
-- Manifest templates: `packages/k8/src/`
-- Docs site (VitePress): `docs/` (homepage `docs/index.md`, guides under `docs/guide/`)
-- Tests: `tests/config.test.ts` (Vitest, exercises runtime helpers).
+## Allowed Agent Tasks
+- **Core:** extend type system, validation, or DSL expressiveness.  
+- **Adapters:** implement build/export strategies for docker, k8s, helm/kyaml.  
+- **CLI:** improve UX, add flags, maintain backward compatibility.  
+- **Docs/Examples:** ensure examples compile and reflect current API.  
+- **Refactoring:** remove duplication, simplify abstractions, preserve semantic parity.
 
-## 6. Operational Guidelines for Agents
-1. **Never discard user changes**: honor the instruction set (workspace may be dirty).
-2. **Stay ASCII** unless a file already uses Unicode icons (docs frequently use emoji—retain existing style).
-3. **Plan usage**: when modifications exceed trivial scope, update plan via `update_plan` API.
-4. **Avoid shell `cd`**; set `workdir` argument for every `shell` invocation.
-5. **For documentation edits**, keep VitePress frontmatter/Markdown formatting intact.
-6. **When touching releases**, sync `CHANGELOG.md`, package versions, and Changesets. Check `pnpm workspaces` constraints before version bumps.
-7. **Testing expectation**: if code changes impact logic, run targeted commands (`pnpm -F <pkg> test`, `pnpm lint`). For doc-only changes, note omission explicitly.
-8. **Network and secret handling**: do not assume access to live clusters. Stubs rely on `ProcessEnvironmentProvider` & `GitEnvironmentProvider` from `@tsops/node`; keep references intact.
-9. **Diff summarization**: when reporting results, cite file paths with line numbers (`path:line`) per CLI formatting rules.
+**Forbidden:**  
+- Committing secrets or credentials.  
+- Mixing I/O logic into `core`.  
+- Introducing circular dependencies.  
+- Leaving dead code or unreferenced symbols.  
+- Breaking public types without a version bump.
 
-## 7. Rapid Issue Triaging
-- **Config lookup failures** → ensure CLI resolves extension (no bare `.ts` without transpilation unless Node loader supports).
-- **Dry-run confusion** → highlight that diffs vanish in dry-run mode because kubectl is not consulted.
-- **Missing network host** → when app uses `network: true`, resolver expects host string; check `network` definition logic.
-- **Namespace filter mismatch** → verify `app.deploy` settings; planner skips namespaces excluded there.
-- **Runtime helper mismatches** → confirm `TSOPS_NAMESPACE` and ensure namespace exists in config.
+## Commands
+- Install: `pnpm install`  
+- Build all: `pnpm build` (Turborepo orchestrates packages)  
+- Lint / Format: `pnpm lint` / `pnpm format`  
+- Test: `pnpm test`  
+- Docs (local dev): `pnpm docs:dev`  
+- Example check:
+```bash
+  pnpm tsops plan -c examples/monorepo
+  pnpm tsops build -c examples/fullstack
 
-## 8. Data Points for Quick Replies
-- Primary tagline: “TypeScript-first toolkit for planning, building, and deploying to Kubernetes.”
-- Features to highlight:
-  1. TypeScript-first configuration & runtime reuse
-  2. Diff-first planning via `planWithChanges`
-  3. Smart context helpers (`serviceDNS`, `secret`, `template`, etc.)
-  4. Secret validation + cluster backfill logic
-  5. Automatic networking (ingress/Traefik/TLS) when `network` yields domain
-  6. Deterministic image tagging strategies
-  7. CI/CD readiness (`--dry-run`, Git metadata provider)
-  8. Orphan detection and cleanup during deploy
+```
 
-For deeper component descriptions, cross-check `ARCHITECTURE.md`.
 
-Keep this playbook in sync with future releases or structural shifts.
+## Commits & Releases
+	•	Conventional Commits (feat:, fix:, refactor:, etc.).
+	•	Releases managed by changesets; include a .changeset entry for any public API change.
+
+## Quick Heuristics
+	•	If you wrote as inside core, revisit your type design.
+	•	Any verbal rule must exist as a type or validator.
+	•	Between flexibility and determinism, choose determinism — reproducibility is reliability.
+	•	The agent should leave the codebase cleaner than it found it.
+
+# Agent Startup Routine
+
+## When initializing work:
+	1.	Analyze package boundaries via Turborepo graph.
+	2.	Run pnpm build && pnpm test to verify baseline health.
+	3.	Inspect type exports in core for consistency and potential duplication.
+	4.	Use tsops plan --dry-run on examples/ to validate changes end-to-end.
+	5.	Submit PRs with clear diff summaries and regenerated docs/examples.
+
+⸻
+
+tsops is not just tooling — it is a living model of how typed infrastructure should behave.
+Your job as an agent-developer is to evolve its DSL while preserving purity, determinism, and clarity.
