@@ -64,6 +64,9 @@ export interface ServiceContext<
   project: TProject
   namespace: string
   
+  // Namespace variables (spread from current namespace)
+  [K in keyof TNamespaces[keyof TNamespaces]]: TNamespaces[keyof TNamespaces][K]
+  
   // Network helpers
   net: {
     http: (port: number, path?: string) => NetworkEndpoint
@@ -95,7 +98,7 @@ export interface ServiceContext<
     external: (name: keyof TServices) => string | undefined
   }
   
-  // Dependency helpers
+  // Dependency helpers with proper typing
   depends: {
     on: <TName extends keyof TServices>(
       service: TName,

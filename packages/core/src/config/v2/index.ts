@@ -4,6 +4,7 @@
  */
 
 export { defineConfigV2 } from './define-config-v2.js'
+export { defineConfigV2Fixed as defineConfigV2 } from './define-config-v2-fixed.js'
 export type {
   ServiceDefinition,
   ServiceContext,
@@ -30,3 +31,12 @@ export {
   createEnvironmentHelpers,
   createServiceContext
 } from './helpers.js'
+
+export {
+  createTypedDependencyHelpers,
+  createTypedServiceHelpers,
+  createTypedNetworkHelpers,
+  createTypedExposeHelpers,
+  createTypedResourceHelpers,
+  createTypedEnvironmentHelpers
+} from './typed-helpers.js'

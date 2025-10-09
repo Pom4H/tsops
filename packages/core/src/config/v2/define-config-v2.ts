@@ -10,6 +10,14 @@ import type {
   ValidateCircularDependencies
 } from './types.js'
 import { createServiceContext } from './helpers.js'
+import { 
+  createTypedDependencyHelpers,
+  createTypedServiceHelpers,
+  createTypedNetworkHelpers,
+  createTypedExposeHelpers,
+  createTypedResourceHelpers,
+  createTypedEnvironmentHelpers
+} from './typed-helpers.js'
 import type { 
   ValidateAllDependencies,
   ComputeTopology,

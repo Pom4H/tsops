@@ -240,5 +240,5 @@ export function createServiceContext<TProject extends string, TNamespaces extend
     depends: createDependencyHelpers(project, namespace, services),
     ...createEnvironmentHelpers(project, namespace),
     ...namespaceVars
-  }
+  } as ServiceContext<TProject, TNamespaces, TServices>
 }
