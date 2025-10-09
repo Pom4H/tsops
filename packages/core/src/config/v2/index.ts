@@ -4,13 +4,19 @@
 
 export { defineConfigV2, createServiceContext } from './define-config.js'
 export type {
+  // New recursive types
+  NamespaceShape,
+  NamespaceUnion,
+  Dep,
+  ServiceWithNeeds,
+  DependsHelper,
+  Tools,
+  // Legacy types for backward compatibility
   ServiceDefinition,
-  ServiceContext,
   ServiceKind,
   Protocol,
   NetworkEndpoint,
   PublicEndpoint,
   ResourceProfile,
-  ServiceDependency,
-  TsOpsConfigV2
+  ServiceDependency
 } from './types.js'

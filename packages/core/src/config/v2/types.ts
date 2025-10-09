@@ -1,7 +1,37 @@
 /**
- * Simple V2 configuration types
+ * V2 configuration types with recursive dependency validation
  */
 
+// ===== Core helper types =====
+export type NamespaceShape = {
+  domain: string;
+  debug: boolean;
+  logLevel: string;
+} & Record<string, unknown>;
+
+export type NamespaceUnion<N extends Record<string, NamespaceShape>> =
+  N[keyof N];
+
+export type Dep<Name extends string, Port extends number = number> = {
+  service: Name;
+  port: Port;
+};
+
+export type ServiceWithNeeds<S extends Record<string, object>> =
+  { needs: readonly Dep<string, number>[] } & Record<string, unknown>;
+
+export interface DependsHelper<S extends Record<string, object>> {
+  on<N extends keyof S & string, P extends number>(name: N, port: P): Dep<N, P>;
+}
+
+export type Tools<S extends Record<string, object>> = {
+  net: { http: (port: number) => unknown };
+  expose: { httpsHost: (domain: string) => unknown };
+  res: { smol: unknown; medium: unknown };
+  depends: DependsHelper<S>;
+};
+
+// ===== Legacy types for backward compatibility =====
 export type Protocol = 'http' | 'https' | 'tcp' | 'udp' | 'grpc'
 
 export type ServiceKind = 'api' | 'gateway' | 'worker' | 'database' | 'cache' | 'queue'
@@ -42,60 +72,20 @@ export interface ServiceDefinition {
   description?: string
 }
 
-// Simple context type that spreads namespace variables
-export type ServiceContext<
-  TProject extends string,
-  TNamespaces extends Record<string, any>,
-  TServices extends Record<string, ServiceDefinition>
-> = {
-  project: TProject
-  namespace: string
-  net: {
-    http: (port: number, path?: string) => NetworkEndpoint
-    https: (port: number, path?: string) => NetworkEndpoint
-    tcp: (port: number) => NetworkEndpoint
-    udp: (port: number) => NetworkEndpoint
-    grpc: (port: number) => NetworkEndpoint
-  }
-  expose: {
-    httpsHost: (domain: string, path?: string) => PublicEndpoint
-    httpHost: (domain: string, path?: string) => PublicEndpoint
-    custom: (host: string, protocol: 'http' | 'https', path?: string) => PublicEndpoint
-  }
-  res: {
-    smol: ResourceProfile
-    medium: ResourceProfile
-    large: ResourceProfile
-    custom: (cpu: string, memory: string, storage?: string, replicas?: number) => ResourceProfile
-  }
-  service: {
-    url: (name: keyof TServices, port?: number) => string
-    internal: (name: keyof TServices, port?: number) => string
-    external: (name: keyof TServices) => string | undefined
-  }
-  depends: {
-    on: <TName extends keyof TServices>(
-      service: TName, 
-      port: number, 
-      options?: {
-        protocol?: Protocol
-        description?: string
-        optional?: boolean
-      }
-    ) => ServiceDependency
-  }
-  env: (key: string, fallback?: string) => string
-  secret: (name: string, key?: string) => any
-  configMap: (name: string, key?: string) => any
-  template: (str: string, vars: Record<string, string>) => string
-} & TNamespaces[keyof TNamespaces]
-
-export interface TsOpsConfigV2<
-  TProject extends string,
-  TNamespaces extends Record<string, any>,
-  TServices extends Record<string, ServiceDefinition>
-> {
-  project: TProject
-  namespaces: TNamespaces
-  services: (context: ServiceContext<TProject, TNamespaces, TServices>) => TServices
-}
+// ===== Final defineConfigV2 type =====
+export declare function defineConfigV2<
+  Project extends string,
+  Namespaces extends Record<string, NamespaceShape>,
+  S extends Record<string, ServiceWithNeeds<S>>
+>(config: {
+  project: Project;
+  namespaces: Namespaces;
+  services: (ctx: NamespaceUnion<Namespaces> & Tools<S>) => S;
+}): {
+  readonly project: Project;
+  readonly namespaces: Namespaces;
+  getService<K extends keyof S>(name: K): S[K];
+  getDependencies<K extends keyof S>(
+    name: K
+  ): S[K] extends { needs: infer D } ? Readonly<D> : readonly [];
+};
