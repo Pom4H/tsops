@@ -1,35 +1,48 @@
 /**
- * V2 configuration types with recursive dependency validation
+ * V2 configuration types with proper key inference
  */
 
-// ===== Core helper types =====
+// ===== Base shapes =====
 export type NamespaceShape = {
   domain: string;
   debug: boolean;
   logLevel: string;
 } & Record<string, unknown>;
 
-export type NamespaceUnion<N extends Record<string, NamespaceShape>> =
-  N[keyof N];
+export type NamespaceUnion<N extends Record<string, NamespaceShape>> = N[keyof N];
 
+// Зависимость на сервис + порт
 export type Dep<Name extends string, Port extends number = number> = {
   service: Name;
   port: Port;
 };
 
-export type ServiceWithNeeds<S extends Record<string, object>> =
-  { needs: readonly Dep<string, number>[] } & Record<string, unknown>;
+// Минимальный shape сервиса (можно расширять по вашему DSL)
+export type ServiceBase = {
+  needs?: readonly Dep<string, number>[];
+} & Record<string, unknown>;
 
-export interface DependsHelper<S extends Record<string, object>> {
-  on<N extends keyof S & string, P extends number>(name: N, port: P): Dep<N, P>;
+// ===== Depends/Tools, привязанные к множеству ключей, а не ко всему S =====
+export interface DependsHelper<Keys extends string> {
+  on<Name extends Keys, P extends number>(name: Name, port: P): Dep<Name, P>;
 }
 
-export type Tools<S extends Record<string, object>> = {
+export type Tools<Keys extends string> = {
   net: { http: (port: number) => unknown };
   expose: { httpsHost: (domain: string) => unknown };
   res: { smol: unknown; medium: unknown };
-  depends: DependsHelper<S>;
+  depends: DependsHelper<Keys>;
 };
+
+// ===== Вспомогательные типы для вывода топологии =====
+export type DependenciesOf<
+  S extends Record<string, ServiceBase>,
+  K extends keyof S
+> = S[K] extends { needs: infer D }
+  ? Readonly<D> extends readonly Dep<any, any>[]
+    ? Readonly<D>
+    : readonly []
+  : readonly [];
 
 // ===== Legacy types for backward compatibility =====
 export type Protocol = 'http' | 'https' | 'tcp' | 'udp' | 'grpc'
@@ -72,20 +85,26 @@ export interface ServiceDefinition {
   description?: string
 }
 
-// ===== Final defineConfigV2 type =====
+// ===== Главная сигнатура defineConfigV2 =====
 export declare function defineConfigV2<
   Project extends string,
   Namespaces extends Record<string, NamespaceShape>,
-  S extends Record<string, ServiceWithNeeds<S>>
+  // S будет ИНФЕРЕН колбэком services по возвращаемому объекту
+  S extends Record<string, ServiceBase>
 >(config: {
   project: Project;
   namespaces: Namespaces;
-  services: (ctx: NamespaceUnion<Namespaces> & Tools<S>) => S;
+
+  // Важный момент: Tools параметризуем ключами S (keyof S & string),
+  // а сам S выводится из возвращаемого значения фабрики.
+  services: (
+    ctx: NamespaceUnion<Namespaces> & Tools<keyof S & string>
+  ) => S;
 }): {
   readonly project: Project;
   readonly namespaces: Namespaces;
+
   getService<K extends keyof S>(name: K): S[K];
-  getDependencies<K extends keyof S>(
-    name: K
-  ): S[K] extends { needs: infer D } ? Readonly<D> : readonly [];
+
+  getDependencies<K extends keyof S>(name: K): DependenciesOf<S, K>;
 };

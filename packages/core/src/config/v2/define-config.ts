@@ -1,34 +1,40 @@
 /**
- * V2 configuration implementation with recursive dependency validation
+ * V2 configuration implementation with proper key inference
  */
 
 import type { 
   NamespaceShape,
   NamespaceUnion,
   Dep,
-  ServiceWithNeeds,
+  ServiceBase,
   DependsHelper,
-  Tools
+  Tools,
+  DependenciesOf
 } from './types.js'
 
 export function defineConfigV2<
   Project extends string,
   Namespaces extends Record<string, NamespaceShape>,
-  S extends Record<string, ServiceWithNeeds<S>>
+  S extends Record<string, ServiceBase>
 >(config: {
   project: Project;
   namespaces: Namespaces;
-  services: (ctx: NamespaceUnion<Namespaces> & Tools<S>) => S;
+  services: (
+    ctx: NamespaceUnion<Namespaces> & Tools<keyof S & string>
+  ) => S;
 }): {
   readonly project: Project;
   readonly namespaces: Namespaces;
   getService<K extends keyof S>(name: K): S[K];
-  getDependencies<K extends keyof S>(
-    name: K
-  ): S[K] extends { needs: infer D } ? Readonly<D> : readonly [];
+  getDependencies<K extends keyof S>(name: K): DependenciesOf<S, K>;
 } {
-  // Create the tools object with proper typing
-  const tools: Tools<S> = {
+  // Create a mock context for the services function
+  // We need to create the tools with the correct keys, but we don't know them yet
+  // So we'll create a mock that will be replaced when we call the services function
+  const mockContext = {
+    domain: 'mock.domain.com',
+    debug: true,
+    logLevel: 'debug',
     net: {
       http: (port: number) => ({ protocol: 'http', port })
     },
@@ -40,20 +46,12 @@ export function defineConfigV2<
       medium: { cpu: '500m', memory: '512Mi', replicas: 2 }
     },
     depends: {
-      on: <N extends keyof S & string, P extends number>(name: N, port: P): Dep<N, P> => ({
+      on: <N extends string, P extends number>(name: N, port: P): Dep<N, P> => ({
         service: name,
         port
       })
     }
-  }
-
-  // Create a mock context for the services function
-  const mockContext = {
-    domain: 'mock.domain.com',
-    debug: true,
-    logLevel: 'debug',
-    ...tools
-  } as NamespaceUnion<Namespaces> & Tools<S>
+  } as NamespaceUnion<Namespaces> & Tools<keyof S & string>
 
   // Call the services function to get the actual services
   const services = config.services(mockContext)
@@ -64,14 +62,12 @@ export function defineConfigV2<
     getService: <K extends keyof S>(name: K): S[K] => {
       return services[name]
     },
-    getDependencies: <K extends keyof S>(
-      name: K
-    ): S[K] extends { needs: infer D } ? Readonly<D> : readonly [] => {
+    getDependencies: <K extends keyof S>(name: K): DependenciesOf<S, K> => {
       const service = services[name]
-      if (service && 'needs' in service) {
-        return service.needs as any
+      if (service && 'needs' in service && service.needs) {
+        return service.needs as DependenciesOf<S, K>
       }
-      return [] as any
+      return [] as unknown as DependenciesOf<S, K>
     }
   }
 }

@@ -14,13 +14,14 @@ export type { TsOpsConfigWithRuntime } from './config/definer.js'
 // V2 Configuration
 export { defineConfigV2, createServiceContext } from './config/v2/index.js'
 export type {
-  // New recursive types
+  // New key inference types
   NamespaceShape,
   NamespaceUnion,
   Dep,
-  ServiceWithNeeds,
+  ServiceBase,
   DependsHelper,
   Tools,
+  DependenciesOf,
   // Legacy types for backward compatibility
   ServiceDefinition,
   ServiceKind,
