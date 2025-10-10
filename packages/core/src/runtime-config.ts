@@ -1,6 +1,7 @@
 import type { TsOpsConfig, EnvValue, SecretRef, ConfigMapRef, ExtractNamespaceVarsFromConfig } from './types.js'
 import { createConfigResolver } from './config/resolver.js'
 import { isSecretRef, isConfigMapRef } from './types.js'
+import { buildServiceDNS } from './config/namespaces.js'
 
 /**
  * Resolved environment variables for a single app.
@@ -191,16 +192,15 @@ function resolveEnvToStrings(
 }
 
 /**
- * Builds internal Kubernetes service DNS endpoint.
- * Format: http://{serviceName}.{namespace}.svc.cluster.local:{port}
+ * Builds internal Kubernetes service DNS endpoint using serviceDNS helper.
+ * Uses the same service resolution logic as the context helpers.
  */
 function buildInternalEndpoint(
   serviceName: string,
   namespace: string,
   port: number | string
 ): string {
-  const portNum = typeof port === 'string' ? port : port
-  return `http://${serviceName}.${namespace}.svc.cluster.local:${portNum}`
+  return buildServiceDNS(serviceName, namespace, port, { protocol: 'http' })
 }
 
 /**

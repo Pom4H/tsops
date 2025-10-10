@@ -205,3 +205,31 @@ export function createNamespaceResolver<
     createHostContext
   }
 }
+
+/**
+ * Standalone serviceDNS utility function for building Kubernetes service DNS names.
+ * This is used by runtime-config.ts to build internal endpoints consistently.
+ * 
+ * @param serviceName - Full service name (project-app format)
+ * @param namespace - Kubernetes namespace
+ * @param port - Port number
+ * @param options - Additional options
+ * @returns Service DNS name with protocol and port
+ */
+export function buildServiceDNS(
+  serviceName: string,
+  namespace: string,
+  port: number | string,
+  options: { protocol?: 'http' | 'https' | 'tcp' | 'udp'; clusterDomain?: string } = {}
+): string {
+  const portNum = typeof port === 'string' ? port : port
+  const { protocol = 'http', clusterDomain = 'cluster.local' } = options
+  
+  const dns = `${serviceName}.${namespace}.svc.${clusterDomain}`
+  
+  if (protocol) {
+    return `${protocol}://${dns}:${portNum}`
+  }
+  
+  return `${dns}:${portNum}`
+}
