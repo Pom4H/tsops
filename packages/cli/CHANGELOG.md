@@ -1,5 +1,67 @@
 # tsops
 
+## 1.4.0
+
+### Minor Changes
+
+- feat: add url helper for building complete URLs with automatic port resolution
+
+  ## New Features
+
+  ### URL Helper
+
+  Added a new `url` helper function that automatically builds complete URLs with ports, eliminating the need to manually construct URLs from DNS names and ports.
+
+  **Usage:**
+
+  ```typescript
+  env: ({ url }) => ({
+    BACKEND_URL: url('backend', 'ingress'), // -> 'https://api.example.com:3000'
+    API_URL: url('api', 'cluster'), // -> 'http://api.namespace.svc.cluster.local:8080'
+    SERVICE_URL: url('api', 'service') // -> 'http://api:8080'
+  })
+  ```
+
+  **Features:**
+
+  - **Automatic port resolution**: Uses the first port from `app.ports[0].port`
+  - **Protocol support**: Defaults to `http`, supports `https` via options
+  - **All DNS types**: Works with `'cluster'`, `'service'`, and `'ingress'` types
+  - **External DNS integration**: Properly resolves external hosts through `network` configuration
+
+  ### Simplified DNS Helper
+
+  - Removed 3rd argument (options) from `dns` helper for simplicity
+  - `dns` now returns only DNS names without ports or protocols
+  - `url` helper handles complete URL construction
+
+  ## Breaking Changes
+
+  - `dns` helper signature changed from `dns(app, type, options?)` to `dns(app, type)`
+  - All examples updated to use `url` helper instead of manual URL construction
+
+  ## Migration Guide
+
+  Replace manual URL construction:
+
+  ```typescript
+  // Before
+  env: ({ dns }) => ({
+    API_URL: `http://${dns('api', 'cluster')}:3000`
+  })
+
+  // After
+  env: ({ url }) => ({
+    API_URL: url('api', 'cluster')
+  })
+  ```
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @tsops/core@0.5.0
+  - @tsops/node@0.2.1
+
 ## 1.3.1
 
 ### Patch Changes
