@@ -5,6 +5,7 @@ export * from './config/resolver.js'
 export * from './operations/index.js'
 export * from './environment-provider.js'
 export * from './runtime-config.js'
+export * from './runtime-helpers.js'
 export * from './ports/docker.js'
 export * from './ports/kubectl.js'
 

@@ -5,6 +5,7 @@ import type {
   TsOpsConfig
 } from '../types.js'
 import { createRuntimeConfig, type RuntimeConfig, type ResolvedAppEnv } from '../runtime-config.js'
+import { createSimplifiedRuntimeConfig, type SimplifiedRuntimeConfig } from '../runtime-helpers.js'
 import { getEnvironmentVariable } from '../environment-provider.js'
 
 /**
@@ -103,6 +104,27 @@ export interface TsOpsConfigWithRuntime<
    * ```
    */
   getNamespace(): Extract<keyof TNamespaces, string>
+  
+  // ============================================================================
+  // SIMPLIFIED RUNTIME METHODS
+  // ============================================================================
+  
+  /**
+   * Get simplified runtime configuration with only essential methods.
+   * Provides env, dns, url helpers for the current namespace.
+   * 
+   * @returns Simplified runtime config
+   * 
+   * @example
+   * ```ts
+   * import config from './tsops.config'
+   * const runtime = config.getRuntime()
+   * const env = runtime.getEnv('api')
+   * const dns = runtime.dns('api', 'cluster')
+   * const url = runtime.url('api', 'ingress')
+   * ```
+   */
+  getRuntime(): SimplifiedRuntimeConfig<TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>>
 }
 
 /**
@@ -210,6 +232,11 @@ export function defineConfig<
     
     getNamespace(): Extract<keyof TNamespaces, string> {
       return getCurrentNamespace(config.namespaces)
+    },
+    
+    getRuntime(): SimplifiedRuntimeConfig<TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>> {
+      const namespace = getCurrentNamespace(config.namespaces)
+      return createSimplifiedRuntimeConfig(config, namespace)
     }
   }
 }

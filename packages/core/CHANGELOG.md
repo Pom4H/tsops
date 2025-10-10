@@ -5,6 +5,35 @@
 ### Minor Changes
 
 - feat: add url helper for building complete URLs with automatic port resolution
+- feat: add simplified runtime configuration with reusable helpers
+
+  ### Simplified Runtime Configuration
+
+  Added a new `getRuntime()` method that provides a simplified interface with only essential helpers: `env`, `dns`, and `url`.
+
+  **Usage:**
+  ```typescript
+  const runtime = config.getRuntime()
+  
+  // DNS helpers
+  const clusterDns = runtime.dns('api', 'cluster')     // -> 'api.namespace.svc.cluster.local'
+  const serviceDns = runtime.dns('api', 'service')     // -> 'api'
+  const ingressDns = runtime.dns('api', 'ingress')     // -> 'api.example.com'
+  
+  // URL helpers with automatic port resolution
+  const clusterUrl = runtime.url('api', 'cluster')     // -> 'http://api.namespace.svc.cluster.local:3000'
+  const serviceUrl = runtime.url('api', 'service')     // -> 'http://api:3000'
+  const ingressUrl = runtime.url('api', 'ingress')     // -> 'http://api.example.com:3000'
+  
+  // Environment variables
+  const env = runtime.getEnv('api')                    // -> { PORT: '3000', ... }
+  ```
+
+  **Features:**
+  - **Reusable helpers**: `dns`, `url`, `env` functions can be used independently
+  - **Automatic port resolution**: URLs include correct ports from app configuration
+  - **Simplified interface**: Only essential methods, no complex runtime objects
+  - **Type safety**: Full TypeScript support with proper inference
 
   ## New Features
 

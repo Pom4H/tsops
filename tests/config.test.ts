@@ -121,6 +121,26 @@ describe('defineConfig runtime API', () => {
       expect(web.serviceName).toBe('web')
       expect(web.env.NAMESPACE).toBe('dev')
       expect(cfg.getExternalEndpoint('web')).toBe('https://web.dev.example.com')
+      
+      // simplified runtime config
+      const runtime = cfg.getRuntime()
+      expect(runtime.namespace).toBe('dev')
+      expect(runtime.project).toBe('demo')
+      
+      // test dns helper
+      expect(runtime.dns('api', 'cluster')).toBe('api.dev.svc.cluster.local')
+      expect(runtime.dns('api', 'service')).toBe('api')
+      expect(runtime.dns('api', 'ingress')).toBe('api.dev.example.com')
+      
+      // test url helper
+      expect(runtime.url('api', 'cluster')).toBe('http://api.dev.svc.cluster.local:80')
+      expect(runtime.url('api', 'service')).toBe('http://api:80')
+      expect(runtime.url('api', 'ingress')).toBe('http://api.dev.example.com:80')
+      
+      // test env helper
+      const runtimeEnv = runtime.getEnv('api')
+      expect(runtimeEnv.ENDPOINT).toBe('http://api.dev.svc.cluster.local:80')
+      expect(runtimeEnv.HOST).toBe('api.dev.example.com')
     })
   })
 
