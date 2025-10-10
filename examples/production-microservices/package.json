@@ -1,0 +1,14 @@
+{
+  "name": "production-microservices-example",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Complex production microservices architecture example",
+  "dependencies": {
+    "@tsops/core": "workspace:*"
+  },
+  "scripts": {
+    "show": "tsx tsops.config.ts",
+    "validate": "tsc --noEmit tsops.config.ts"
+  }
+}
