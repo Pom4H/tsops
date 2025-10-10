@@ -222,7 +222,7 @@ export interface ClusterMetadata {
 /**
  * DNS type for dns helper function
  */
-export type DNSType = 'cluster' | 'service' | 'ingress'
+export type DNSType = 'cluster' | 'service'
 
 /**
  * Options for dns helper function
@@ -287,7 +287,7 @@ export interface AppContextCoreHelpers<
   /**
    * Generate DNS name for different types of resources
    * @param app - Application name (type-safe from config.apps)
-   * @param type - DNS type: 'cluster' for internal cluster DNS, 'service' for service name, 'ingress' for external ingress
+   * @param type - DNS type: 'cluster' for internal cluster DNS, 'service' for service name
    * @param options - Port number or DNSOptions
    * @returns Full DNS name
    * @example
@@ -299,10 +299,6 @@ export interface AppContextCoreHelpers<
    * dns('api', 'service') // -> 'api'
    * dns('api', 'service', 3000) // -> 'api:3000'
    * 
-   * // Ingress external DNS (uses network host if configured)
-   * dns('api', 'ingress') // -> 'api.example.com' (if network configured) or 'api' (fallback)
-   * dns('api', 'ingress', { protocol: 'https' }) // -> 'https://api.example.com' (if network configured)
-   * 
    * // With protocol
    * dns('api', 'cluster', { port: 3000, protocol: 'https' })
    * // -> 'https://api.my-namespace.svc.cluster.local:3000'
@@ -310,6 +306,9 @@ export interface AppContextCoreHelpers<
    * // Headless service (StatefulSet)
    * dns('postgres', 'cluster', { headless: true, podIndex: 0 })
    * // -> 'postgres-0.postgres.my-namespace.svc.cluster.local'
+   * 
+   * // For external DNS, use network configuration:
+   * // network: ({ domain }) => `api.${domain}` -> getExternalEndpoint('api')
    */
   dns: (app: TAppNames, type: DNSType, options?: number | DNSOptions) => string
 

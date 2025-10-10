@@ -90,28 +90,25 @@ export function createRuntimeConfig<
       continue
     }
     
-    // Resolve network first to get host
-    let host: string | undefined = undefined
-    const { host: updatedHost } = resolver.apps.resolveNetwork(
-      appName,
-      app,
-      namespace as string,
-      resolver.namespaces.createHostContext(namespace as string, { appName }),
-      host
-    )
-    host = updatedHost || host
-    
-    // Create context for resolution with host information
-    const context = resolver.namespaces.createHostContext(namespace as string, { 
-      appName, 
-      externalHost: host 
-    })
+    // Create context for resolution
+    const context = resolver.namespaces.createHostContext(namespace as string, { appName })
     
     // Resolve all app properties
+    let host: string | undefined = undefined
     const envRaw = resolver.apps.resolveEnv(app, namespace as string, context)
     const secrets = resolver.apps.resolveSecrets(app, namespace as string, context)
     const configMaps = resolver.apps.resolveConfigMaps(app, namespace as string, context)
     const image = app.image || resolver.images.buildRef(appName)
+    
+    // Resolve network (may set host from network definitions)
+    const { host: updatedHost } = resolver.apps.resolveNetwork(
+      appName,
+      app,
+      namespace as string,
+      context,
+      host
+    )
+    host = updatedHost || host
     
     // Convert env values to plain strings
     const env = resolveEnvToStrings(envRaw, secrets, configMaps)
