@@ -93,7 +93,7 @@ describe('defineConfig runtime API', () => {
       // getApp
       const api = cfg.getApp('api')
       expect(api.serviceName).toBe('demo-api')
-      expect(api.internalEndpoint).toBe('http://demo-api.dev.svc.cluster.local:8080')
+      expect(api.internalEndpoint).toBe('http://demo-api:8080')
       expect(api.image).toMatch(/^ghcr\.io\/acme\/demo-api:/)
 
       // env resolution
@@ -130,7 +130,7 @@ describe('defineConfig runtime API', () => {
 
       const api = cfg.getApp('api')
       expect(api.serviceName).toBe('demo-api')
-      expect(api.internalEndpoint).toBe('http://demo-api.prod.svc.cluster.local:8080')
+      expect(api.internalEndpoint).toBe('http://demo-api:8080')
       expect(cfg.getExternalEndpoint('api')).toBe('https://api.example.com')
       
       const web = cfg.getApp('web')

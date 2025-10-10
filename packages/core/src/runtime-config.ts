@@ -1,7 +1,6 @@
 import type { TsOpsConfig, EnvValue, SecretRef, ConfigMapRef, ExtractNamespaceVarsFromConfig } from './types.js'
 import { createConfigResolver } from './config/resolver.js'
 import { isSecretRef, isConfigMapRef } from './types.js'
-import { buildServiceDNS } from './config/namespaces.js'
 
 /**
  * Resolved environment variables for a single app.
@@ -62,7 +61,7 @@ export type RuntimeConfig<TConfig extends TsOpsConfig<any, any, any, any, any, a
  * 
  * // Get internal Kubernetes endpoint
  * const endpoint = runtime.apps['worken-api'].internalEndpoint
- * // => 'http://worken-worken-api.dev.svc.cluster.local:3000'
+ * // => 'http://worken-api:3000'
  * 
  * // Type-safe access to all apps
  * for (const [appName, appConfig] of Object.entries(runtime.apps)) {
@@ -192,15 +191,16 @@ function resolveEnvToStrings(
 }
 
 /**
- * Builds internal Kubernetes service DNS endpoint using serviceDNS helper.
- * Uses the same service resolution logic as the context helpers.
+ * Builds internal Kubernetes service endpoint.
+ * Uses service name directly for cluster-internal communication.
  */
 function buildInternalEndpoint(
   serviceName: string,
   namespace: string,
   port: number | string
 ): string {
-  return buildServiceDNS(serviceName, namespace, port, { protocol: 'http' })
+  const portNum = typeof port === 'string' ? port : port
+  return `http://${serviceName}:${portNum}`
 }
 
 /**

@@ -60,13 +60,13 @@ export interface TsOpsConfigWithRuntime<
    * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
    * 
    * @param appName - Application name
-   * @returns Internal Kubernetes DNS endpoint (http://service.namespace.svc.cluster.local:port)
+   * @returns Internal Kubernetes service endpoint (http://service:port)
    * 
    * @example
    * ```ts
    * import config from './tsops.config'
    * const apiUrl = config.getInternalEndpoint('worken-api')
-   * // => 'http://worken-worken-api.dev.svc.cluster.local:3000'
+   * // => 'http://worken-api:3000'
    * ```
    */
   getInternalEndpoint(appName: Extract<keyof TApps, string>): string
