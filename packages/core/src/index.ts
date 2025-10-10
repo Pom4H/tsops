@@ -25,7 +25,13 @@ export {
   port,
   url,
   secretRef,
-  runtimeValidate
+  runtimeValidate,
+  // Smart DSL (improved DX)
+  smart,
+  define,
+  resolve,
+  resolveSmartDSL,
+  createShortHelper
 } from './dsl/index.js'
 
 // Re-export DSL types (avoiding conflict with types.ts SecretRef)
@@ -64,5 +70,10 @@ export type {
   DistinctHosts,
   RequireSecretsInProd,
   Helpers,
-  DynamicConfig
+  DynamicConfig,
+  // Smart DSL types
+  SmartService,
+  SmartServices,
+  SmartDynamicConfig,
+  ShortHelper
 } from './dsl/index.js'

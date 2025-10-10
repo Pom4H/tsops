@@ -20,6 +20,11 @@ export * from './core.js'
 export * from './helpers.js'
 export * from './runtime.js'
 
+// Smart DSL with improved DX
+export * from './smart-config.js'
+export * from './smart-runtime.js'
+export * from './define-smart.js'
+
 // ============================================================================
 // Dynamic Configuration - Late-bound sections
 // ============================================================================
