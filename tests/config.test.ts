@@ -36,13 +36,13 @@ const cfg = defineConfig({
   apps: {
     api: {
       build: { type: 'dockerfile', context: '.', dockerfile: 'Dockerfile' },
-      env: ({ secret, configMap, dns, project, domain }) => ({
+      env: ({ secret, configMap, url, project, domain }) => ({
         NODE_ENV: 'production',
         TOKEN: secret('token-secrets', 'PROJECT'),
         SHARED_KEY: secret('shared-secrets', 'SHARED_KEY'),
         LOG_LEVEL: configMap('app-settings', 'LOG_LEVEL'),
         NAMESPACE: configMap('namespace-flags', 'NAMESPACE'),
-        ENDPOINT: dns('api', 'cluster'),
+        ENDPOINT: url('api', 'cluster'),
         PROJECT: project,
         HOST: `api.${domain}`
       }),
@@ -103,7 +103,7 @@ describe('defineConfig runtime API', () => {
       expect(api.env.LOG_LEVEL).toBe('info')
       expect(api.env.NAMESPACE).toBe('dev')
       expect(api.env.PROJECT).toBe('demo')
-      expect(api.env.ENDPOINT).toBe('api.dev.svc.cluster.local')
+      expect(api.env.ENDPOINT).toBe('http://api.dev.svc.cluster.local:80')
       expect(api.env.HOST).toBe('api.dev.example.com')
 
       // getEnv

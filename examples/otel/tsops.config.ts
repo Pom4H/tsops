@@ -128,12 +128,12 @@ const config = defineConfig({
         context: 'examples/otel/apps/api',
         dockerfile: 'examples/otel/apps/api/Dockerfile'
       },
-      env: ({ namespace, cluster, secret, project, appName, dns }) => ({
+      env: ({ namespace, cluster, secret, project, appName, url }) => ({
         NODE_ENV: 'production',
         NAMESPACE: namespace,
         CLUSTER: cluster.name,
         OTEL_SERVICE_NAME: `${project}-${appName}`,
-        OTEL_EXPORTER_OTLP_ENDPOINT: `http://${dns('otelCollector', 'cluster')}:4318`,
+        OTEL_EXPORTER_OTLP_ENDPOINT: url('otelCollector', 'cluster'),
         JWT_SECRET: secret('otel-api-secrets', 'JWT_SECRET'),
         DB_PASSWORD: secret('otel-api-secrets', 'DB_PASSWORD'),
         API_KEY: secret('otel-api-secrets', 'API_KEY')
@@ -147,12 +147,12 @@ const config = defineConfig({
         context: 'examples/otel/apps/frontend',
         dockerfile: 'examples/otel/apps/frontend/Dockerfile'
       },
-      env: ({ namespace, cluster, project, appName, dns }) => ({
+      env: ({ namespace, cluster, project, appName, url }) => ({
         NODE_ENV: 'production',
         NAMESPACE: namespace,
         CLUSTER: cluster.name,
         OTEL_SERVICE_NAME: `${project}-${appName}`,
-        OTEL_EXPORTER_OTLP_ENDPOINT: `http://${dns('otelCollector', 'cluster')}:4318`
+        OTEL_EXPORTER_OTLP_ENDPOINT: url('otelCollector', 'cluster')
       }),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }],
       network: ({ domain }) => domain

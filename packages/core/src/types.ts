@@ -32,6 +32,7 @@ type ReservedContextKeys =
   | 'project' 
   | 'namespace' 
   | 'dns' 
+  | 'url'
   | 'serviceName'
   | 'secret'
   | 'configMap' 
@@ -305,6 +306,33 @@ export interface AppContextCoreHelpers<
    * })
    */
   dns: (app: TAppNames, type: DNSType) => string
+
+  /**
+   * Generate complete URL for different types of resources with automatic port resolution
+   * @param app - Application name (type-safe from config.apps)
+   * @param type - URL type: 'cluster' for internal cluster URL, 'service' for service URL, 'ingress' for external URL
+   * @param options - Optional URL options
+   * @returns Complete URL with protocol and port
+   * @example
+   * // Cluster internal URL (uses first port from app.ports)
+   * url('api', 'cluster') // -> 'http://api.my-namespace.svc.cluster.local:3000'
+   * 
+   * // Service URL (uses first port from app.ports)
+   * url('api', 'service') // -> 'http://api:3000'
+   * 
+   * // External URL (uses network configuration + first port)
+   * url('api', 'ingress') // -> 'https://api.example.com:3000' (if network configured)
+   * 
+   * // With custom protocol
+   * url('api', 'cluster', { protocol: 'https' }) // -> 'https://api.my-namespace.svc.cluster.local:3000'
+   * 
+   * // Usage in env:
+   * env: ({ url }) => ({
+   *   BACKEND_URL: url('backend', 'ingress'),
+   *   API_URL: url('api', 'cluster')
+   * })
+   */
+  url: (app: TAppNames, type: DNSType, options?: { protocol?: 'http' | 'https' }) => string
 
   /**
    * Generate Kubernetes label selector

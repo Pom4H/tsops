@@ -84,31 +84,56 @@ export function createRuntimeConfig<
   const apps = {} as RuntimeConfig<TConfig>['apps']
   const appEntries = resolver.apps.select()
   
+  // First pass: collect all external hosts and app configs
+  const externalHosts: Record<string, string> = {}
+  const appsConfig: Record<string, any> = {}
+  
   for (const [appName, app] of appEntries) {
     // Skip apps that shouldn't be deployed to this namespace
     if (!resolver.apps.shouldDeploy(app, namespace as string)) {
       continue
     }
     
-    // Create context for resolution
-    const context = resolver.namespaces.createHostContext(namespace as string, { appName })
+    // Store app config for url helper
+    appsConfig[appName] = app
+    
+    // Create temporary context to resolve network
+    const tempContext = resolver.namespaces.createHostContext(namespace as string, { appName })
+    
+    // Resolve network to get external host
+    const { host } = resolver.apps.resolveNetwork(
+      appName,
+      app,
+      namespace as string,
+      tempContext,
+      undefined
+    )
+    
+    if (host) {
+      externalHosts[appName] = host
+    }
+  }
+  
+  // Second pass: resolve all apps with full context
+  for (const [appName, app] of appEntries) {
+    // Skip apps that shouldn't be deployed to this namespace
+    if (!resolver.apps.shouldDeploy(app, namespace as string)) {
+      continue
+    }
+    
+    // Create context for resolution with external hosts and apps config
+    const context = resolver.namespaces.createHostContext(namespace as string, { 
+      appName, 
+      externalHosts, 
+      appsConfig 
+    })
     
     // Resolve all app properties
-    let host: string | undefined = undefined
+    const host = externalHosts[appName]
     const envRaw = resolver.apps.resolveEnv(app, namespace as string, context)
     const secrets = resolver.apps.resolveSecrets(app, namespace as string, context)
     const configMaps = resolver.apps.resolveConfigMaps(app, namespace as string, context)
     const image = app.image || resolver.images.buildRef(appName)
-    
-    // Resolve network (may set host from network definitions)
-    const { host: updatedHost } = resolver.apps.resolveNetwork(
-      appName,
-      app,
-      namespace as string,
-      context,
-      host
-    )
-    host = updatedHost || host
     
     // Convert env values to plain strings
     const env = resolveEnvToStrings(envRaw, secrets, configMaps)

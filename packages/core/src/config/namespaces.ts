@@ -16,6 +16,7 @@ export interface CreateHostContextOptions {
   appName?: string
   cluster?: ClusterMetadata
   externalHosts?: Record<string, string>
+  appsConfig?: any
 }
 
 export interface NamespaceResolver<
@@ -68,7 +69,7 @@ export function createNamespaceResolver<
     if (!metadata) throw new Error(`Unknown namespace: ${namespace}`)
     
     const projectName = config.project
-    const { appName = '', cluster = { name: '', apiServer: '', context: '' }, externalHosts = {} } = options
+    const { appName = '', cluster = { name: '', apiServer: '', context: '' }, externalHosts = {}, appsConfig = {} } = options
     
     // Create secret helper with overload support
     const secret = ((secretName: string, key?: string): SecretRef => {
@@ -108,6 +109,21 @@ export function createNamespaceResolver<
           // Cluster internal DNS
           return `${app}.${namespace}.svc.cluster.local`
       }
+    }
+
+    // URL helper with automatic port resolution
+    const url = (app: Extract<keyof TConfig['apps'], string>, type: DNSType, options?: { protocol?: 'http' | 'https' }): string => {
+      const { protocol = 'http' } = options || {}
+      
+      // Get the first port from the app's configuration
+      const appConfig = appsConfig[app]
+      const firstPort = appConfig?.ports?.[0]?.port || 80
+      
+      // Get the DNS name
+      const hostname = dns(app, type)
+      
+      // Build the complete URL
+      return `${protocol}://${hostname}:${firstPort}`
     }
     
     // Label generator
@@ -151,6 +167,7 @@ export function createNamespaceResolver<
       
       // Generators
       dns,
+      url,
       label,
       resource,
       
