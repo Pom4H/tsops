@@ -94,12 +94,12 @@ export function createNamespaceResolver<
     const serviceDNS = (app: Extract<keyof TConfig['apps'], string>, options?: number | ServiceDNSOptions): string => {
       // Backward compatibility: number -> port
       if (typeof options === 'number') {
-        const dns = `${projectName}-${app}.${namespace}.svc.cluster.local`
+        const dns = `${app}.${namespace}.svc.cluster.local`
         return `${dns}:${options}`
       }
       
       if (!options) {
-        return `${projectName}-${app}.${namespace}.svc.cluster.local`
+        return `${app}.${namespace}.svc.cluster.local`
       }
       
       const {
@@ -116,14 +116,13 @@ export function createNamespaceResolver<
       if (external) {
         dns = app
       } else if (headless) {
-        const serviceName = `${projectName}-${app}`
         if (podIndex !== undefined) {
-          dns = `${serviceName}-${podIndex}.${serviceName}.${namespace}.svc.${clusterDomain}`
+          dns = `${app}-${podIndex}.${app}.${namespace}.svc.${clusterDomain}`
         } else {
-          dns = `${serviceName}.${namespace}.svc.${clusterDomain}`
+          dns = `${app}.${namespace}.svc.${clusterDomain}`
         }
       } else {
-        dns = `${projectName}-${app}.${namespace}.svc.${clusterDomain}`
+        dns = `${app}.${namespace}.svc.${clusterDomain}`
       }
       
       if (protocol) {
@@ -139,7 +138,7 @@ export function createNamespaceResolver<
     
     // Label generator
     const label = (key: string, value?: string): string => {
-      const labelValue = value || `${projectName}-${appName}`
+      const labelValue = value || appName
       return `app.kubernetes.io/${key}=${labelValue}`
     }
     
@@ -147,8 +146,8 @@ export function createNamespaceResolver<
     const resource = (kind: ResourceKind, name: string): string => {
       const suffix = kind === 'sa' || kind === 'serviceaccount' ? '' : `-${kind}`
       return appName 
-        ? `${projectName}-${appName}-${name}${suffix}`
-        : `${projectName}-${name}${suffix}`
+        ? `${appName}-${name}${suffix}`
+        : `${name}${suffix}`
     }
     
     // Environment variable getter
@@ -210,7 +209,7 @@ export function createNamespaceResolver<
  * Standalone serviceDNS utility function for building Kubernetes service DNS names.
  * This is used by runtime-config.ts to build internal endpoints consistently.
  * 
- * @param serviceName - Full service name (project-app format)
+ * @param serviceName - Service name
  * @param namespace - Kubernetes namespace
  * @param port - Port number
  * @param options - Additional options

@@ -15,11 +15,7 @@ export function createProjectResolver<
   return {
     name,
     serviceName(appName: string): string {
-      // Avoid duplicate project name if app name already starts with project name
-      if (appName.startsWith(`${name}-`)) {
-        return appName
-      }
-      return `${name}-${appName}`
+      return appName
     }
   }
 }

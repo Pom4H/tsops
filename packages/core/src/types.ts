@@ -284,16 +284,16 @@ export interface AppContextCoreHelpers<
    * @returns Full DNS name
    * @example
    * // Simple usage (backward compatible)
-   * serviceDNS('api') // -> 'my-project-api.my-namespace.svc.cluster.local'
-   * serviceDNS('api', 3000) // -> 'my-project-api.my-namespace.svc.cluster.local:3000'
+   * serviceDNS('api') // -> 'api.my-namespace.svc.cluster.local'
+   * serviceDNS('api', 3000) // -> 'api.my-namespace.svc.cluster.local:3000'
    * 
    * // With protocol
    * serviceDNS('api', { port: 3000, protocol: 'https' })
-   * // -> 'https://my-project-api.my-namespace.svc.cluster.local:3000'
+   * // -> 'https://api.my-namespace.svc.cluster.local:3000'
    * 
    * // Headless service (StatefulSet)
    * serviceDNS('postgres', { headless: true, podIndex: 0 })
-   * // -> 'my-project-postgres-0.my-project-postgres.my-namespace.svc.cluster.local'
+   * // -> 'postgres-0.postgres.my-namespace.svc.cluster.local'
    * 
    * // External service
    * serviceDNS('external-api', { external: true, protocol: 'https', port: 443 })
@@ -304,10 +304,10 @@ export interface AppContextCoreHelpers<
   /**
    * Generate Kubernetes label selector
    * @param key - Label key (will be prefixed with app.kubernetes.io/)
-   * @param value - Optional label value (defaults to project-app)
+   * @param value - Optional label value (defaults to app name)
    * @returns Label selector string
    * @example
-   * label('name') // -> 'app.kubernetes.io/name=my-project-api'
+   * label('name') // -> 'app.kubernetes.io/name=api'
    * label('component', 'database') // -> 'app.kubernetes.io/component=database'
    */
   label: (key: string, value?: string) => string
@@ -318,8 +318,8 @@ export interface AppContextCoreHelpers<
    * @param name - Resource name suffix
    * @returns Full resource name
    * @example
-   * resource('secret', 'api-keys') // -> 'my-project-api-api-keys'
-   * resource('pvc', 'data') // -> 'my-project-api-data'
+   * resource('secret', 'api-keys') // -> 'api-api-keys'
+   * resource('pvc', 'data') // -> 'api-data'
    */
   resource: (kind: ResourceKind, name: string) => string
 

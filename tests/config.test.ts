@@ -23,7 +23,7 @@ const cfg = defineConfig({
   images: {
     registry: 'ghcr.io/acme',
     tagStrategy: 'git-tag',
-    includeProjectInName: true
+    includeProjectInName: false
   },
   secrets: {
     'shared-secrets': { SHARED_KEY: 'shared' },
@@ -92,9 +92,9 @@ describe('defineConfig runtime API', () => {
 
       // getApp
       const api = cfg.getApp('api')
-      expect(api.serviceName).toBe('demo-api')
-      expect(api.internalEndpoint).toBe('http://demo-api:8080')
-      expect(api.image).toMatch(/^ghcr\.io\/acme\/demo-api:/)
+      expect(api.serviceName).toBe('api')
+      expect(api.internalEndpoint).toBe('http://api:8080')
+      expect(api.image).toMatch(/^ghcr\.io\/acme\/api:/)
 
       // env resolution
       expect(api.env.NODE_ENV).toBe('production')
@@ -103,7 +103,7 @@ describe('defineConfig runtime API', () => {
       expect(api.env.LOG_LEVEL).toBe('info')
       expect(api.env.NAMESPACE).toBe('dev')
       expect(api.env.PROJECT).toBe('demo')
-      expect(api.env.ENDPOINT).toBe('demo-api.dev.svc.cluster.local:8080')
+      expect(api.env.ENDPOINT).toBe('api.dev.svc.cluster.local:8080')
       expect(api.env.HOST).toBe('api.dev.example.com')
 
       // getEnv
@@ -118,7 +118,7 @@ describe('defineConfig runtime API', () => {
 
       // web app
       const web = cfg.getApp('web')
-      expect(web.serviceName).toBe('demo-web')
+      expect(web.serviceName).toBe('web')
       expect(web.env.NAMESPACE).toBe('dev')
       expect(cfg.getExternalEndpoint('web')).toBe('https://web.dev.example.com')
     })
@@ -129,12 +129,12 @@ describe('defineConfig runtime API', () => {
       expect(cfg.getNamespace()).toBe('prod')
 
       const api = cfg.getApp('api')
-      expect(api.serviceName).toBe('demo-api')
-      expect(api.internalEndpoint).toBe('http://demo-api:8080')
+      expect(api.serviceName).toBe('api')
+      expect(api.internalEndpoint).toBe('http://api:8080')
       expect(cfg.getExternalEndpoint('api')).toBe('https://api.example.com')
       
       const web = cfg.getApp('web')
-      expect(web.serviceName).toBe('demo-web')
+      expect(web.serviceName).toBe('web')
       expect(cfg.getExternalEndpoint('web')).toBe('https://web.example.com')
     })
   })
