@@ -3,7 +3,8 @@ import type {
   TsOpsConfig,
   SecretRef, 
   ConfigMapRef,
-  ServiceDNSOptions,
+  DNSOptions,
+  DNSType,
   ClusterMetadata,
   ResourceKind,
   ExtractNamespaceVarsFromConfig
@@ -90,16 +91,11 @@ export function createNamespaceResolver<
       (configMapName: string, key: string): ConfigMapRef
     }
     
-    // Enhanced serviceDNS with options support
-    const serviceDNS = (app: Extract<keyof TConfig['apps'], string>, options?: number | ServiceDNSOptions): string => {
+    // DNS helper with type support
+    const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType, options?: number | DNSOptions): string => {
       // Backward compatibility: number -> port
       if (typeof options === 'number') {
-        const dns = `${app}.${namespace}.svc.cluster.local`
-        return `${dns}:${options}`
-      }
-      
-      if (!options) {
-        return `${app}.${namespace}.svc.cluster.local`
+        options = { port: options }
       }
       
       const {
@@ -109,20 +105,37 @@ export function createNamespaceResolver<
         podIndex,
         external = false,
         clusterDomain = 'cluster.local'
-      } = options
+      } = options || {}
       
       let dns: string
       
-      if (external) {
-        dns = app
-      } else if (headless) {
-        if (podIndex !== undefined) {
-          dns = `${app}-${podIndex}.${app}.${namespace}.svc.${clusterDomain}`
-        } else {
-          dns = `${app}.${namespace}.svc.${clusterDomain}`
-        }
-      } else {
-        dns = `${app}.${namespace}.svc.${clusterDomain}`
+      switch (type) {
+        case 'service':
+          // Service name only
+          dns = app
+          break
+          
+        case 'ingress':
+          // External ingress DNS - would need host from network config
+          // For now, return app name as placeholder
+          dns = app
+          break
+          
+        case 'cluster':
+        default:
+          // Cluster internal DNS
+          if (external) {
+            dns = app
+          } else if (headless) {
+            if (podIndex !== undefined) {
+              dns = `${app}-${podIndex}.${app}.${namespace}.svc.${clusterDomain}`
+            } else {
+              dns = `${app}.${namespace}.svc.${clusterDomain}`
+            }
+          } else {
+            dns = `${app}.${namespace}.svc.${clusterDomain}`
+          }
+          break
       }
       
       if (protocol) {
@@ -176,7 +189,7 @@ export function createNamespaceResolver<
       cluster,
       
       // Generators
-      serviceDNS,
+      dns,
       label,
       resource,
       
@@ -206,7 +219,7 @@ export function createNamespaceResolver<
 }
 
 /**
- * Standalone serviceDNS utility function for building Kubernetes service DNS names.
+ * Standalone DNS utility function for building Kubernetes DNS names.
  * This is used by runtime-config.ts to build internal endpoints consistently.
  * 
  * @param serviceName - Service name
@@ -215,7 +228,7 @@ export function createNamespaceResolver<
  * @param options - Additional options
  * @returns Service DNS name with protocol and port
  */
-export function buildServiceDNS(
+export function buildDNS(
   serviceName: string,
   namespace: string,
   port: number | string,

@@ -41,9 +41,9 @@ const config = defineConfig({
           NODE_VERSION: '24'
         }
       },
-      env: ({ serviceDNS, secret }) => ({
+      env: ({ dns, secret }) => ({
         PORT: '4000',
-        FRONTEND_URL: serviceDNS('frontend', { protocol: 'http', port: 80 }),
+        FRONTEND_URL: dns('frontend', 'cluster', { protocol: 'http', port: 80 }),
         API_TOKEN: secret('monorepo-backend-env', 'API_TOKEN2')
       }),
       ports: [
@@ -63,10 +63,10 @@ const config = defineConfig({
           NODE_VERSION: '24'
         }
       },
-      env: ({ serviceDNS }) => ({
+      env: ({ dns }) => ({
         PORT: '3000',
         NEXT_PUBLIC_WS_URL: 'wss://monorepo.localtest.me/ws',
-        NEXT_PUBLIC_API_BASE_URL: serviceDNS('backend', { protocol: 'http', port: 4000 })
+        NEXT_PUBLIC_API_BASE_URL: dns('backend', 'cluster', { protocol: 'http', port: 4000 })
       }),
       ports: [
         { name: 'http', port: 80, targetPort: 3000 }

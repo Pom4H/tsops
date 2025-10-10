@@ -31,7 +31,7 @@ export type NamespaceDefinition = Record<string, unknown>
 type ReservedContextKeys = 
   | 'project' 
   | 'namespace' 
-  | 'serviceDNS' 
+  | 'dns' 
   | 'serviceName'
   | 'secret'
   | 'configMap' 
@@ -220,9 +220,14 @@ export interface ClusterMetadata {
 }
 
 /**
- * Options for serviceDNS helper function
+ * DNS type for dns helper function
  */
-export interface ServiceDNSOptions {
+export type DNSType = 'cluster' | 'service' | 'ingress'
+
+/**
+ * Options for dns helper function
+ */
+export interface DNSOptions {
   /** Port number */
   port?: number
   /** Protocol prefix (http, https, tcp, udp) */
@@ -278,28 +283,33 @@ export interface AppContextCoreHelpers<
   // ============================================================================
 
   /**
-   * Generate Kubernetes service DNS name
+   * Generate DNS name for different types of resources
    * @param app - Application name (type-safe from config.apps)
-   * @param options - Port number or ServiceDNSOptions
+   * @param type - DNS type: 'cluster' for internal cluster DNS, 'service' for service name, 'ingress' for external ingress
+   * @param options - Port number or DNSOptions
    * @returns Full DNS name
    * @example
-   * // Simple usage (backward compatible)
-   * serviceDNS('api') // -> 'api.my-namespace.svc.cluster.local'
-   * serviceDNS('api', 3000) // -> 'api.my-namespace.svc.cluster.local:3000'
+   * // Cluster internal DNS
+   * dns('api', 'cluster') // -> 'api.my-namespace.svc.cluster.local'
+   * dns('api', 'cluster', 3000) // -> 'api.my-namespace.svc.cluster.local:3000'
+   * 
+   * // Service name only
+   * dns('api', 'service') // -> 'api'
+   * dns('api', 'service', 3000) // -> 'api:3000'
+   * 
+   * // Ingress external DNS
+   * dns('api', 'ingress') // -> 'api.example.com'
+   * dns('api', 'ingress', { protocol: 'https' }) // -> 'https://api.example.com'
    * 
    * // With protocol
-   * serviceDNS('api', { port: 3000, protocol: 'https' })
+   * dns('api', 'cluster', { port: 3000, protocol: 'https' })
    * // -> 'https://api.my-namespace.svc.cluster.local:3000'
    * 
    * // Headless service (StatefulSet)
-   * serviceDNS('postgres', { headless: true, podIndex: 0 })
+   * dns('postgres', 'cluster', { headless: true, podIndex: 0 })
    * // -> 'postgres-0.postgres.my-namespace.svc.cluster.local'
-   * 
-   * // External service
-   * serviceDNS('external-api', { external: true, protocol: 'https', port: 443 })
-   * // -> 'https://external-api:443'
    */
-  serviceDNS: (app: TAppNames, options?: number | ServiceDNSOptions) => string
+  dns: (app: TAppNames, type: DNSType, options?: number | DNSOptions) => string
 
   /**
    * Generate Kubernetes label selector

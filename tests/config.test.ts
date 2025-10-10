@@ -36,13 +36,13 @@ const cfg = defineConfig({
   apps: {
     api: {
       build: { type: 'dockerfile', context: '.', dockerfile: 'Dockerfile' },
-      env: ({ secret, configMap, serviceDNS, project, domain }) => ({
+      env: ({ secret, configMap, dns, project, domain }) => ({
         NODE_ENV: 'production',
         TOKEN: secret('token-secrets', 'PROJECT'),
         SHARED_KEY: secret('shared-secrets', 'SHARED_KEY'),
         LOG_LEVEL: configMap('app-settings', 'LOG_LEVEL'),
         NAMESPACE: configMap('namespace-flags', 'NAMESPACE'),
-        ENDPOINT: serviceDNS('api', 8080),
+        ENDPOINT: dns('api', 'cluster', 8080),
         PROJECT: project,
         HOST: `api.${domain}`
       }),

@@ -24,9 +24,9 @@ const config = defineConfig({
         context: 'examples/fullstack/backend',
         dockerfile: 'examples/fullstack/backend/Dockerfile'
       },
-      env: ({ serviceDNS }) => ({
+      env: ({ dns }) => ({
         PORT: '8080',
-        FRONTEND_URL: serviceDNS('frontend', { protocol: 'http', port: 80 })
+        FRONTEND_URL: dns('frontend', 'cluster', { protocol: 'http', port: 80 })
       }),
       ports: [
         { name: 'http', port: 8080, targetPort: 8080 }
@@ -38,9 +38,9 @@ const config = defineConfig({
         context: 'examples/fullstack/frontend',
         dockerfile: 'examples/fullstack/frontend/Dockerfile'
       },
-      env: ({ serviceDNS }) => ({
+      env: ({ dns }) => ({
         PORT: '3000',
-        NEXT_PUBLIC_API_BASE_URL: serviceDNS('backend', { protocol: 'http', port: 8080 })
+        NEXT_PUBLIC_API_BASE_URL: dns('backend', 'cluster', { protocol: 'http', port: 8080 })
       }),
       ports: [
         { name: 'http', port: 80, targetPort: 3000 }
