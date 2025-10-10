@@ -78,51 +78,11 @@ describe('defineConfig runtime API', () => {
     expect(cfg.images.registry).toBe('ghcr.io/acme')
 
     // Methods exist
-    expect(typeof cfg.getApp).toBe('function')
-    expect(typeof cfg.getEnv).toBe('function')
-    expect(typeof cfg.getInternalEndpoint).toBe('function')
-    expect(typeof cfg.getExternalEndpoint).toBe('function')
-    expect(typeof cfg.getNamespace).toBe('function')
+    expect(typeof cfg.getRuntime).toBe('function')
   })
 
   it('resolves runtime for dev', () => {
     withNamespace('dev', () => {
-      // getNamespace
-      expect(cfg.getNamespace()).toBe('dev')
-
-      // getApp
-      const api = cfg.getApp('api')
-      expect(api.serviceName).toBe('api')
-      expect(api.internalEndpoint).toBe('http://api:8080')
-      expect(api.image).toMatch(/^ghcr\.io\/acme\/api:/)
-
-      // env resolution
-      expect(api.env.NODE_ENV).toBe('production')
-      expect(api.env.SHARED_KEY).toBe('shared')
-      expect(api.env.TOKEN).toBe('demo') // from token-secrets.PROJECT => project
-      expect(api.env.LOG_LEVEL).toBe('info')
-      expect(api.env.NAMESPACE).toBe('dev')
-      expect(api.env.PROJECT).toBe('demo')
-      expect(api.env.ENDPOINT).toBe('http://api.dev.svc.cluster.local:80')
-      expect(api.env.HOST).toBe('api.dev.example.com')
-
-      // getEnv
-      const env = cfg.getEnv('api')
-      expect(env).toMatchObject(api.env)
-
-      // internal endpoint helper
-      expect(cfg.getInternalEndpoint('api')).toBe(api.internalEndpoint)
-
-      // external endpoint for api comes from network host
-      expect(cfg.getExternalEndpoint('api')).toBe('https://api.dev.example.com')
-
-      // web app
-      const web = cfg.getApp('web')
-      expect(web.serviceName).toBe('web')
-      expect(web.env.NAMESPACE).toBe('dev')
-      expect(cfg.getExternalEndpoint('web')).toBe('https://web.dev.example.com')
-      
-      // simplified runtime config
       const runtime = cfg.getRuntime()
       expect(runtime.namespace).toBe('dev')
       expect(runtime.project).toBe('demo')
@@ -141,21 +101,30 @@ describe('defineConfig runtime API', () => {
       const runtimeEnv = runtime.getEnv('api')
       expect(runtimeEnv.ENDPOINT).toBe('http://api.dev.svc.cluster.local:80')
       expect(runtimeEnv.HOST).toBe('api.dev.example.com')
+      expect(runtimeEnv.NODE_ENV).toBe('production')
+      expect(runtimeEnv.SHARED_KEY).toBe('secret:shared-secrets:SHARED_KEY')
+      expect(runtimeEnv.TOKEN).toBe('secret:token-secrets:PROJECT')
+      expect(runtimeEnv.LOG_LEVEL).toBe('configmap:app-settings:LOG_LEVEL')
+      expect(runtimeEnv.NAMESPACE).toBe('configmap:namespace-flags:NAMESPACE')
+      expect(runtimeEnv.PROJECT).toBe('demo')
     })
   })
 
   it('resolves runtime for prod', () => {
     withNamespace('prod', () => {
-      expect(cfg.getNamespace()).toBe('prod')
-
-      const api = cfg.getApp('api')
-      expect(api.serviceName).toBe('api')
-      expect(api.internalEndpoint).toBe('http://api:8080')
-      expect(cfg.getExternalEndpoint('api')).toBe('https://api.example.com')
+      const runtime = cfg.getRuntime()
+      expect(runtime.namespace).toBe('prod')
+      expect(runtime.project).toBe('demo')
       
-      const web = cfg.getApp('web')
-      expect(web.serviceName).toBe('web')
-      expect(cfg.getExternalEndpoint('web')).toBe('https://web.example.com')
+      // test dns helper
+      expect(runtime.dns('api', 'cluster')).toBe('api.prod.svc.cluster.local')
+      expect(runtime.dns('api', 'service')).toBe('api')
+      expect(runtime.dns('api', 'ingress')).toBe('api.example.com')
+      
+      // test url helper
+      expect(runtime.url('api', 'cluster')).toBe('http://api.prod.svc.cluster.local:80')
+      expect(runtime.url('api', 'service')).toBe('http://api:80')
+      expect(runtime.url('api', 'ingress')).toBe('http://api.example.com:80')
     })
   })
 })

@@ -4,8 +4,7 @@ import type {
   ImagesConfig,
   TsOpsConfig
 } from '../types.js'
-import { createRuntimeConfig, type RuntimeConfig, type ResolvedAppEnv } from '../runtime-config.js'
-import { createSimplifiedRuntimeConfig, type SimplifiedRuntimeConfig } from '../runtime-helpers.js'
+import { createRuntimeConfig, type RuntimeConfig } from '../runtime-config.js'
 import { getEnvironmentVariable } from '../environment-provider.js'
 
 /**
@@ -23,97 +22,10 @@ export interface TsOpsConfigWithRuntime<
   TConfigMaps extends Record<string, unknown> | undefined = undefined
 > extends TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps> {
   /**
-   * Get full resolved configuration for an app.
+   * Get runtime configuration with essential helpers.
    * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
    * 
-   * @param appName - Application name
-   * @returns Resolved app configuration
-   * 
-   * @example
-   * ```ts
-   * import config from './tsops.config'
-   * const app = config.getApp('worken-api')
-   * console.log(app.internalEndpoint)
-   * console.log(app.externalEndpoint)
-   * console.log(app.env)
-   * ```
-   */
-  getApp(appName: Extract<keyof TApps, string>): ResolvedAppEnv
-  
-  /**
-   * Get resolved environment variables for an app.
-   * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
-   * 
-   * @param appName - Application name
-   * @returns Resolved environment variables as key-value pairs
-   * 
-   * @example
-   * ```ts
-   * import config from './tsops.config'
-   * const env = config.getEnv('worken-api')
-   * console.log(env.DATABASE_URL)
-   * ```
-   */
-  getEnv(appName: Extract<keyof TApps, string>): Record<string, string>
-  
-  /**
-   * Get internal Kubernetes endpoint for an app.
-   * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
-   * 
-   * @param appName - Application name
-   * @returns Internal Kubernetes service endpoint (http://service:port)
-   * 
-   * @example
-   * ```ts
-   * import config from './tsops.config'
-   * const apiUrl = config.getInternalEndpoint('worken-api')
-   * // => 'http://worken-api:3000'
-   * ```
-   */
-  getInternalEndpoint(appName: Extract<keyof TApps, string>): string
-  
-  /**
-   * Get external endpoint for an app (if configured).
-   * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
-   * Returns undefined if app has no external host configured via network.
-   * 
-   * @param appName - Application name
-   * @returns External HTTPS endpoint or undefined
-   * 
-   * @example
-   * ```ts
-   * import config from './tsops.config'
-   * const apiUrl = config.getExternalEndpoint('worken-front')
-   * // => 'https://worken.localtest.me' (if network host is configured)
-   * // => undefined (if no host)
-   * ```
-   */
-  getExternalEndpoint(appName: Extract<keyof TApps, string>): string | undefined
-  
-  /**
-   * Get current namespace name.
-   * Determined from TSOPS_NAMESPACE env variable or first namespace in config.
-   * 
-   * @returns Current namespace name
-   * 
-   * @example
-   * ```ts
-   * import config from './tsops.config'
-   * const namespace = config.getNamespace()
-   * console.log(`Running in: ${namespace}`)
-   * ```
-   */
-  getNamespace(): Extract<keyof TNamespaces, string>
-  
-  // ============================================================================
-  // SIMPLIFIED RUNTIME METHODS
-  // ============================================================================
-  
-  /**
-   * Get simplified runtime configuration with only essential methods.
-   * Provides env, dns, url helpers for the current namespace.
-   * 
-   * @returns Simplified runtime config
+   * @returns Runtime configuration with env, dns, url helpers
    * 
    * @example
    * ```ts
@@ -124,7 +36,7 @@ export interface TsOpsConfigWithRuntime<
    * const url = runtime.url('api', 'ingress')
    * ```
    */
-  getRuntime(): SimplifiedRuntimeConfig<TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>>
+  getRuntime(): RuntimeConfig<TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>>
 }
 
 /**
@@ -193,50 +105,8 @@ export function defineConfig<
     secrets: config.secrets,
     configMaps: config.configMaps,
     
-    getApp(appName: AppName): ResolvedAppEnv {
-      const runtime = getRuntime()
-      const app = runtime.apps[appName]
-      if (!app) {
-        throw new Error(`App "${String(appName)}" not found or not deployed in namespace "${runtime.namespace}"`)
-      }
-      return app
-    },
-    
-    getEnv(appName: AppName): Record<string, string> {
-      const runtime = getRuntime()
-      const app = runtime.apps[appName]
-      if (!app) {
-        throw new Error(`App "${String(appName)}" not found or not deployed in namespace "${runtime.namespace}"`)
-      }
-      return app.env
-    },
-    
-    getInternalEndpoint(appName: AppName): string {
-      const runtime = getRuntime()
-      const app = runtime.apps[appName]
-      if (!app) {
-        throw new Error(`App "${String(appName)}" not found or not deployed in namespace "${runtime.namespace}"`)
-      }
-      return app.internalEndpoint
-    },
-    
-    getExternalEndpoint(appName: AppName): string | undefined {
-      const runtime = getRuntime()
-      const app = runtime.apps[appName]
-      if (!app) {
-        throw new Error(`App "${String(appName)}" not found or not deployed in namespace "${runtime.namespace}"`)
-      }
-      // External endpoint is derived from network host if present
-      return app.host ? `https://${app.host}` : undefined
-    },
-    
-    getNamespace(): Extract<keyof TNamespaces, string> {
-      return getCurrentNamespace(config.namespaces)
-    },
-    
-    getRuntime(): SimplifiedRuntimeConfig<TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>> {
-      const namespace = getCurrentNamespace(config.namespaces)
-      return createSimplifiedRuntimeConfig(config, namespace)
+    getRuntime(): RuntimeConfig<TConfig> {
+      return getRuntime()
     }
   }
 }

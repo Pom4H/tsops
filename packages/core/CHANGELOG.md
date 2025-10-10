@@ -5,11 +5,11 @@
 ### Minor Changes
 
 - feat: add url helper for building complete URLs with automatic port resolution
-- feat: add simplified runtime configuration with reusable helpers
+- feat: refactor runtime configuration with simplified interface
 
-  ### Simplified Runtime Configuration
+  ### Refactored Runtime Configuration
 
-  Added a new `getRuntime()` method that provides a simplified interface with only essential helpers: `env`, `dns`, and `url`.
+  Completely refactored `createRuntimeConfig` to provide a simplified interface with only essential helpers: `env`, `dns`, and `url`. Removed complex runtime objects and dead code.
 
   **Usage:**
   ```typescript
@@ -34,6 +34,7 @@
   - **Automatic port resolution**: URLs include correct ports from app configuration
   - **Simplified interface**: Only essential methods, no complex runtime objects
   - **Type safety**: Full TypeScript support with proper inference
+  - **Clean codebase**: Removed dead code and unused types
 
   ## New Features
 
