@@ -5,34 +5,35 @@
 ### Minor Changes
 
 - feat: add url helper for building complete URLs with automatic port resolution
-- feat: refactor runtime configuration with simplified interface
+- feat: refactor runtime configuration with direct helper methods
 
   ### Refactored Runtime Configuration
 
-  Completely refactored `createRuntimeConfig` to provide a simplified interface with only essential helpers: `env`, `dns`, and `url`. Removed complex runtime objects and dead code.
+  Completely refactored `createRuntimeConfig` to provide direct helper methods: `env`, `dns`, and `url`. Removed complex runtime objects and dead code.
 
   **Usage:**
   ```typescript
-  const runtime = config.getRuntime()
+  import config from './tsops.config'
   
   // DNS helpers
-  const clusterDns = runtime.dns('api', 'cluster')     // -> 'api.namespace.svc.cluster.local'
-  const serviceDns = runtime.dns('api', 'service')     // -> 'api'
-  const ingressDns = runtime.dns('api', 'ingress')     // -> 'api.example.com'
+  const clusterDns = config.dns('api', 'cluster')      // -> 'api.namespace.svc.cluster.local'
+  const serviceDns = config.dns('api', 'service')      // -> 'api'
+  const ingressDns = config.dns('api', 'ingress')      // -> 'api.example.com'
   
   // URL helpers with automatic port resolution
-  const clusterUrl = runtime.url('api', 'cluster')     // -> 'http://api.namespace.svc.cluster.local:3000'
-  const serviceUrl = runtime.url('api', 'service')     // -> 'http://api:3000'
-  const ingressUrl = runtime.url('api', 'ingress')     // -> 'http://api.example.com:3000'
+  const clusterUrl = config.url('api', 'cluster')      // -> 'http://api.namespace.svc.cluster.local:3000'
+  const serviceUrl = config.url('api', 'service')      // -> 'http://api:3000'
+  const ingressUrl = config.url('api', 'ingress')      // -> 'http://api.example.com:3000'
   
   // Environment variables
-  const env = runtime.getEnv('api')                    // -> { PORT: '3000', ... }
+  const nodeEnv = config.env('api', 'NODE_ENV')        // -> 'production'
+  const port = config.env('api', 'PORT')               // -> '3000'
   ```
 
   **Features:**
-  - **Reusable helpers**: `dns`, `url`, `env` functions can be used independently
+  - **Direct methods**: `config.dns()`, `config.url()`, `config.env()` available directly on config
   - **Automatic port resolution**: URLs include correct ports from app configuration
-  - **Simplified interface**: Only essential methods, no complex runtime objects
+  - **Clean interface**: Only essential methods, no complex runtime objects
   - **Type safety**: Full TypeScript support with proper inference
   - **Clean codebase**: Removed dead code and unused types
 

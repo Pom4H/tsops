@@ -22,21 +22,58 @@ export interface TsOpsConfigWithRuntime<
   TConfigMaps extends Record<string, unknown> | undefined = undefined
 > extends TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps> {
   /**
-   * Get runtime configuration with essential helpers.
+   * Get environment variable for an app.
    * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
    * 
-   * @returns Runtime configuration with env, dns, url helpers
+   * @param appName - Application name
+   * @param key - Environment variable key
+   * @returns Environment variable value
    * 
    * @example
    * ```ts
    * import config from './tsops.config'
-   * const runtime = config.getRuntime()
-   * const env = runtime.getEnv('api')
-   * const dns = runtime.dns('api', 'cluster')
-   * const url = runtime.url('api', 'ingress')
+   * const nodeEnv = config.env('frontend', 'NODE_ENV')
+   * const port = config.env('api', 'PORT')
    * ```
    */
-  getRuntime(): RuntimeConfig<TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>>
+  env(appName: Extract<keyof TApps, string>, key: string): string
+  
+  /**
+   * Generate DNS name for different types of resources.
+   * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
+   * 
+   * @param appName - Application name
+   * @param type - DNS type: 'cluster', 'service', or 'ingress'
+   * @returns DNS name
+   * 
+   * @example
+   * ```ts
+   * import config from './tsops.config'
+   * const clusterDns = config.dns('frontend', 'cluster')
+   * const serviceDns = config.dns('api', 'service')
+   * const ingressDns = config.dns('api', 'ingress')
+   * ```
+   */
+  dns(appName: Extract<keyof TApps, string>, type: 'cluster' | 'service' | 'ingress'): string
+  
+  /**
+   * Generate complete URL for different types of resources with automatic port resolution.
+   * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
+   * 
+   * @param appName - Application name
+   * @param type - URL type: 'cluster', 'service', or 'ingress'
+   * @param options - Optional URL options
+   * @returns Complete URL with protocol and port
+   * 
+   * @example
+   * ```ts
+   * import config from './tsops.config'
+   * const clusterUrl = config.url('frontend', 'cluster')
+   * const serviceUrl = config.url('api', 'service')
+   * const ingressUrl = config.url('api', 'ingress')
+   * ```
+   */
+  url(appName: Extract<keyof TApps, string>, type: 'cluster' | 'service' | 'ingress', options?: { protocol?: 'http' | 'https' }): string
 }
 
 /**
@@ -105,8 +142,20 @@ export function defineConfig<
     secrets: config.secrets,
     configMaps: config.configMaps,
     
-    getRuntime(): RuntimeConfig<TConfig> {
-      return getRuntime()
+    env(appName: AppName, key: string): string {
+      const runtime = getRuntime()
+      const env = runtime.getEnv(appName)
+      return env[key] || ''
+    },
+    
+    dns(appName: AppName, type: 'cluster' | 'service' | 'ingress'): string {
+      const runtime = getRuntime()
+      return runtime.dns(appName, type)
+    },
+    
+    url(appName: AppName, type: 'cluster' | 'service' | 'ingress', options?: { protocol?: 'http' | 'https' }): string {
+      const runtime = getRuntime()
+      return runtime.url(appName, type, options)
     }
   }
 }

@@ -66,23 +66,18 @@ export default defineConfig({
 /*
 import config from './tsops.config'
 
-// Get simplified runtime config
-const runtime = config.getRuntime()
-
-// Use helpers directly
-console.log('API Cluster URL:', runtime.url('api', 'cluster'))
-console.log('API Service DNS:', runtime.dns('api', 'service'))
-console.log('API Ingress URL:', runtime.url('api', 'ingress'))
+// Use helpers directly on config
+console.log('API Cluster URL:', config.url('api', 'cluster'))
+console.log('API Service DNS:', config.dns('api', 'service'))
+console.log('API Ingress URL:', config.url('api', 'ingress'))
 
 // Get environment variables
-const apiEnv = runtime.getEnv('api')
-console.log('API Environment:', apiEnv)
+const nodeEnv = config.env('api', 'NODE_ENV')
+const port = config.env('api', 'PORT')
+console.log('API Environment:', { nodeEnv, port })
 
 // All helpers are available:
-// - runtime.dns(appName, type) - DNS names only
-// - runtime.url(appName, type, options?) - Complete URLs with ports
-// - runtime.getEnv(appName) - Environment variables
-// - runtime.namespace - Current namespace
-// - runtime.project - Project name
-// - runtime.namespaceVars - Namespace variables
+// - config.dns(appName, type) - DNS names only
+// - config.url(appName, type, options?) - Complete URLs with ports
+// - config.env(appName, key) - Individual environment variables
 */
