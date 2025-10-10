@@ -133,7 +133,7 @@ const config = defineConfig({
         NAMESPACE: namespace,
         CLUSTER: cluster.name,
         OTEL_SERVICE_NAME: `${project}-${appName}`,
-        OTEL_EXPORTER_OTLP_ENDPOINT: dns('otelCollector', 'cluster', { protocol: 'http', port: 4318 }),
+        OTEL_EXPORTER_OTLP_ENDPOINT: `http://${dns('otelCollector', 'cluster')}:4318`,
         JWT_SECRET: secret('otel-api-secrets', 'JWT_SECRET'),
         DB_PASSWORD: secret('otel-api-secrets', 'DB_PASSWORD'),
         API_KEY: secret('otel-api-secrets', 'API_KEY')
@@ -152,7 +152,7 @@ const config = defineConfig({
         NAMESPACE: namespace,
         CLUSTER: cluster.name,
         OTEL_SERVICE_NAME: `${project}-${appName}`,
-        OTEL_EXPORTER_OTLP_ENDPOINT: dns('otelCollector', 'cluster', { protocol: 'http', port: 4318 })
+        OTEL_EXPORTER_OTLP_ENDPOINT: `http://${dns('otelCollector', 'cluster')}:4318`
       }),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }],
       network: ({ domain }) => domain

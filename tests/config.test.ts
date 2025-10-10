@@ -42,7 +42,7 @@ const cfg = defineConfig({
         SHARED_KEY: secret('shared-secrets', 'SHARED_KEY'),
         LOG_LEVEL: configMap('app-settings', 'LOG_LEVEL'),
         NAMESPACE: configMap('namespace-flags', 'NAMESPACE'),
-        ENDPOINT: dns('api', 'cluster', 8080),
+        ENDPOINT: dns('api', 'cluster'),
         PROJECT: project,
         HOST: `api.${domain}`
       }),
@@ -103,7 +103,7 @@ describe('defineConfig runtime API', () => {
       expect(api.env.LOG_LEVEL).toBe('info')
       expect(api.env.NAMESPACE).toBe('dev')
       expect(api.env.PROJECT).toBe('demo')
-      expect(api.env.ENDPOINT).toBe('api.dev.svc.cluster.local:8080')
+      expect(api.env.ENDPOINT).toBe('api.dev.svc.cluster.local')
       expect(api.env.HOST).toBe('api.dev.example.com')
 
       // getEnv

@@ -15,6 +15,7 @@ import type { EnvironmentProvider } from '../environment-provider.js'
 export interface CreateHostContextOptions {
   appName?: string
   cluster?: ClusterMetadata
+  externalHosts?: Record<string, string>
 }
 
 export interface NamespaceResolver<
@@ -67,7 +68,7 @@ export function createNamespaceResolver<
     if (!metadata) throw new Error(`Unknown namespace: ${namespace}`)
     
     const projectName = config.project
-    const { appName = '', cluster = { name: '', apiServer: '', context: '' } } = options
+    const { appName = '', cluster = { name: '', apiServer: '', context: '' }, externalHosts = {} } = options
     
     // Create secret helper with overload support
     const secret = ((secretName: string, key?: string): SecretRef => {
@@ -92,55 +93,21 @@ export function createNamespaceResolver<
     }
     
     // DNS helper with type support
-    const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType, options?: number | DNSOptions): string => {
-      // Backward compatibility: number -> port
-      if (typeof options === 'number') {
-        options = { port: options }
-      }
-      
-      const {
-        port,
-        protocol,
-        headless = false,
-        podIndex,
-        external = false,
-        clusterDomain = 'cluster.local'
-      } = options || {}
-      
-      let dns: string
-      
+    const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType): string => {
       switch (type) {
         case 'service':
           // Service name only
-          dns = app
-          break
+          return app
+          
+        case 'ingress':
+          // External DNS - resolved from network configuration
+          return externalHosts[app] || app
           
         case 'cluster':
         default:
           // Cluster internal DNS
-          if (external) {
-            dns = app
-          } else if (headless) {
-            if (podIndex !== undefined) {
-              dns = `${app}-${podIndex}.${app}.${namespace}.svc.${clusterDomain}`
-            } else {
-              dns = `${app}.${namespace}.svc.${clusterDomain}`
-            }
-          } else {
-            dns = `${app}.${namespace}.svc.${clusterDomain}`
-          }
-          break
+          return `${app}.${namespace}.svc.cluster.local`
       }
-      
-      if (protocol) {
-        dns = `${protocol}://${dns}`
-      }
-      
-      if (port) {
-        dns = `${dns}:${port}`
-      }
-      
-      return dns
     }
     
     // Label generator

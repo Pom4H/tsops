@@ -26,7 +26,7 @@ const config = defineConfig({
       },
       env: ({ dns }) => ({
         PORT: '8080',
-        FRONTEND_URL: dns('frontend', 'cluster', { protocol: 'http', port: 80 })
+        FRONTEND_URL: `http://${dns('frontend', 'cluster')}:80`
       }),
       ports: [
         { name: 'http', port: 8080, targetPort: 8080 }
@@ -40,7 +40,7 @@ const config = defineConfig({
       },
       env: ({ dns }) => ({
         PORT: '3000',
-        NEXT_PUBLIC_API_BASE_URL: dns('backend', 'cluster', { protocol: 'http', port: 8080 })
+        NEXT_PUBLIC_API_BASE_URL: `http://${dns('backend', 'cluster')}:8080`
       }),
       ports: [
         { name: 'http', port: 80, targetPort: 3000 }
