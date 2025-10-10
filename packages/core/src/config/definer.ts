@@ -4,7 +4,7 @@ import type {
   ImagesConfig,
   TsOpsConfig
 } from '../types.js'
-import { createRuntimeConfig, type RuntimeConfig } from '../runtime-config.js'
+import { createRuntimeHelpers } from '../runtime-config.js'
 import { getEnvironmentVariable } from '../environment-provider.js'
 
 /**
@@ -116,21 +116,21 @@ export function defineConfig<
   type AppName = Extract<keyof TApps, string>
   type TConfig = TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>
   
-  // Lazy initialization: runtime config is created only when first accessed
-  let cachedRuntime: RuntimeConfig<TConfig> | null = null
+  // Lazy initialization: runtime helpers are created only when first accessed
+  let cachedHelpers: ReturnType<typeof createRuntimeHelpers<TConfig>> | null = null
   let cachedNamespace: string | null = null
   
-  function getRuntime(): RuntimeConfig<TConfig> {
+  function getHelpers() {
     const currentNamespace = getCurrentNamespace(config.namespaces)
     
-    // Re-create runtime if namespace changed
-    if (cachedRuntime && cachedNamespace === currentNamespace) {
-      return cachedRuntime
+    // Re-create helpers if namespace changed
+    if (cachedHelpers && cachedNamespace === currentNamespace) {
+      return cachedHelpers
     }
     
-    cachedRuntime = createRuntimeConfig(config as TConfig, currentNamespace)
+    cachedHelpers = createRuntimeHelpers(config as TConfig, currentNamespace)
     cachedNamespace = currentNamespace
-    return cachedRuntime
+    return cachedHelpers
   }
   
   return {
@@ -143,19 +143,18 @@ export function defineConfig<
     configMaps: config.configMaps,
     
     env(appName: AppName, key: string): string {
-      const runtime = getRuntime()
-      const env = runtime.getEnv(appName)
-      return env[key] || ''
+      const helpers = getHelpers()
+      return helpers.env(appName, key)
     },
     
     dns(appName: AppName, type: 'cluster' | 'service' | 'ingress'): string {
-      const runtime = getRuntime()
-      return runtime.dns(appName, type)
+      const helpers = getHelpers()
+      return helpers.dns(appName, type)
     },
     
     url(appName: AppName, type: 'cluster' | 'service' | 'ingress', options?: { protocol?: 'http' | 'https' }): string {
-      const runtime = getRuntime()
-      return runtime.url(appName, type, options)
+      const helpers = getHelpers()
+      return helpers.url(appName, type, options)
     }
   }
 }

@@ -2,43 +2,9 @@ import type { TsOpsConfig, DNSType, ExtractNamespaceVarsFromConfig } from './typ
 import { createConfigResolver } from './config/resolver.js'
 
 /**
- * Runtime helper context for building environment variables and URLs
- */
-export interface RuntimeHelperContext<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> {
-  /** Current namespace */
-  namespace: Extract<keyof TConfig['namespaces'], string>
-  /** Project name */
-  project: TConfig['project']
-  /** Namespace variables */
-  namespaceVars: ExtractNamespaceVarsFromConfig<TConfig>
-  /** External hosts mapping */
-  externalHosts: Record<string, string>
-  /** Apps configuration */
-  appsConfig: Record<string, any>
-}
-
-/**
- * Simplified runtime configuration with only essential methods
- */
-export interface RuntimeConfig<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> {
-  /** Current namespace */
-  namespace: Extract<keyof TConfig['namespaces'], string>
-  /** Project name */
-  project: TConfig['project']
-  /** Namespace variables */
-  namespaceVars: ExtractNamespaceVarsFromConfig<TConfig>
-  /** Get environment variables for an app */
-  getEnv(appName: Extract<keyof TConfig['apps'], string>): Record<string, string>
-  /** Generate DNS name */
-  dns(appName: Extract<keyof TConfig['apps'], string>, type: DNSType): string
-  /** Generate complete URL */
-  url(appName: Extract<keyof TConfig['apps'], string>, type: DNSType, options?: { protocol?: 'http' | 'https' }): string
-}
-
-/**
  * Creates runtime helper functions for a specific namespace
  */
-function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>>(
+export function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>>(
   config: TConfig,
   namespace: Extract<keyof TConfig['namespaces'], string>
 ) {
@@ -75,14 +41,6 @@ function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, any, an
     }
   }
   
-  const context: RuntimeHelperContext<TConfig> = {
-    namespace,
-    project: config.project,
-    namespaceVars,
-    externalHosts,
-    appsConfig
-  }
-  
   /**
    * Generate DNS name for different types of resources
    */
@@ -91,10 +49,10 @@ function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, any, an
       case 'service':
         return app
       case 'ingress':
-        return context.externalHosts[app] || app
+        return externalHosts[app] || app
       case 'cluster':
       default:
-        return `${app}.${context.namespace}.svc.cluster.local`
+        return `${app}.${namespace}.svc.cluster.local`
     }
   }
   
@@ -105,7 +63,7 @@ function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, any, an
     const { protocol = 'http' } = options || {}
     
     // Get the first port from the app's configuration
-    const appConfig = context.appsConfig[app]
+    const appConfig = appsConfig[app]
     const firstPort = appConfig?.ports?.[0]?.port || 80
     
     // Get the DNS name
@@ -116,103 +74,55 @@ function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, any, an
   }
   
   /**
-   * Build environment variables for an app using helper functions
+   * Get environment variable for an app
    */
-  const env = (appName: Extract<keyof TConfig['apps'], string>, envBuilder: (helpers: {
-    dns: typeof dns
-    url: typeof url
-    namespace: typeof context.namespace
-    project: typeof context.project
-    cluster: { name: string; apiServer: string; context: string }
-    appName: string
-    secret: (secretName: string, key?: string) => any
-    configMap: (configMapName: string, key?: string) => any
-  } & ExtractNamespaceVarsFromConfig<TConfig>) => Record<string, any>): Record<string, string> => {
-    // Create secret and configMap helpers (simplified - return placeholder values)
-    const secret = (secretName: string, key?: string) => {
-      if (key) {
-        return `secret:${secretName}:${key}`
+  const env = (appName: Extract<keyof TConfig['apps'], string>, key: string): string => {
+    const app = appsConfig[appName]
+    if (!app || !app.env) {
+      return ''
+    }
+    
+    // If env is a function, call it with helpers
+    if (typeof app.env === 'function') {
+      // Create secret and configMap helpers (simplified - return placeholder values)
+      const secret = (secretName: string, key?: string) => {
+        if (key) {
+          return `secret:${secretName}:${key}`
+        }
+        return `secret:${secretName}`
       }
-      return `secret:${secretName}`
-    }
-    
-    const configMap = (configMapName: string, key?: string) => {
-      if (key) {
-        return `configmap:${configMapName}:${key}`
+      
+      const configMap = (configMapName: string, key?: string) => {
+        if (key) {
+          return `configmap:${configMapName}:${key}`
+        }
+        return `configmap:${configMapName}`
       }
-      return `configmap:${configMapName}`
-    }
-    
-    // Create full context for env builder
-    const fullContext = {
-      dns,
-      url,
-      namespace: context.namespace,
-      project: context.project,
-      cluster: { name: '', apiServer: '', context: '' }, // TODO: get from cluster config
-      appName,
-      secret,
-      configMap,
-      ...context.namespaceVars
-    }
-    
-    const envRaw = envBuilder(fullContext)
-    
-    // Convert to plain strings
-    const result: Record<string, string> = {}
-    for (const [key, value] of Object.entries(envRaw)) {
-      if (typeof value === 'string') {
-        result[key] = value
-      } else if (typeof value === 'number' || typeof value === 'boolean') {
-        result[key] = String(value)
+      
+      // Create full context for env builder
+      const fullContext = {
+        dns,
+        url,
+        namespace,
+        project: config.project,
+        cluster: { name: '', apiServer: '', context: '' }, // TODO: get from cluster config
+        appName,
+        secret,
+        configMap,
+        ...namespaceVars
       }
+      
+      const envRaw = app.env(fullContext)
+      return envRaw[key] || ''
     }
     
-    return result
+    // If env is an object, return the specific key
+    return app.env[key] || ''
   }
   
   return {
     dns,
     url,
-    env,
-    context
+    env
   }
 }
-
-/**
- * Creates a simplified runtime configuration
- */
-export function createRuntimeConfig<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>>(
-  config: TConfig,
-  namespace: Extract<keyof TConfig['namespaces'], string>
-): RuntimeConfig<TConfig> {
-  const helpers = createRuntimeHelpers(config, namespace)
-  
-  return {
-    namespace: helpers.context.namespace,
-    project: helpers.context.project,
-    namespaceVars: helpers.context.namespaceVars,
-    getEnv: (appName) => {
-      const app = helpers.context.appsConfig[appName]
-      if (!app || !app.env) {
-        return {}
-      }
-      
-      // If env is a function, call it with helpers
-      if (typeof app.env === 'function') {
-        return helpers.env(appName, app.env)
-      }
-      
-      // If env is an object, return as is
-      return app.env
-    },
-    dns: helpers.dns,
-    url: helpers.url
-  }
-}
-
-/**
- * Type helper for inferring runtime config type
- */
-export type InferRuntimeConfig<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> = 
-  RuntimeConfig<TConfig>
