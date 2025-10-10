@@ -15,6 +15,7 @@ import type { EnvironmentProvider } from '../environment-provider.js'
 export interface CreateHostContextOptions {
   appName?: string
   cluster?: ClusterMetadata
+  externalHost?: string
 }
 
 export interface NamespaceResolver<
@@ -67,7 +68,7 @@ export function createNamespaceResolver<
     if (!metadata) throw new Error(`Unknown namespace: ${namespace}`)
     
     const projectName = config.project
-    const { appName = '', cluster = { name: '', apiServer: '', context: '' } } = options
+    const { appName = '', cluster = { name: '', apiServer: '', context: '' }, externalHost } = options
     
     // Create secret helper with overload support
     const secret = ((secretName: string, key?: string): SecretRef => {
@@ -104,7 +105,8 @@ export function createNamespaceResolver<
         headless = false,
         podIndex,
         external = false,
-        clusterDomain = 'cluster.local'
+        clusterDomain = 'cluster.local',
+        externalHost: optionsExternalHost
       } = options || {}
       
       let dns: string
@@ -116,9 +118,8 @@ export function createNamespaceResolver<
           break
           
         case 'ingress':
-          // External ingress DNS - would need host from network config
-          // For now, return app name as placeholder
-          dns = app
+          // External ingress DNS - use external host if available
+          dns = externalHost || app
           break
           
         case 'cluster':

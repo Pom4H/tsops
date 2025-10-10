@@ -240,6 +240,8 @@ export interface DNSOptions {
   external?: boolean
   /** Custom cluster domain (default: cluster.local) */
   clusterDomain?: string
+  /** External host for ingress type (overrides context externalHost) */
+  externalHost?: string
 }
 
 /**
@@ -297,9 +299,9 @@ export interface AppContextCoreHelpers<
    * dns('api', 'service') // -> 'api'
    * dns('api', 'service', 3000) // -> 'api:3000'
    * 
-   * // Ingress external DNS
-   * dns('api', 'ingress') // -> 'api.example.com'
-   * dns('api', 'ingress', { protocol: 'https' }) // -> 'https://api.example.com'
+   * // Ingress external DNS (uses network host if configured)
+   * dns('api', 'ingress') // -> 'api.example.com' (if network configured) or 'api' (fallback)
+   * dns('api', 'ingress', { protocol: 'https' }) // -> 'https://api.example.com' (if network configured)
    * 
    * // With protocol
    * dns('api', 'cluster', { port: 3000, protocol: 'https' })
