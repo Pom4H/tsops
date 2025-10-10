@@ -12,6 +12,10 @@
     "./config": {
       "types": "./dist/config/index.d.ts",
       "default": "./dist/config/index.js"
+    },
+    "./dsl": {
+      "types": "./dist/dsl/index.d.ts",
+      "default": "./dist/dsl/index.js"
     }
   },
   "files": [
