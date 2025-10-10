@@ -68,19 +68,31 @@ export function expandSmartService(
     }
   }
   
-  // Parse host template: '@namespace/subdomain'
-  if (typeof smartService.host === 'string' && isHostTemplate(smartService.host)) {
-    const parsed = parseHostTemplate(smartService.host)
-    if (parsed) {
-      const ns = config.namespaces[parsed.namespace]
-      if (!ns) {
-        throw new Error(`Unknown namespace in template: ${parsed.namespace}`)
+  // Handle direct host string (could be template or regular host)
+  if (typeof smartService.host === 'string') {
+    if (isHostTemplate(smartService.host)) {
+      // Parse host template: '@namespace/subdomain'
+      const parsed = parseHostTemplate(smartService.host)
+      if (parsed) {
+        const ns = config.namespaces[parsed.namespace]
+        if (!ns) {
+          throw new Error(`Unknown namespace in template: ${parsed.namespace}`)
+        }
+        const region = ns.region
+        const domain = config.regions[region]
+        service.public = {
+          ns: parsed.namespace,
+          host: `${parsed.subdomain}.${domain}`,
+          basePath: createPath(smartService.path || '/')
+        }
       }
-      const region = ns.region
-      const domain = config.regions[region]
+    } else {
+      // Regular host string from $ helper or manual
+      // Infer namespace from service if available, or use first namespace
+      const ns = smartService.namespace || Object.keys(config.namespaces)[0]
       service.public = {
-        ns: parsed.namespace,
-        host: `${parsed.subdomain}.${domain}`,
+        ns,
+        host: smartService.host,
         basePath: createPath(smartService.path || '/')
       }
     }
@@ -187,10 +199,8 @@ export function resolveSmartDSL<C extends Core, D extends SmartDynamicConfig<C>>
   let services: Services
   if (typeof config.services === 'function') {
     const result = config.services($)
-    // Check if result is SmartServices or Services
-    services = 'listen' in Object.values(result)[0] 
-      ? result as Services
-      : expandSmartServices(config, result as SmartServices)
+    // Always try to expand as SmartServices - it will preserve existing Service fields
+    services = expandSmartServices(config, result as SmartServices)
   } else {
     services = expandSmartServices(config, config.services)
   }
