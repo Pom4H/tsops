@@ -18,11 +18,8 @@ export function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, 
   
   const appEntries = resolver.apps.select()
   for (const [appName, app] of appEntries) {
-    if (!resolver.apps.shouldDeploy(app, namespace as string)) {
-      continue
-    }
-    
-    // Store app config
+    // Store app config for all apps, regardless of deploy filters,
+    // so url()/dns() have complete information.
     appsConfig[appName] = app
     
     // Create temporary context to resolve ingress
@@ -43,6 +40,20 @@ export function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, 
   }
   
   /**
+   * Ensure external host for an app is resolved from ingress configuration.
+   */
+  const ensureExternalHost = (app: Extract<keyof TConfig['apps'], string>) => {
+    if (externalHosts[app]) return
+    const appDef = appsConfig[app]
+    if (!appDef) return
+    const tempContext = resolver.namespaces.createHostContext(namespace as string, { appName: app })
+    const { host } = resolver.apps.resolveNetwork(app, appDef, namespace as string, tempContext, undefined)
+    if (host) {
+      externalHosts[app] = host
+    }
+  }
+
+  /**
    * Generate DNS name for different types of resources
    */
   const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType): string => {
@@ -50,6 +61,7 @@ export function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, 
       case 'service':
         return app
       case 'ingress':
+        ensureExternalHost(app)
         return externalHosts[app] || app
       case 'cluster':
       default:

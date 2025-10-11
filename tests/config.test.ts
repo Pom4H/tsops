@@ -54,6 +54,12 @@ const cfg = defineConfig({
       // envFrom: entire configMap
       env: ({ configMap }) => configMap('namespace-flags'),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+    },
+    ops: {
+      // Simulate app deployed only to prod but URL should still resolve in any namespace
+      deploy: ['prod'],
+      ingress: ({ domain }) => `ops.${domain}`,
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }]
     }
   }
 })
@@ -117,6 +123,10 @@ describe('defineConfig runtime API', () => {
       expect(cfg.url('api', 'cluster')).toBe('http://api.dev.svc.cluster.local:80')
       expect(cfg.url('api', 'service')).toBe('http://api:80')
       expect(cfg.url('api', 'ingress')).toBe('https://api.dev.example.com')
+
+      // ingress URL for app not deployed to dev still resolves external host
+      expect(cfg.dns('ops', 'ingress')).toBe('ops.dev.example.com')
+      expect(cfg.url('ops', 'ingress')).toBe('https://ops.dev.example.com')
       
       // test env helper
       expect(cfg.env('api', 'ENDPOINT')).toBe('http://api.dev.svc.cluster.local:80')
@@ -149,6 +159,10 @@ describe('defineConfig runtime API', () => {
       expect(cfg.url('api', 'cluster')).toBe('http://api.prod.svc.cluster.local:80')
       expect(cfg.url('api', 'service')).toBe('http://api:80')
       expect(cfg.url('api', 'ingress')).toBe('https://api.example.com')
+
+      // ingress URL for app deployed to prod resolves external host
+      expect(cfg.dns('ops', 'ingress')).toBe('ops.example.com')
+      expect(cfg.url('ops', 'ingress')).toBe('https://ops.example.com')
     })
   })
 })
