@@ -21,7 +21,14 @@ const config = defineConfig({
   images: {
     registry: 'ghcr.io/acme',
     tagStrategy: 'git-sha',
-    includeProjectInName: true
+    includeProjectInName: true,
+    // Enable remote caching via Docker registry
+    // This speeds up builds by reusing layers from previous builds
+    cache: {
+      type: 'registry',
+      mode: 'max', // 'max' caches all layers, 'min' only final layers
+      inline: true // Embed cache metadata in the image
+    }
   },
   secrets: {
     'monorepo-backend-env': () => ({

@@ -59,11 +59,50 @@ export type ClusterDefinition<TNamespaceName extends string> = {
   namespaces: readonly TNamespaceName[]
 } & Record<string, unknown>
 
+/**
+ * Docker cache backend configuration for BuildKit
+ * @see https://docs.docker.com/build/cache/backends/
+ */
+export type DockerCacheConfig =
+  | {
+      type: 'registry'
+      /** Registry cache reference (e.g., 'ghcr.io/org/repo:cache' or 'type=registry,ref=...') */
+      ref?: string
+      mode?: 'min' | 'max'
+      /** Enable inline cache export */
+      inline?: boolean
+    }
+  | {
+      type: 'gha'
+      /** GitHub Actions cache token */
+      token?: string
+      /** GitHub Actions cache scope */
+      scope?: string
+    }
+  | {
+      type: 's3'
+      bucket: string
+      region?: string
+      prefix?: string
+    }
+  | {
+      type: 'local'
+      dest?: string
+    }
+  | {
+      type: 'inline'
+    }
+
 export type ImagesConfig = {
   registry: string
   tagStrategy: TagStrategy
   repository?: string
   includeProjectInName?: boolean
+  /**
+   * Default cache configuration for all apps.
+   * Can be overridden per app in build.cache.
+   */
+  cache?: DockerCacheConfig
 } & Record<string, unknown>
 
 /**
@@ -80,6 +119,11 @@ export type DockerfileBuild = {
   env?: Record<string, string>
   args?: Record<string, string>
   target?: string
+  /**
+   * Cache configuration for this specific build.
+   * Overrides global images.cache if provided.
+   */
+  cache?: DockerCacheConfig | false
 } & Record<string, unknown>
 
 export type GenericBuild = Record<string, unknown>

@@ -9,6 +9,7 @@ interface BuilderDependencies<TConfig extends TsOpsConfig<any, any, any, any, an
   logger: Logger
   dryRun: boolean
   resolver: ConfigResolver<TConfig>
+  config: TConfig
 }
 
 export class Builder<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
@@ -16,12 +17,14 @@ export class Builder<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
   private readonly logger: Logger
   private readonly dryRun: boolean
   private readonly resolver: ConfigResolver<TConfig>
+  private readonly config: TConfig
 
   constructor(dependencies: BuilderDependencies<TConfig>) {
     this.docker = dependencies.docker
     this.logger = dependencies.logger
     this.dryRun = dependencies.dryRun
     this.resolver = dependencies.resolver
+    this.config = dependencies.config
   }
 
   async build(
@@ -68,7 +71,8 @@ export class Builder<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       }
 
       // Build context can be extended with namespace variables if needed
-      await this.docker.build(imageRef, build, {})
+      const cacheConfig = this.config.images.cache
+      await this.docker.build(imageRef, build, {}, cacheConfig)
       if (!this.dryRun) {
         await this.docker.push(imageRef)
       }

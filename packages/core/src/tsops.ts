@@ -94,7 +94,8 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
       docker: this.docker,
       logger: this.logger,
       dryRun: this.dryRun,
-      resolver: this.resolver
+      resolver: this.resolver,
+      config
     })
     this.deployer = new Deployer({
       manifestBuilder: this.manifestBuilder,

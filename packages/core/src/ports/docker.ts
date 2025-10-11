@@ -1,4 +1,4 @@
-import type { AppBuildContext, DockerfileBuild } from '../types.js'
+import type { AppBuildContext, DockerCacheConfig, DockerfileBuild } from '../types.js'
 
 export interface DockerLoginOptions {
   registry?: string
@@ -9,6 +9,11 @@ export interface DockerLoginOptions {
 export interface DockerClient {
   login(options?: DockerLoginOptions): Promise<void>
   imageExists(imageRef: string): Promise<boolean>
-  build(imageRef: string, build: DockerfileBuild, ctx: AppBuildContext): Promise<void>
+  build(
+    imageRef: string,
+    build: DockerfileBuild,
+    ctx: AppBuildContext,
+    cacheConfig?: DockerCacheConfig
+  ): Promise<void>
   push(imageRef: string): Promise<void>
 }
