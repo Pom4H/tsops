@@ -49,7 +49,7 @@ const config = defineConfig({
       ports: [
         { name: 'http', port: 4000, targetPort: 4000 }
       ],
-      network: ({ domain }) => `api.${domain}`
+      ingress: ({ domain }) => `api.${domain}`
     },
     frontend: {
       build: {
@@ -71,7 +71,7 @@ const config = defineConfig({
       ports: [
         { name: 'http', port: 80, targetPort: 3000 }
       ],
-      network: ({ domain }) => `web.${domain}`
+      ingress: ({ domain }) => `web.${domain}`
     }
   }
 })

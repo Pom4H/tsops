@@ -45,7 +45,7 @@ export default defineConfig({
         DB_PASSWORD: secret('api-secrets', 'DB_PASSWORD'),
         LOG_LEVEL: configMap('api-config', 'LOG_LEVEL')
       }),
-      network: ({ domain }) => `api.${domain}`
+      ingress: ({ domain }) => `api.${domain}`
     },
     'frontend': {
       ports: [{ name: 'http', port: 80, targetPort: 3000 }],
@@ -57,7 +57,7 @@ export default defineConfig({
         API_URL: url('api', 'cluster'),
         EXTERNAL_API_URL: url('api', 'ingress')
       }),
-      network: ({ domain }) => `app.${domain}`
+      ingress: ({ domain }) => `app.${domain}`
     }
   }
 })

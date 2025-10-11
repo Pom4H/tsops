@@ -101,7 +101,7 @@ export function createNamespaceResolver<
           return app
           
         case 'ingress':
-          // External DNS - resolved from network configuration
+          // External DNS - resolved from ingress configuration
           return externalHosts[app] || app
           
         case 'cluster':

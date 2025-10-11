@@ -297,8 +297,8 @@ export interface AppContextCoreHelpers<
    * // Service name only
    * dns('api', 'service') // -> 'api'
    * 
-   * // External DNS (resolved from network configuration)
-   * dns('api', 'ingress') // -> 'api.example.com' (if network configured)
+   * // External DNS (resolved from ingress configuration)
+   * dns('api', 'ingress') // -> 'api.example.com' (if ingress configured)
    * 
    * // Usage in env:
    * env: ({ dns }) => ({
@@ -320,8 +320,8 @@ export interface AppContextCoreHelpers<
    * // Service URL (uses first port from app.ports)
    * url('api', 'service') // -> 'http://api:3000'
    * 
-   * // External URL (uses network configuration + first port)
-   * url('api', 'ingress') // -> 'https://api.example.com:3000' (if network configured)
+   * // External URL (uses ingress configuration, HTTPS without port by default)
+   * url('api', 'ingress') // -> 'https://api.example.com' (if ingress configured)
    * 
    * // With custom protocol
    * url('api', 'cluster', { protocol: 'https' }) // -> 'https://api.my-namespace.svc.cluster.local:3000'
@@ -541,13 +541,13 @@ export interface AppCertificateOptions
   commonName?: CertificateSpec['commonName']
 }
 
-export interface AppNetworkOptions {
+export interface AppIngressOptions {
   ingress?: boolean | AppIngressOptions
   ingressRoute?: boolean | AppIngressRouteOptions
   certificate?: boolean | AppCertificateOptions
 }
 
-export type AppNetworkDefinition<
+export type AppIngressDefinition<
   TNamespaceVars extends NamespaceDefinition,
   TProject extends string = string,
   TNamespaceName extends string = string,
@@ -557,10 +557,10 @@ export type AppNetworkDefinition<
 > =
   | string
   | boolean
-  | AppNetworkOptions
+  | AppIngressOptions
   | ((
       ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
-    ) => string | boolean | AppNetworkOptions)
+    ) => string | boolean | AppIngressOptions)
 
 export type AppDeploySelection<TNamespaceName extends string> =
   | 'all'
@@ -637,7 +637,7 @@ export type AppDefinition<
   args?: string[]
   ports?: ServicePort[]
   deploy?: AppDeploySelection<TNamespaceName> | undefined
-  network?: AppNetworkDefinition<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+  ingress?: AppIngressDefinition<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
 } & Record<string, unknown>
 
 /**

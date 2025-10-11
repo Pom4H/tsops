@@ -24,10 +24,10 @@ export function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, 
     // Store app config
     appsConfig[appName] = app
     
-    // Create temporary context to resolve network
+    // Create temporary context to resolve ingress
     const tempContext = resolver.namespaces.createHostContext(namespace as string, { appName })
     
-    // Resolve network to get external host
+    // Resolve ingress to get external host
     const { host } = resolver.apps.resolveNetwork(
       appName,
       app,
@@ -60,14 +60,19 @@ export function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, 
    * Generate complete URL for different types of resources with automatic port resolution
    */
   const url = (app: Extract<keyof TConfig['apps'], string>, type: DNSType, options?: { protocol?: 'http' | 'https' }): string => {
-    const { protocol = 'http' } = options || {}
-    
-    // Get the first port from the app's configuration
-    const appConfig = appsConfig[app]
-    const firstPort = appConfig?.ports?.[0]?.port || 80
-    
     // Get the DNS name
     const hostname = dns(app, type)
+    
+    // For ingress, use HTTPS without port by default
+    if (type === 'ingress') {
+      const { protocol = 'https' } = options || {}
+      return `${protocol}://${hostname}`
+    }
+    
+    // For other types, use HTTP with port by default
+    const { protocol = 'http' } = options || {}
+    const appConfig = appsConfig[app]
+    const firstPort = appConfig?.ports?.[0]?.port || 80
     
     // Build the complete URL
     return `${protocol}://${hostname}:${firstPort}`

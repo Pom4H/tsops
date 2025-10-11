@@ -46,11 +46,11 @@ const cfg = defineConfig({
         PROJECT: project,
         HOST: `api.${domain}`
       }),
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       ports: [{ name: 'http', port: 80, targetPort: 8080 }]
     },
     web: {
-      network: ({ domain }) => `web.${domain}`,
+      ingress: ({ domain }) => `web.${domain}`,
       // envFrom: entire configMap
       env: ({ configMap }) => configMap('namespace-flags'),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }]
@@ -93,7 +93,7 @@ describe('defineConfig runtime API', () => {
       // test url helper
       expect(cfg.url('api', 'cluster')).toBe('http://api.dev.svc.cluster.local:80')
       expect(cfg.url('api', 'service')).toBe('http://api:80')
-      expect(cfg.url('api', 'ingress')).toBe('http://api.dev.example.com:80')
+      expect(cfg.url('api', 'ingress')).toBe('https://api.dev.example.com')
       
       // test env helper
       expect(cfg.env('api', 'ENDPOINT')).toBe('http://api.dev.svc.cluster.local:80')
@@ -117,7 +117,7 @@ describe('defineConfig runtime API', () => {
       // test url helper
       expect(cfg.url('api', 'cluster')).toBe('http://api.prod.svc.cluster.local:80')
       expect(cfg.url('api', 'service')).toBe('http://api:80')
-      expect(cfg.url('api', 'ingress')).toBe('http://api.example.com:80')
+      expect(cfg.url('api', 'ingress')).toBe('https://api.example.com')
     })
   })
 })

@@ -45,7 +45,7 @@ const config = defineConfig({
       ports: [
         { name: 'http', port: 80, targetPort: 3000 }
       ],
-      network: 'fullstack2.localtest.me'
+      ingress: 'fullstack2.localtest.me'
     }
   }
 })
