@@ -1,5 +1,13 @@
 # tsops
 
+## 1.4.1
+
+### Patch Changes
+
+- Updated dependencies [[`d1653e0`](https://github.com/Pom4H/tsops/commit/d1653e01fb7749cb965e8b7d9b3fc42ac9fbd52e)]:
+  - @tsops/core@0.5.1
+  - @tsops/node@0.2.2
+
 ## 1.4.0
 
 ### Minor Changes
@@ -12,18 +20,20 @@
   Completely refactored runtime configuration to provide direct helper methods: `env`, `dns`, and `url`. Replaced old methods (`getEnv`, `getInternalEndpoint`, `getExternalEndpoint`) with cleaner API.
 
   **Breaking Changes:**
+
   - **Removed**: `config.getEnv()`, `config.getInternalEndpoint()`, `config.getExternalEndpoint()`, `config.getApp()`, `config.getNamespace()`
   - **Added**: `config.env()`, `config.dns()`, `config.url()` with cleaner API
   - **Renamed**: `network` configuration property → `ingress`
   - **Changed**: Ingress URLs now return HTTPS without port by default
 
   **Migration Guide:**
+
   ```typescript
   // Old API (deprecated)
   const env = config.getEnv('api')
   const internal = config.getInternalEndpoint('api')
   const external = config.getExternalEndpoint('api')
-  
+
   // New API (current)
   const nodeEnv = config.env('api', 'NODE_ENV')
   const internal = config.url('api', 'cluster')
