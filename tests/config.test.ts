@@ -70,6 +70,24 @@ function withNamespace<T>(ns: string, fn: () => T): T {
   }
 }
 
+// Helper to temporarily set process.env keys
+function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
+  const prev: Record<string, string | undefined> = {}
+  for (const [k, v] of Object.entries(vars)) {
+    prev[k] = process.env[k]
+    if (v === undefined) delete process.env[k]
+    else process.env[k] = v
+  }
+  try {
+    return fn()
+  } finally {
+    for (const [k, v] of Object.entries(prev)) {
+      if (v === undefined) delete process.env[k]
+      else process.env[k] = v
+    }
+  }
+}
+
 describe('defineConfig runtime API', () => {
   it('preserves structure and methods', () => {
     expect(cfg.project).toBe('demo')
@@ -94,16 +112,30 @@ describe('defineConfig runtime API', () => {
       expect(cfg.url('api', 'cluster')).toBe('http://api.dev.svc.cluster.local:80')
       expect(cfg.url('api', 'service')).toBe('http://api:80')
       expect(cfg.url('api', 'ingress')).toBe('https://api.dev.example.com')
-      
-      // test env helper
-      expect(cfg.env('api', 'ENDPOINT')).toBe('http://api.dev.svc.cluster.local:80')
-      expect(cfg.env('api', 'HOST')).toBe('api.dev.example.com')
-      expect(cfg.env('api', 'NODE_ENV')).toBe('production')
-      expect(cfg.env('api', 'SHARED_KEY')).toBe('secret:shared-secrets:SHARED_KEY')
-      expect(cfg.env('api', 'TOKEN')).toBe('secret:token-secrets:PROJECT')
-      expect(cfg.env('api', 'LOG_LEVEL')).toBe('configmap:app-settings:LOG_LEVEL')
-      expect(cfg.env('api', 'NAMESPACE')).toBe('configmap:namespace-flags:NAMESPACE')
-      expect(cfg.env('api', 'PROJECT')).toBe('demo')
+
+      // test env helper returns values from process.env
+      withEnv(
+        {
+          ENDPOINT: 'http://from-env-endpoint',
+          HOST: 'host.from.env',
+          NODE_ENV: 'production',
+          SHARED_KEY: 'shared-from-env',
+          TOKEN: 'token-from-env',
+          LOG_LEVEL: 'debug',
+          NAMESPACE: 'dev',
+          PROJECT: 'demo-env'
+        },
+        () => {
+          expect(cfg.env('api', 'ENDPOINT')).toBe('http://from-env-endpoint')
+          expect(cfg.env('api', 'HOST')).toBe('host.from.env')
+          expect(cfg.env('api', 'NODE_ENV')).toBe('production')
+          expect(cfg.env('api', 'SHARED_KEY')).toBe('shared-from-env')
+          expect(cfg.env('api', 'TOKEN')).toBe('token-from-env')
+          expect(cfg.env('api', 'LOG_LEVEL')).toBe('debug')
+          expect(cfg.env('api', 'NAMESPACE')).toBe('dev')
+          expect(cfg.env('api', 'PROJECT')).toBe('demo-env')
+        }
+      )
     })
   })
 
