@@ -290,20 +290,49 @@ async function main(): Promise<void> {
     .option('-c, --config <path>', 'path to config file', 'tsops.config')
     .option('--dry-run', 'skip external commands, log actions only')
     .option('-f, --force', 'force rebuild even if image already exists in registry')
+    .option(
+      '--filter <ref>',
+      'build only apps affected by changes compared to git ref (e.g., HEAD^1, main, origin/main)'
+    )
     .action(async (options) => {
       const config = await loadConfig(options.config)
+      const envProvider = new GitEnvironmentProvider(new ProcessEnvironmentProvider())
       const tsops = createNodeTsOps(config, {
         dryRun: options.dryRun,
-        env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
+        env: envProvider
       })
+
+      // Get changed files if filter is specified
+      let changedFiles: string[] | undefined
+      if (options.filter) {
+        const gitAdapter = envProvider.getGitAdapter()
+        changedFiles = gitAdapter.getChangedFiles(options.filter)
+
+        if (changedFiles.length === 0) {
+          console.log(`✨ No changes detected compared to ${options.filter}`)
+          return
+        }
+
+        console.log(
+          `📊 Detected ${changedFiles.length} changed file(s) compared to ${options.filter}`
+        )
+      }
+
       const result = await tsops.build({
         namespace: options.namespace,
         app: options.app,
-        force: options.force
+        force: options.force,
+        changedFiles
       })
 
+      if (result.images.length === 0) {
+        console.log('✨ No images to build')
+        return
+      }
+
+      console.log('\n✅ Built images:')
       for (const item of result.images) {
-        console.log(`- built ${item.app}: ${item.image}`)
+        console.log(`   • ${item.app}: ${item.image}`)
       }
     })
 

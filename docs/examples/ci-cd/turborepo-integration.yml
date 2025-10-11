@@ -1,0 +1,98 @@
+name: Turborepo + tsops Integration
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-deploy:
+    name: Incremental Build with Turborepo
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install
+      
+      # Optional: Setup Turborepo Remote Cache (Vercel)
+      - name: Configure Turborepo cache
+        run: |
+          turbo link --api="https://api.vercel.com" \
+                     --token="${{ secrets.TURBO_TOKEN }}" \
+                     --team="${{ secrets.TURBO_TEAM }}"
+      
+      # Step 1: Build TypeScript packages that changed using Turborepo
+      - name: Build affected packages
+        run: |
+          # Turborepo automatically detects changed packages
+          turbo run build --filter=[HEAD^1]
+      
+      # Step 2: Run tests for affected packages
+      - name: Test affected packages
+        run: |
+          turbo run test --filter=[HEAD^1]
+      
+      # Step 3: Build Docker images for affected apps using tsops
+      - name: Log in to Docker registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build Docker images for changed apps
+        env:
+          GIT_SHA: ${{ github.sha }}
+          DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
+        run: |
+          BASE_REF="${{ github.event.pull_request.base.sha || 'HEAD^1' }}"
+          pnpm tsops build --filter $BASE_REF
+      
+      # Step 4: Deploy
+      - name: Deploy to production
+        if: github.ref == 'refs/heads/main'
+        run: |
+          pnpm tsops deploy --namespace prod
+      
+      - name: Deploy to staging
+        if: github.event_name == 'pull_request'
+        run: |
+          pnpm tsops deploy --namespace staging
+
+  # Show Turborepo cache statistics
+  cache-stats:
+    name: Cache Statistics
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      - run: pnpm install
+      
+      - name: Show Turborepo summary
+        run: |
+          turbo run build --filter=[HEAD^1] --dry=json | jq '.tasks[] | {task: .task, cache: .cache}'

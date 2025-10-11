@@ -53,9 +53,9 @@ export default defineConfig({
         dockerfile: './api/Dockerfile'
       },
       network: ({ domain }) => `api.${domain}`,
-      env: ({ secret, serviceDNS }) => ({
+      env: ({ secret, dns }) => ({
         JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
-        DATABASE_URL: serviceDNS('postgres', 5432)
+        DATABASE_URL: dns('postgres', 5432)
       }),
       ports: [{ name: 'http', port: 80, targetPort: 8080 }]
     }
@@ -150,19 +150,19 @@ cluster: ClusterMetadata // Cluster info
 // + all namespace variables (e.g., production, replicas, domain, etc.)
 ```
 
-### serviceDNS()
+### dns()
 
 ```typescript
-serviceDNS(app: string, options?: number | ServiceDNSOptions): string
+dns(app: string, options?: number | DNSOptions): string
 ```
 
 Generate Kubernetes service DNS with support for protocols, headless/stateful services, and external lookups.
 
 **Examples:**
 ```typescript
-serviceDNS('api', 3000)  // Simple with port
-serviceDNS('api', { port: 3000, protocol: 'https' })  // With protocol prefix
-serviceDNS('postgres', { headless: true, podIndex: 0 })  // StatefulSet pod DNS
+dns('api', 3000)  // Simple with port
+dns('api', { port: 3000, protocol: 'https' })  // With protocol prefix
+dns('postgres', { headless: true, podIndex: 0 })  // StatefulSet pod DNS
 ```
 
 ### secret()

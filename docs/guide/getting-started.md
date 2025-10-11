@@ -75,10 +75,10 @@ export default defineConfig({
       
       ports: [{ name: 'http', port: 80, targetPort: 8080 }],
       
-      env: ({ serviceDNS, template, production }) => ({
+      env: ({ dns, template, production }) => ({
         NODE_ENV: production ? 'production' : 'development',
         DB_URL: template('postgresql://{host}/mydb', {
-          host: serviceDNS('postgres', 5432)
+          host: dns('postgres', 5432)
         })
       })
     }

@@ -39,6 +39,7 @@ export type AppEntry<TConfig extends TsOpsConfig<any, any, any, any, any, any, a
 
 export interface AppsResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> {
   select(target?: string): AppEntry<TConfig>[]
+  selectByChangedFiles(changedFiles: string[]): AppEntry<TConfig>[]
   shouldDeploy(app: ResolverApp<TConfig>, namespace: string): boolean
   resolveEnv(
     app: ResolverApp<TConfig>,
@@ -115,6 +116,56 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     }
 
     return entries
+  }
+
+  /**
+   * Selects apps that have changed files in their build context.
+   * Useful for incremental builds in monorepo scenarios.
+   *
+   * @param changedFiles - Array of changed file paths relative to repository root
+   * @returns Array of [appName, appDefinition] tuples for affected apps
+   *
+   * @example
+   * ```typescript
+   * const changedFiles = ['packages/api/src/index.ts', 'packages/frontend/app/page.tsx']
+   * const affectedApps = resolver.apps.selectByChangedFiles(changedFiles)
+   * // Returns apps with build.context that matches changed files
+   * ```
+   */
+  function selectByChangedFiles(changedFiles: string[]): AppEntry<TConfig>[] {
+    if (changedFiles.length === 0) return []
+
+    const entries = Object.entries(config.apps) as AppEntry<TConfig>[]
+    const affected: AppEntry<TConfig>[] = []
+
+    for (const [appName, app] of entries) {
+      const build = app.build
+      if (!build || typeof build !== 'object' || !('context' in build)) {
+        continue
+      }
+
+      const context = (build as { context: string }).context
+
+      // Normalize context path (remove trailing slash)
+      const normalizedContext = context.replace(/\/$/, '')
+
+      // Check if any changed file is within this app's build context
+      const isAffected = changedFiles.some((file) => {
+        // Normalize file path
+        const normalizedFile = file.replace(/\/$/, '')
+
+        // Check if file is within the app's context directory
+        return (
+          normalizedFile === normalizedContext || normalizedFile.startsWith(`${normalizedContext}/`)
+        )
+      })
+
+      if (isAffected) {
+        affected.push([appName, app])
+      }
+    }
+
+    return affected
   }
 
   /**
@@ -431,6 +482,7 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
 
   return {
     select,
+    selectByChangedFiles,
     shouldDeploy,
     resolveEnv,
     resolveSecrets,

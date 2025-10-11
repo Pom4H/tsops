@@ -175,6 +175,7 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * @param options.app - Target a single app (optional)
    * @param options.namespace - Used to determine dev/prod context (optional)
    * @param options.force - Force rebuild even if image exists in registry (optional)
+   * @param options.changedFiles - Array of changed files to determine affected apps (optional)
    * @returns Build results with app names and image references
    *
    * @example
@@ -182,8 +183,18 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * const result = await tsops.build({ app: 'api' })
    * console.log(result.images[0].image) // => 'ghcr.io/org/api:abc123'
    * ```
+   *
+   * @example
+   * ```typescript
+   * // Incremental build based on git changes
+   * const changedFiles = git.getChangedFiles('HEAD^1')
+   * const result = await tsops.build({ changedFiles })
+   * // Only builds apps affected by changed files
+   * ```
    */
-  build(options: { app?: string; namespace?: string; force?: boolean } = {}) {
+  build(
+    options: { app?: string; namespace?: string; force?: boolean; changedFiles?: string[] } = {}
+  ) {
     return this.builder.build(options)
   }
 

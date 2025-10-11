@@ -264,15 +264,15 @@ secrets: {
 }
 ```
 
-### ✅ Use serviceDNS in secrets
+### ✅ Use dns in secrets
 
 ```typescript
 secrets: {
-  'api-secrets': ({ serviceDNS }) => ({
+  'api-secrets': ({ dns }) => ({
     DATABASE_URL: template('postgresql://{user}:{pwd}@{host}/{db}', {
       user: 'myuser',
       pwd: process.env.DB_PASSWORD ?? '',
-      host: serviceDNS('postgres', 5432),
+      host: dns('postgres', 5432),
       db: 'myapp'
     })
   })

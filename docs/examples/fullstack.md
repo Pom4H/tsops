@@ -19,7 +19,7 @@ pnpm tsops plan --config examples/fullstack/tsops.config.ts
 ### Config Highlights
 
 - frontend exposes HTTP on port 80 (container 3000)
-- backend exposes HTTP on port 8080 and is reachable from frontend via serviceDNS
+- backend exposes HTTP on port 8080 and is reachable from frontend via dns
 - uses `network` to set external host for the frontend
 
 

@@ -30,7 +30,7 @@ and this project adheres to Semantic Versioning (https://semver.org/spec/v2.0.0.
 
 ### Changed
 - Type inference: `getApp(appName)` now narrows `appName` to `keyof apps` via generics fix.
-- `serviceDNS` docs clarified: default without protocol; options add `scheme://`.
+- `dns` docs clarified: default without protocol; options add `scheme://`.
 - Documentation updated to recommend `network` for external host.
 
 ### Deprecated
