@@ -453,7 +453,7 @@ export default defineConfig({
   
   apps: {
     api: {
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       
       env: ({
         // Metadata

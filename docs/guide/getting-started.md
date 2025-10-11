@@ -71,7 +71,7 @@ export default defineConfig({
         dockerfile: './api/Dockerfile'
       },
       
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       
       ports: [{ name: 'http', port: 80, targetPort: 8080 }],
       

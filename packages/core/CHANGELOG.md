@@ -1,5 +1,17 @@
 # @tsops/core
 
+## 0.5.2
+
+### Patch Changes
+
+- Fix documentation examples to use `ingress` instead of deprecated `network` property
+
+  - Updated all documentation examples in `docs/` directory
+  - Changed `network: ({ domain }) => ...` to `ingress: ({ domain }) => ...`
+  - Updated API reference to show correct `AppIngressOptions` type
+  - Fixed examples in getting started, quick start, and context helpers guides
+  - All examples now use the current API consistently
+
 ## 0.5.1
 
 ### Patch Changes
