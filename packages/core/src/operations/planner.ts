@@ -37,11 +37,27 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
    * @param options - Filtering options
    * @param options.namespace - Target a single namespace (optional)
    * @param options.app - Target a single app (optional)
+   * @param options.changedFiles - Filter apps by changed files (optional)
    * @returns Deployment plan with resolved entries
    */
-  async plan(options: { namespace?: string; app?: string } = {}): Promise<PlanResult> {
+  async plan(
+    options: { namespace?: string; app?: string; changedFiles?: string[] } = {}
+  ): Promise<PlanResult> {
     const namespaces = this.resolver.namespaces.select(options.namespace)
-    const apps = this.resolver.apps.select(options.app)
+
+    // Select apps based on filters (app filter takes precedence over changedFiles)
+    let apps: ReturnType<typeof this.resolver.apps.select>
+    if (options.app) {
+      // Explicit app filter takes precedence
+      apps = this.resolver.apps.select(options.app)
+    } else if (options.changedFiles && options.changedFiles.length > 0) {
+      // Filter by changed files if no explicit app filter
+      apps = this.resolver.apps.selectByChangedFiles(options.changedFiles)
+    } else {
+      // No filter - select all apps
+      apps = this.resolver.apps.select()
+    }
+
     const entries: PlanEntry[] = []
 
     for (const namespace of namespaces) {

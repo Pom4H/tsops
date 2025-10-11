@@ -32,19 +32,26 @@ export function createImagesResolver<TConfig extends TsOpsConfig<any, any, any, 
    *
    * Supports:
    * - 'git-sha': Automatically uses git SHA (first 12 chars), falls back to env var GIT_SHA, then 'dev'
+   *   - Appends '-dirty' suffix if working directory has uncommitted changes
    * - 'git-tag': Automatically uses git tag, falls back to env var GIT_TAG, then 'latest'
+   *   - Appends '-dirty' suffix if working directory has uncommitted changes
    * - 'timestamp': Generates ISO timestamp (YYYYMMDDHHmmss)
    * - Custom string: Used as-is
    * - Custom object: Uses object.value or generates dynamic tag
    */
   function resolveTag(): string {
+    const isDirty = env.get('GIT_DIRTY') === 'true'
+
     const strategy = config.images.tagStrategy
     if (typeof strategy === 'string') {
+      let baseTag: string
       switch (strategy) {
         case 'git-sha':
-          return env.get('GIT_SHA')?.slice(0, 12) ?? 'dev'
+          baseTag = env.get('GIT_SHA')?.slice(0, 12) ?? 'dev'
+          return isDirty ? `${baseTag}-dirty` : baseTag
         case 'git-tag':
-          return env.get('GIT_TAG') ?? 'latest'
+          baseTag = env.get('GIT_TAG') ?? 'latest'
+          return isDirty ? `${baseTag}-dirty` : baseTag
         case 'timestamp':
           return new Date().toISOString().replace(/[-:T]/g, '').slice(0, 14)
         default:
