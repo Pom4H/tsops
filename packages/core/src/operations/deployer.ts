@@ -70,7 +70,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
             namespace: entry.namespace
           })
           applied.push(ref)
-        } catch (error) {
+        } catch {
           // Namespace might already exist, that's okay
         }
 

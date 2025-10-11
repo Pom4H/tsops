@@ -291,8 +291,8 @@ async function main(): Promise<void> {
     .option('--dry-run', 'skip external commands, log actions only')
     .option('-f, --force', 'force rebuild even if image already exists in registry')
     .option(
-      '--filter <ref>',
-      'build only apps affected by changes compared to git ref (e.g., HEAD^1, main, origin/main)'
+      '--git <ref>',
+      'build only apps affected by git changes compared to ref (e.g., HEAD^1, main, origin/main)'
     )
     .action(async (options) => {
       const config = await loadConfig(options.config)
@@ -302,20 +302,18 @@ async function main(): Promise<void> {
         env: envProvider
       })
 
-      // Get changed files if filter is specified
+      // Get changed files if --git is specified
       let changedFiles: string[] | undefined
-      if (options.filter) {
+      if (options.git) {
         const gitAdapter = envProvider.getGitAdapter()
-        changedFiles = gitAdapter.getChangedFiles(options.filter)
+        changedFiles = gitAdapter.getChangedFiles(options.git)
 
         if (changedFiles.length === 0) {
-          console.log(`✨ No changes detected compared to ${options.filter}`)
+          console.log(`✨ No changes detected compared to ${options.git}`)
           return
         }
 
-        console.log(
-          `📊 Detected ${changedFiles.length} changed file(s) compared to ${options.filter}`
-        )
+        console.log(`📊 Detected ${changedFiles.length} changed file(s) compared to ${options.git}`)
       }
 
       const result = await tsops.build({
@@ -344,8 +342,8 @@ async function main(): Promise<void> {
     .option('-c, --config <path>', 'path to config file', 'tsops.config')
     .option('--dry-run', 'skip external commands, log actions only')
     .option(
-      '--filter <ref>',
-      'deploy only apps affected by changes compared to git ref (e.g., HEAD^1, main, origin/main)'
+      '--git <ref>',
+      'deploy only apps affected by git changes compared to ref (e.g., HEAD^1, main, origin/main)'
     )
     .action(async (options) => {
       const config = await loadConfig(options.config)
@@ -355,20 +353,18 @@ async function main(): Promise<void> {
         env: envProvider
       })
 
-      // Get changed files if filter is specified
+      // Get changed files if --git is specified
       let changedFiles: string[] | undefined
-      if (options.filter) {
+      if (options.git) {
         const gitAdapter = envProvider.getGitAdapter()
-        changedFiles = gitAdapter.getChangedFiles(options.filter)
+        changedFiles = gitAdapter.getChangedFiles(options.git)
 
         if (changedFiles.length === 0) {
-          console.log(`✨ No changes detected compared to ${options.filter}`)
+          console.log(`✨ No changes detected compared to ${options.git}`)
           return
         }
 
-        console.log(
-          `📊 Detected ${changedFiles.length} changed file(s) compared to ${options.filter}`
-        )
+        console.log(`📊 Detected ${changedFiles.length} changed file(s) compared to ${options.git}`)
       }
 
       const result = await tsops.deploy({

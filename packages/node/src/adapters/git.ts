@@ -15,12 +15,33 @@ export class Git {
           encoding: 'utf8',
           stdio: ['ignore', 'pipe', 'ignore']
         }).trim()
-        this.gitShaCache = fullSha.slice(0, 12)
+
+        // Check if there are uncommitted changes (dirty state)
+        const isDirty = this.hasUncommittedChanges()
+
+        this.gitShaCache = isDirty ? `${fullSha.slice(0, 12)}-dirty` : fullSha.slice(0, 12)
       } catch {
         this.gitShaCache = null
       }
     }
     return this.gitShaCache
+  }
+
+  /**
+   * Check if there are uncommitted changes in the working directory.
+   * @returns true if there are uncommitted changes
+   */
+  private hasUncommittedChanges(): boolean {
+    try {
+      const status = execSync('git status --porcelain', {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim()
+
+      return status.length > 0
+    } catch {
+      return false
+    }
   }
 
   getGitTag(): string | null {
@@ -104,6 +125,23 @@ export class Git {
       return []
     }
   }
+
+  /**
+   * Check if working directory has uncommitted changes (dirty state).
+   * @returns true if there are uncommitted changes or untracked files
+   */
+  isDirty(): boolean {
+    try {
+      const output = execSync('git status --porcelain', {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim()
+
+      return output.length > 0
+    } catch {
+      return false
+    }
+  }
 }
 
 /**
@@ -126,6 +164,8 @@ export class GitEnvironmentProvider implements EnvironmentProvider {
         return this.gitAdapter.getGitTag() ?? this.fallbackProvider.get(key)
       case 'GIT_BRANCH':
         return this.gitAdapter.getGitBranch() ?? this.fallbackProvider.get(key)
+      case 'GIT_DIRTY':
+        return this.gitAdapter.isDirty() ? 'true' : 'false'
       default:
         return this.fallbackProvider.get(key)
     }

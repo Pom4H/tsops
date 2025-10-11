@@ -44,7 +44,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
     options: { namespace?: string; app?: string; changedFiles?: string[] } = {}
   ): Promise<PlanResult> {
     const namespaces = this.resolver.namespaces.select(options.namespace)
-    
+
     // Select apps based on filters (app filter takes precedence over changedFiles)
     let apps: ReturnType<typeof this.resolver.apps.select>
     if (options.app) {
@@ -57,7 +57,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       // No filter - select all apps
       apps = this.resolver.apps.select()
     }
-    
+
     const entries: PlanEntry[] = []
 
     for (const namespace of namespaces) {
