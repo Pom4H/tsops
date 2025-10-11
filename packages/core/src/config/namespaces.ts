@@ -1,16 +1,15 @@
-import type { 
+import type { EnvironmentProvider } from '../environment-provider.js'
+import type {
   AppHostContextWithHelpers,
-  TsOpsConfig,
-  SecretRef, 
-  ConfigMapRef,
-  DNSOptions,
-  DNSType,
   ClusterMetadata,
+  ConfigMapRef,
+  DNSType,
+  ExtractNamespaceVarsFromConfig,
   ResourceKind,
-  ExtractNamespaceVarsFromConfig
+  SecretRef,
+  TsOpsConfig
 } from '../types.js'
 import type { ProjectResolver } from './project.js'
-import type { EnvironmentProvider } from '../environment-provider.js'
 
 export interface CreateHostContextOptions {
   appName?: string
@@ -19,12 +18,10 @@ export interface CreateHostContextOptions {
   appsConfig?: any
 }
 
-export interface NamespaceResolver<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
-> {
+export interface NamespaceResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> {
   select(target?: string): string[]
   createHostContext(
-    namespace: string, 
+    namespace: string,
     options?: CreateHostContextOptions
   ): AppHostContextWithHelpers<
     ExtractNamespaceVarsFromConfig<TConfig>,
@@ -40,7 +37,7 @@ export function createNamespaceResolver<
   TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
 >(
   config: TConfig,
-  project: ProjectResolver<TConfig>,
+  _project: ProjectResolver<TConfig>,
   envProvider: EnvironmentProvider
 ): NamespaceResolver<TConfig> {
   function select(target?: string): string[] {
@@ -67,10 +64,15 @@ export function createNamespaceResolver<
   > {
     const metadata = config.namespaces[namespace as keyof TConfig['namespaces']]
     if (!metadata) throw new Error(`Unknown namespace: ${namespace}`)
-    
+
     const projectName = config.project
-    const { appName = '', cluster = { name: '', apiServer: '', context: '' }, externalHosts = {}, appsConfig = {} } = options
-    
+    const {
+      appName = '',
+      cluster = { name: '', apiServer: '', context: '' },
+      externalHosts = {},
+      appsConfig = {}
+    } = options
+
     // Create secret helper with overload support
     const secret = ((secretName: string, key?: string): SecretRef => {
       if (key !== undefined) {
@@ -92,19 +94,17 @@ export function createNamespaceResolver<
       (configMapName: string): ConfigMapRef
       (configMapName: string, key: string): ConfigMapRef
     }
-    
+
     // DNS helper with type support
     const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType): string => {
       switch (type) {
         case 'service':
           // Service name only
           return app
-          
+
         case 'ingress':
           // External DNS - resolved from ingress configuration
           return externalHosts[app] || app
-          
-        case 'cluster':
         default:
           // Cluster internal DNS
           return `${app}.${namespace}.svc.cluster.local`
@@ -112,34 +112,36 @@ export function createNamespaceResolver<
     }
 
     // URL helper with automatic port resolution
-    const url = (app: Extract<keyof TConfig['apps'], string>, type: DNSType, options?: { protocol?: 'http' | 'https' }): string => {
+    const url = (
+      app: Extract<keyof TConfig['apps'], string>,
+      type: DNSType,
+      options?: { protocol?: 'http' | 'https' }
+    ): string => {
       const { protocol = 'http' } = options || {}
-      
+
       // Get the first port from the app's configuration
       const appConfig = appsConfig[app]
       const firstPort = appConfig?.ports?.[0]?.port || 80
-      
+
       // Get the DNS name
       const hostname = dns(app, type)
-      
+
       // Build the complete URL
       return `${protocol}://${hostname}:${firstPort}`
     }
-    
+
     // Label generator
     const label = (key: string, value?: string): string => {
       const labelValue = value || appName
       return `app.kubernetes.io/${key}=${labelValue}`
     }
-    
+
     // Resource name generator
     const resource = (kind: ResourceKind, name: string): string => {
       const suffix = kind === 'sa' || kind === 'serviceaccount' ? '' : `-${kind}`
-      return appName 
-        ? `${appName}-${name}${suffix}`
-        : `${name}${suffix}`
+      return appName ? `${appName}-${name}${suffix}` : `${name}${suffix}`
     }
-    
+
     // Environment variable getter
     const env = <T extends string = string>(key: string, fallback?: T): T => {
       const value = envProvider.get(key)
@@ -151,12 +153,12 @@ export function createNamespaceResolver<
       }
       return '' as T
     }
-    
+
     // Template string helper
     const template = (str: string, vars: Record<string, string>): string => {
       return str.replace(/\{(\w+)\}/g, (_, key) => vars[key] || '')
     }
-    
+
     // Create context with helpers and spread namespace variables
     return {
       // Metadata
@@ -164,21 +166,21 @@ export function createNamespaceResolver<
       namespace,
       appName,
       cluster,
-      
+
       // Generators
       dns,
       url,
       label,
       resource,
-      
+
       // Secrets & ConfigMaps
       secret,
       configMap,
-      
+
       // Utilities
       env,
       template,
-      
+
       // ✨ Spread all namespace variables into context
       ...metadata
     } as AppHostContextWithHelpers<
@@ -199,7 +201,7 @@ export function createNamespaceResolver<
 /**
  * Standalone DNS utility function for building Kubernetes DNS names.
  * This is used by runtime-config.ts to build internal endpoints consistently.
- * 
+ *
  * @param serviceName - Service name
  * @param namespace - Kubernetes namespace
  * @param port - Port number
@@ -214,12 +216,12 @@ export function buildDNS(
 ): string {
   const portNum = typeof port === 'string' ? port : port
   const { protocol = 'http', clusterDomain = 'cluster.local' } = options
-  
+
   const dns = `${serviceName}.${namespace}.svc.${clusterDomain}`
-  
+
   if (protocol) {
     return `${protocol}://${dns}:${portNum}`
   }
-  
+
   return `${dns}:${portNum}`
 }

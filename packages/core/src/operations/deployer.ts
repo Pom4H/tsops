@@ -1,11 +1,16 @@
 import type { ManifestBuilder } from '@tsops/k8'
-import { buildNamespace, buildSecret, buildConfigMap } from '@tsops/k8'
-import type { TsOpsConfig } from '../types.js'
-import type { DeployResult, PlanWithChangesResult, ManifestChange, AppResourceChanges } from './types.js'
-import { Planner } from './planner.js'
-import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
+import { buildConfigMap, buildNamespace, buildSecret } from '@tsops/k8'
 import type { ConfigResolver } from '../config/resolver.js'
 import type { Logger } from '../logger.js'
+import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
+import type { TsOpsConfig } from '../types.js'
+import type { Planner } from './planner.js'
+import type {
+  AppResourceChanges,
+  DeployResult,
+  ManifestChange,
+  PlanWithChangesResult
+} from './types.js'
 
 interface DeployerDependencies<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
   manifestBuilder: ManifestBuilder<TConfig>
@@ -39,7 +44,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    * 3. Creates ConfigMaps (atomically - all or nothing)
    * 4. Creates Deployment, Service, and network resources (atomically - all or nothing)
    * 5. Deletes orphaned resources (resources in cluster but not in config)
-   * 
+   *
    * All manifests within each group are applied atomically using kubectl batch apply.
    * If any manifest fails, the entire group fails and no changes are made.
    */
@@ -158,10 +163,10 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     // 5. Delete orphaned resources (resources in cluster but not in config)
     const orphanedResources = await this.findOrphanedResources(plan, options)
     const deletedManifests: string[] = []
-    
+
     if (orphanedResources.length > 0) {
       this.logger.info(`Found ${orphanedResources.length} orphaned resources to delete`)
-      
+
       for (const resource of orphanedResources) {
         try {
           const ref = await this.kubectl.delete(resource.kind, resource.name, resource.namespace)
@@ -271,28 +276,36 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
 
   /**
    * Generates deployment plan with validation and diff against cluster state.
-   * 
+   *
    * This method checks all artifacts independently:
    * 1. Collects all unique namespaces, secrets, and configmaps across all apps
    * 2. Validates and diffs each global artifact once (no duplicates)
    * 3. For each app, validates and diffs app-specific resources (Deployment, Service, Ingress, etc.)
    * 4. Finds orphaned resources (resources in cluster but not in config) that should be deleted
-   * 
+   *
    * This approach ensures that shared resources (like secrets used by multiple apps)
    * are only checked once, avoiding duplicates in the plan output.
-   * 
+   *
    * @param options - Filtering options
    * @param options.namespace - Target a single namespace (optional)
    * @param options.app - Target a single app (optional)
    * @returns Plan with global artifacts, per-app resource changes, and orphaned resources
    */
-  async planWithChanges(options: { namespace?: string; app?: string } = {}): Promise<PlanWithChangesResult> {
+  async planWithChanges(
+    options: { namespace?: string; app?: string } = {}
+  ): Promise<PlanWithChangesResult> {
     const plan = await this.planner.plan(options)
 
     // Step 1: Collect all unique global artifacts
     const namespaceSet = new Set<string>()
-    const secretsMap = new Map<string, { namespace: string; name: string; data: Record<string, string>; app: string }>()
-    const configMapsMap = new Map<string, { namespace: string; name: string; data: Record<string, string>; app: string }>()
+    const secretsMap = new Map<
+      string,
+      { namespace: string; name: string; data: Record<string, string>; app: string }
+    >()
+    const configMapsMap = new Map<
+      string,
+      { namespace: string; name: string; data: Record<string, string>; app: string }
+    >()
 
     for (const entry of plan.entries) {
       namespaceSet.add(entry.namespace)
@@ -327,7 +340,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     // Step 2: Check all namespaces
     const namespaceChanges: ManifestChange[] = []
     const existingNamespaces = new Set<string>()
-    
+
     for (const namespace of namespaceSet) {
       const nsManifest = buildNamespace(namespace, {
         'tsops/managed': 'true',
@@ -335,7 +348,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
       })
       const change = await this.analyzeManifest(nsManifest, { namespace })
       namespaceChanges.push(change)
-      
+
       // Track which namespaces already exist (will be updated or unchanged)
       if (change.action === 'update' || change.action === 'unchanged') {
         existingNamespaces.add(namespace)
@@ -345,17 +358,16 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     // Step 3: Check all unique secrets
     const secretChanges: ManifestChange[] = []
     for (const secret of secretsMap.values()) {
-      const secretManifest = buildSecret(
-        secret.name,
-        secret.namespace,
-        secret.data,
-        {
-          'tsops/app': secret.app,
-          'tsops/managed': 'true'
-        }
-      )
+      const secretManifest = buildSecret(secret.name, secret.namespace, secret.data, {
+        'tsops/app': secret.app,
+        'tsops/managed': 'true'
+      })
       const useClientSide = !existingNamespaces.has(secret.namespace)
-      const change = await this.analyzeManifest(secretManifest, { namespace: secret.namespace }, useClientSide)
+      const change = await this.analyzeManifest(
+        secretManifest,
+        { namespace: secret.namespace },
+        useClientSide
+      )
       secretChanges.push(change)
     }
 
@@ -372,7 +384,11 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
         }
       )
       const useClientSide = !existingNamespaces.has(configMap.namespace)
-      const change = await this.analyzeManifest(configMapManifest, { namespace: configMap.namespace }, useClientSide)
+      const change = await this.analyzeManifest(
+        configMapManifest,
+        { namespace: configMap.namespace },
+        useClientSide
+      )
       configMapChanges.push(change)
     }
 
@@ -383,7 +399,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
       const changes: ManifestChange[] = []
       const serviceName = this.resolver.project.serviceName(entry.app)
       const useClientSide = !existingNamespaces.has(entry.namespace)
-      
+
       const appManifests = this.manifestBuilder.build(entry.app, {
         namespace: entry.namespace,
         serviceName,
@@ -410,7 +426,11 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
       for (const { manifest, kind } of manifestList) {
         if (!manifest) continue
 
-        const change = await this.analyzeManifest(manifest, { namespace: entry.namespace }, useClientSide)
+        const change = await this.analyzeManifest(
+          manifest,
+          { namespace: entry.namespace },
+          useClientSide
+        )
         changes.push(change)
       }
 
@@ -448,10 +468,10 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     options: { namespace?: string; app?: string }
   ): Promise<ManifestChange[]> {
     const orphaned: ManifestChange[] = []
-    
+
     // Collect all namespaces we should check
-    const namespacesToCheck = new Set(plan.entries.map(e => e.namespace))
-    
+    const namespacesToCheck = new Set(plan.entries.map((e) => e.namespace))
+
     // If namespace filter is set, only check that namespace
     if (options.namespace) {
       namespacesToCheck.clear()
@@ -462,24 +482,22 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     for (const namespace of namespacesToCheck) {
       // Collect all apps that should exist in this namespace
       const expectedApps = new Set(
-        plan.entries
-          .filter(e => e.namespace === namespace)
-          .map(e => e.app)
+        plan.entries.filter((e) => e.namespace === namespace).map((e) => e.app)
       )
 
       // Resource types to check for orphaned resources
       const resourceTypes = ['Deployment', 'Service', 'Ingress', 'IngressRoute', 'Certificate']
-      
+
       for (const kind of resourceTypes) {
         try {
           // Get all managed resources of this kind in the namespace
           const resources = await this.kubectl.list(kind, namespace, 'tsops/managed=true')
-          
+
           for (const resource of resources) {
             const resourceName = String(resource.metadata?.name ?? '')
             const labels = resource.metadata?.labels as Record<string, string> | undefined
             const appLabel = labels?.['tsops/app']
-            
+
             // Check if this resource belongs to an app that's no longer in the config
             if (appLabel && !expectedApps.has(appLabel)) {
               // If app filter is set, only include if it matches

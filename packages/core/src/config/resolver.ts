@@ -1,32 +1,16 @@
-import type { TsOpsConfig } from '../types.js'
 import type { EnvironmentProvider } from '../environment-provider.js'
 import { GlobalEnvironmentProvider } from '../environment-provider.js'
-import {
-  createProjectResolver,
-  type ProjectResolver
-} from './project.js'
-import {
-  createNamespaceResolver,
-  type NamespaceResolver
-} from './namespaces.js'
-import {
-  createImagesResolver,
-  type ImagesResolver
-} from './images.js'
-import {
-  createAppsResolver,
-  type AppsResolver,
-  type AppEntry,
-  type ResolverApp
-} from './apps.js'
+import type { TsOpsConfig } from '../types.js'
+import { type AppEntry, type AppsResolver, createAppsResolver, type ResolverApp } from './apps.js'
+import { createImagesResolver, type ImagesResolver } from './images.js'
+import { createNamespaceResolver, type NamespaceResolver } from './namespaces.js'
+import { createProjectResolver, type ProjectResolver } from './project.js'
 
 /**
  * ConfigResolver orchestrates all sub-resolvers for configuration data.
  * Each resolver is responsible for a specific domain (project, namespaces, images, apps).
  */
-export interface ConfigResolver<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
-> {
+export interface ConfigResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> {
   project: ProjectResolver<TConfig>
   namespaces: NamespaceResolver<TConfig>
   images: ImagesResolver<TConfig>
@@ -43,11 +27,11 @@ export interface ConfigResolverOptions {
 
 /**
  * Creates a ConfigResolver with all necessary sub-resolvers.
- * 
+ *
  * @param config - The tsops configuration object
  * @param options - Optional configuration for resolver creation
  * @returns Fully initialized ConfigResolver
- * 
+ *
  * @example
  * const resolver = createConfigResolver(config, { env: new MockEnvironmentProvider() })
  */
@@ -76,9 +60,4 @@ export type {
   AppEntry,
   ResolverApp
 }
-export {
-  createProjectResolver,
-  createNamespaceResolver,
-  createImagesResolver,
-  createAppsResolver
-}
+export { createProjectResolver, createNamespaceResolver, createImagesResolver, createAppsResolver }

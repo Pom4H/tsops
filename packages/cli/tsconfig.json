@@ -12,8 +12,5 @@
   },
   "include": ["src/**/*.ts"],
   "exclude": ["dist", "node_modules"],
-  "references": [
-    { "path": "../core" },
-    { "path": "../node" }
-  ]
+  "references": [{ "path": "../core" }, { "path": "../node" }]
 }

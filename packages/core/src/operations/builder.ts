@@ -1,7 +1,7 @@
-import type { DockerClient } from '../ports/docker.js'
-import type { Logger } from '../logger.js'
-import type { BuildDefinition, DockerfileBuild, TsOpsConfig } from '../types.js'
 import type { ConfigResolver } from '../config/resolver.js'
+import type { Logger } from '../logger.js'
+import type { DockerClient } from '../ports/docker.js'
+import type { BuildDefinition, DockerfileBuild, TsOpsConfig } from '../types.js'
 import type { BuildResult } from './types.js'
 
 interface BuilderDependencies<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
@@ -11,9 +11,7 @@ interface BuilderDependencies<TConfig extends TsOpsConfig<any, any, any, any, an
   resolver: ConfigResolver<TConfig>
 }
 
-export class Builder<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any>
-> {
+export class Builder<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
   private readonly docker: DockerClient
   private readonly logger: Logger
   private readonly dryRun: boolean
@@ -26,7 +24,9 @@ export class Builder<
     this.resolver = dependencies.resolver
   }
 
-  async build(options: { app?: string; namespace?: string; force?: boolean } = {}): Promise<BuildResult> {
+  async build(
+    options: { app?: string; namespace?: string; force?: boolean } = {}
+  ): Promise<BuildResult> {
     // Login to Docker registry before building (reads from env vars)
     await this.docker.login()
 

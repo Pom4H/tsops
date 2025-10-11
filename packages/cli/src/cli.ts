@@ -3,12 +3,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
+import { createNodeTsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from '@tsops/node'
 import { Command } from 'commander'
-import {
-  createNodeTsOps,
-  GitEnvironmentProvider,
-  ProcessEnvironmentProvider
-} from '@tsops/node'
 
 const CONFIG_EXTENSION_ORDER = ['', '.ts', '.mts', '.cts', '.js', '.mjs', '.cjs'] as const
 
@@ -33,12 +29,12 @@ async function main(): Promise<void> {
         dryRun: options.dryRun,
         env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
       })
-      
+
       console.log('📋 Generating deployment plan and validating manifests...\n')
-      
-      const result = await tsops.planWithChanges({ 
-        namespace: options.namespace, 
-        app: options.app 
+
+      const result = await tsops.planWithChanges({
+        namespace: options.namespace,
+        app: options.app
       })
 
       let hasChanges = false
@@ -46,13 +42,13 @@ async function main(): Promise<void> {
 
       // Display global artifacts (namespaces, secrets, configmaps)
       console.log('🌐 Global Resources\n')
-      
+
       // Namespaces
       const nsChanges = [...result.global.namespaces]
-      const nsErrors = nsChanges.filter(c => !c.validated)
-      const nsCreates = nsChanges.filter(c => c.validated && c.action === 'create')
-      const nsUpdates = nsChanges.filter(c => c.validated && c.action === 'update')
-      const nsUnchanged = nsChanges.filter(c => c.validated && c.action === 'unchanged')
+      const nsErrors = nsChanges.filter((c) => !c.validated)
+      const nsCreates = nsChanges.filter((c) => c.validated && c.action === 'create')
+      const nsUpdates = nsChanges.filter((c) => c.validated && c.action === 'update')
+      const nsUnchanged = nsChanges.filter((c) => c.validated && c.action === 'unchanged')
 
       if (nsErrors.length > 0) {
         hasErrors = true
@@ -81,17 +77,22 @@ async function main(): Promise<void> {
         }
         console.log()
       }
-      if (nsUnchanged.length > 0 && nsCreates.length === 0 && nsUpdates.length === 0 && nsErrors.length === 0) {
+      if (
+        nsUnchanged.length > 0 &&
+        nsCreates.length === 0 &&
+        nsUpdates.length === 0 &&
+        nsErrors.length === 0
+      ) {
         console.log(`   ✅ Namespaces (${nsUnchanged.length}) - up to date`)
         console.log()
       }
 
       // Secrets
       const secretChanges = [...result.global.secrets]
-      const secretErrors = secretChanges.filter(c => !c.validated)
-      const secretCreates = secretChanges.filter(c => c.validated && c.action === 'create')
-      const secretUpdates = secretChanges.filter(c => c.validated && c.action === 'update')
-      const secretUnchanged = secretChanges.filter(c => c.validated && c.action === 'unchanged')
+      const secretErrors = secretChanges.filter((c) => !c.validated)
+      const secretCreates = secretChanges.filter((c) => c.validated && c.action === 'create')
+      const secretUpdates = secretChanges.filter((c) => c.validated && c.action === 'update')
+      const secretUnchanged = secretChanges.filter((c) => c.validated && c.action === 'unchanged')
 
       if (secretErrors.length > 0) {
         hasErrors = true
@@ -120,17 +121,22 @@ async function main(): Promise<void> {
         }
         console.log()
       }
-      if (secretUnchanged.length > 0 && secretCreates.length === 0 && secretUpdates.length === 0 && secretErrors.length === 0) {
+      if (
+        secretUnchanged.length > 0 &&
+        secretCreates.length === 0 &&
+        secretUpdates.length === 0 &&
+        secretErrors.length === 0
+      ) {
         console.log(`   ✅ Secrets (${secretUnchanged.length}) - up to date`)
         console.log()
       }
 
       // ConfigMaps
       const cmChanges = [...result.global.configMaps]
-      const cmErrors = cmChanges.filter(c => !c.validated)
-      const cmCreates = cmChanges.filter(c => c.validated && c.action === 'create')
-      const cmUpdates = cmChanges.filter(c => c.validated && c.action === 'update')
-      const cmUnchanged = cmChanges.filter(c => c.validated && c.action === 'unchanged')
+      const cmErrors = cmChanges.filter((c) => !c.validated)
+      const cmCreates = cmChanges.filter((c) => c.validated && c.action === 'create')
+      const cmUpdates = cmChanges.filter((c) => c.validated && c.action === 'update')
+      const cmUnchanged = cmChanges.filter((c) => c.validated && c.action === 'unchanged')
 
       if (cmErrors.length > 0) {
         hasErrors = true
@@ -159,7 +165,12 @@ async function main(): Promise<void> {
         }
         console.log()
       }
-      if (cmUnchanged.length > 0 && cmCreates.length === 0 && cmUpdates.length === 0 && cmErrors.length === 0) {
+      if (
+        cmUnchanged.length > 0 &&
+        cmCreates.length === 0 &&
+        cmUpdates.length === 0 &&
+        cmErrors.length === 0
+      ) {
         console.log(`   ✅ ConfigMaps (${cmUnchanged.length}) - up to date`)
         console.log()
       }
@@ -169,7 +180,7 @@ async function main(): Promise<void> {
 
       // Display app-specific resources
       console.log('📦 Application Resources\n')
-      
+
       for (const app of result.apps) {
         const hostSegment = app.host ? ` (${app.host})` : ''
         console.log(`\n   ${app.app} @ ${app.namespace}${hostSegment}`)
@@ -221,7 +232,12 @@ async function main(): Promise<void> {
           console.log()
         }
 
-        if (unchanged.length > 0 && creates.length === 0 && updates.length === 0 && errors.length === 0) {
+        if (
+          unchanged.length > 0 &&
+          creates.length === 0 &&
+          updates.length === 0 &&
+          errors.length === 0
+        ) {
           console.log('      ✅ All resources up to date')
           console.log()
         }
@@ -231,9 +247,9 @@ async function main(): Promise<void> {
       if (result.orphaned && result.orphaned.length > 0) {
         hasChanges = true
         console.log('\n🗑️  Orphaned Resources (will be deleted)\n')
-        
+
         // Group by namespace
-        type OrphanedResource = typeof result.orphaned[number]
+        type OrphanedResource = (typeof result.orphaned)[number]
         const byNamespace = new Map<string, OrphanedResource[]>()
         for (const resource of result.orphaned) {
           if (!byNamespace.has(resource.namespace)) {
@@ -244,7 +260,7 @@ async function main(): Promise<void> {
             nsResources.push(resource)
           }
         }
-        
+
         for (const [namespace, resources] of byNamespace) {
           console.log(`   Namespace: ${namespace}`)
           for (const resource of resources) {
@@ -255,7 +271,7 @@ async function main(): Promise<void> {
       }
 
       // Summary
-      console.log('\n' + '─'.repeat(60))
+      console.log(`\n${'─'.repeat(60)}`)
       if (hasErrors) {
         console.log('❌ Validation failed. Please fix the errors above.')
         process.exit(1)
@@ -280,8 +296,8 @@ async function main(): Promise<void> {
         dryRun: options.dryRun,
         env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
       })
-      const result = await tsops.build({ 
-        namespace: options.namespace, 
+      const result = await tsops.build({
+        namespace: options.namespace,
         app: options.app,
         force: options.force
       })
@@ -309,12 +325,16 @@ async function main(): Promise<void> {
       console.log('✅ Deployed applications:')
       for (const entry of result.entries) {
         console.log(`\n- ${entry.app} @ ${entry.namespace}`)
-        entry.appliedManifests.forEach((manifest: string) => console.log(`  • ${manifest}`))
+        for (const manifest of entry.appliedManifests) {
+          console.log(`  • ${manifest}`)
+        }
       }
 
       if (result.deletedManifests && result.deletedManifests.length > 0) {
         console.log('\n🗑️  Deleted orphaned resources:')
-        result.deletedManifests.forEach((manifest: string) => console.log(`  • ${manifest}`))
+        for (const manifest of result.deletedManifests) {
+          console.log(`  • ${manifest}`)
+        }
       }
     })
 
@@ -369,9 +389,7 @@ function resolveConfigPath(inputPath: string): string {
     : `Add an extension (${supportedExtensions}) or use --config to specify a full path.`
 
   throw new Error(
-    `Unable to locate config file at ${absoluteInput}.\n` +
-    `Tried:\n${triedMessage}\n` +
-    `${hint}`
+    `Unable to locate config file at ${absoluteInput}.\n` + `Tried:\n${triedMessage}\n` + `${hint}`
   )
 }
 
@@ -390,9 +408,9 @@ main().catch((error) => {
   const red = '\x1b[31m'
   const reset = '\x1b[0m'
   const bold = '\x1b[1m'
-  
+
   const message = error instanceof Error ? error.message : String(error)
   console.error(`\n${red}${bold}❌ Error:${reset} ${red}${message}${reset}\n`)
-  
+
   process.exit(1)
 })

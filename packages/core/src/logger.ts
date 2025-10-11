@@ -17,7 +17,7 @@ export class ConsoleLogger implements Logger {
   }
 
   error(message: string | Error, meta: Record<string, unknown> = {}): void {
-    const text = message instanceof Error ? message.stack ?? message.message : message
+    const text = message instanceof Error ? (message.stack ?? message.message) : message
     console.error(format('error', text, meta))
   }
 

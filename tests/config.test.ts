@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { defineConfig } from 'tsops'
+import { describe, expect, it } from 'vitest'
 
 // Create a comprehensive config using most features
 const cfg = defineConfig({
@@ -107,7 +107,7 @@ describe('defineConfig runtime API', () => {
       expect(cfg.dns('api', 'cluster')).toBe('api.dev.svc.cluster.local')
       expect(cfg.dns('api', 'service')).toBe('api')
       expect(cfg.dns('api', 'ingress')).toBe('api.dev.example.com')
-      
+
       // test url helper
       expect(cfg.url('api', 'cluster')).toBe('http://api.dev.svc.cluster.local:80')
       expect(cfg.url('api', 'service')).toBe('http://api:80')
@@ -145,7 +145,7 @@ describe('defineConfig runtime API', () => {
       expect(cfg.dns('api', 'cluster')).toBe('api.prod.svc.cluster.local')
       expect(cfg.dns('api', 'service')).toBe('api')
       expect(cfg.dns('api', 'ingress')).toBe('api.example.com')
-      
+
       // test url helper
       expect(cfg.url('api', 'cluster')).toBe('http://api.prod.svc.cluster.local:80')
       expect(cfg.url('api', 'service')).toBe('http://api:80')

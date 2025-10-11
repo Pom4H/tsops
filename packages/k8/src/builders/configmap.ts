@@ -2,13 +2,13 @@ import type { ConfigMapManifest } from '../types.js'
 
 /**
  * Builds a ConfigMap manifest.
- * 
+ *
  * @param name - The ConfigMap name
  * @param namespace - The namespace where the ConfigMap will be created
  * @param data - Key-value pairs to store
  * @param labels - Optional labels
  * @returns Kubernetes ConfigMap manifest
- * 
+ *
  * @example
  * ```typescript
  * const cm = buildConfigMap('app-config', 'prod', {
@@ -34,4 +34,3 @@ export function buildConfigMap(
     data: { ...data }
   }
 }
-
