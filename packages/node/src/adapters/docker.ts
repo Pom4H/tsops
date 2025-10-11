@@ -80,6 +80,36 @@ export class Docker {
     }
   }
 
+  /**
+   * Check if an image exists in the registry
+   * Uses `docker manifest inspect` which queries the registry without pulling the image
+   */
+  async imageExists(imageRef: string): Promise<boolean> {
+    this.logger.debug('Checking if image exists in registry', { imageRef })
+
+    if (this.dryRun) {
+      this.logger.debug('Dry run enabled – assuming image does not exist', { imageRef })
+      return false
+    }
+
+    try {
+      await this.runner.run('docker', ['manifest', 'inspect', imageRef], {
+        inheritStdio: false,
+        onStdout: (data) =>
+          this.logger.debug('docker manifest stdout', { output: data.trim() }),
+        onStderr: (data) =>
+          this.logger.debug('docker manifest stderr', { output: data.trim() })
+      })
+
+      this.logger.debug('Image exists in registry', { imageRef })
+      return true
+    } catch (_error) {
+      // If the command fails, the image doesn't exist
+      this.logger.debug('Image does not exist in registry', { imageRef })
+      return false
+    }
+  }
+
   async build(imageRef: string, build: DockerfileBuild, ctx: DockerBuildContext): Promise<void> {
     if (!('type' in build) || build.type !== 'dockerfile') {
       this.logger.warn('Skipping unsupported build configuration. Expected type "dockerfile".', {

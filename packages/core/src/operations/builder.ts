@@ -49,6 +49,17 @@ export class Builder<
         continue
       }
 
+      // Check if image already exists in registry
+      const exists = await this.docker.imageExists(imageRef)
+      if (exists) {
+        this.logger.info('Image already exists in registry. Skipping build.', {
+          app: appName,
+          image: imageRef
+        })
+        results.push({ app: appName, image: imageRef })
+        continue
+      }
+
       // Build context can be extended with namespace variables if needed
       await this.docker.build(imageRef, build, {})
       if (!this.dryRun) {
