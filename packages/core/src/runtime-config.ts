@@ -1,5 +1,6 @@
 import type { TsOpsConfig, DNSType, ExtractNamespaceVarsFromConfig } from './types.js'
 import { createConfigResolver } from './config/resolver.js'
+import { getEnvironmentVariable } from './environment-provider.js'
 
 /**
  * Creates runtime helper functions for a specific namespace
@@ -79,50 +80,14 @@ export function createRuntimeHelpers<TConfig extends TsOpsConfig<any, any, any, 
   }
   
   /**
-   * Get environment variable for an app
+   * Get environment variable for an app at runtime.
+   * Always resolves from process.env (via getEnvironmentVariable),
+   * ignoring config-time env mappings. The appName parameter is kept
+   * for API shape compatibility but does not affect resolution.
    */
-  const env = (appName: Extract<keyof TConfig['apps'], string>, key: string): string => {
-    const app = appsConfig[appName]
-    if (!app || !app.env) {
-      return ''
-    }
-    
-    // If env is a function, call it with helpers
-    if (typeof app.env === 'function') {
-      // Create secret and configMap helpers (simplified - return placeholder values)
-      const secret = (secretName: string, key?: string) => {
-        if (key) {
-          return `secret:${secretName}:${key}`
-        }
-        return `secret:${secretName}`
-      }
-      
-      const configMap = (configMapName: string, key?: string) => {
-        if (key) {
-          return `configmap:${configMapName}:${key}`
-        }
-        return `configmap:${configMapName}`
-      }
-      
-      // Create full context for env builder
-      const fullContext = {
-        dns,
-        url,
-        namespace,
-        project: config.project,
-        cluster: { name: '', apiServer: '', context: '' }, // TODO: get from cluster config
-        appName,
-        secret,
-        configMap,
-        ...namespaceVars
-      }
-      
-      const envRaw = app.env(fullContext)
-      return envRaw[key] || ''
-    }
-    
-    // If env is an object, return the specific key
-    return app.env[key] || ''
+  const env = (_appName: Extract<keyof TConfig['apps'], string>, key: string): string => {
+    const value = getEnvironmentVariable(key)
+    return value ?? ''
   }
   
   return {
