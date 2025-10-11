@@ -138,6 +138,7 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * @param options - Filtering options
    * @param options.namespace - Target a single namespace (optional)
    * @param options.app - Target a single app (optional)
+   * @param options.changedFiles - Array of changed files to determine affected apps (optional)
    * @returns Plan with global artifacts and per-app resource changes
    *
    * @example
@@ -164,7 +165,7 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * }
    * ```
    */
-  planWithChanges(options: { namespace?: string; app?: string } = {}) {
+  planWithChanges(options: { namespace?: string; app?: string; changedFiles?: string[] } = {}) {
     return this.deployer.planWithChanges(options)
   }
 
@@ -204,6 +205,7 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * @param options - Filtering options
    * @param options.namespace - Target a single namespace (optional)
    * @param options.app - Target a single app (optional)
+   * @param options.changedFiles - Array of changed files to determine affected apps (optional)
    * @returns Deployment results with applied manifest references
    *
    * @example
@@ -211,8 +213,16 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * const result = await tsops.deploy({ namespace: 'prod', app: 'api' })
    * console.log(result.entries[0].appliedManifests) // => ['Deployment/api', 'Service/api', ...]
    * ```
+   *
+   * @example
+   * ```typescript
+   * // Incremental deploy based on git changes
+   * const changedFiles = git.getChangedFiles('HEAD^1')
+   * const result = await tsops.deploy({ changedFiles })
+   * // Only deploys apps affected by changed files
+   * ```
    */
-  deploy(options: { namespace?: string; app?: string } = {}) {
+  deploy(options: { namespace?: string; app?: string; changedFiles?: string[] } = {}) {
     return this.deployer.deploy(options)
   }
 }

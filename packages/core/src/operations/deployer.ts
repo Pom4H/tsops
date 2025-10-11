@@ -48,7 +48,9 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    * All manifests within each group are applied atomically using kubectl batch apply.
    * If any manifest fails, the entire group fails and no changes are made.
    */
-  async deploy(options: { namespace?: string; app?: string } = {}): Promise<DeployResult> {
+  async deploy(
+    options: { namespace?: string; app?: string; changedFiles?: string[] } = {}
+  ): Promise<DeployResult> {
     const plan = await this.planner.plan(options)
     const entries: DeployResult['entries'] = []
     const createdNamespaces = new Set<string>()
@@ -289,10 +291,11 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    * @param options - Filtering options
    * @param options.namespace - Target a single namespace (optional)
    * @param options.app - Target a single app (optional)
+   * @param options.changedFiles - Filter apps by changed files (optional)
    * @returns Plan with global artifacts, per-app resource changes, and orphaned resources
    */
   async planWithChanges(
-    options: { namespace?: string; app?: string } = {}
+    options: { namespace?: string; app?: string; changedFiles?: string[] } = {}
   ): Promise<PlanWithChangesResult> {
     const plan = await this.planner.plan(options)
 
@@ -465,7 +468,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    */
   private async findOrphanedResources(
     plan: { entries: Array<{ namespace: string; app: string }> },
-    options: { namespace?: string; app?: string }
+    options: { namespace?: string; app?: string; changedFiles?: string[] }
   ): Promise<ManifestChange[]> {
     const orphaned: ManifestChange[] = []
 
