@@ -4,7 +4,6 @@ import type {
   AppHostContextWithHelpers,
   AppIngressOptions,
   AppIngressRouteOptions,
-  AppNetworkOptions,
   TsOpsConfig,
   EnvValue,
   SecretRef,
@@ -185,7 +184,7 @@ export function createAppsResolver<
    */
   function buildNetworkConfig(
     appName: string,
-    networkOptions: AppNetworkOptions,
+    networkOptions: AppIngressOptions,
     host: string | undefined,
     serviceName: string
   ): ResolvedNetworkConfig | undefined {
@@ -249,7 +248,7 @@ export function createAppsResolver<
     context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps']>,
     host: string | undefined
   ): { network: ResolvedNetworkConfig | undefined; host: string | undefined } {
-    const networkDef = app.network
+    const networkDef = app.ingress
     if (networkDef === undefined) {
       return { network: host ? createDefaultNetwork(host) : undefined, host }
     }

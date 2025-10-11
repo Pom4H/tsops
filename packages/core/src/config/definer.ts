@@ -4,7 +4,7 @@ import type {
   ImagesConfig,
   TsOpsConfig
 } from '../types.js'
-import { createRuntimeConfig, type RuntimeConfig, type ResolvedAppEnv } from '../runtime-config.js'
+import { createRuntimeHelpers } from '../runtime-config.js'
 import { getEnvironmentVariable } from '../environment-provider.js'
 
 /**
@@ -22,87 +22,58 @@ export interface TsOpsConfigWithRuntime<
   TConfigMaps extends Record<string, unknown> | undefined = undefined
 > extends TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps> {
   /**
-   * Get full resolved configuration for an app.
+   * Get environment variable for an app.
    * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
    * 
    * @param appName - Application name
-   * @returns Resolved app configuration
+   * @param key - Environment variable key
+   * @returns Environment variable value
    * 
    * @example
    * ```ts
    * import config from './tsops.config'
-   * const app = config.getApp('worken-api')
-   * console.log(app.internalEndpoint)
-   * console.log(app.externalEndpoint)
-   * console.log(app.env)
+   * const nodeEnv = config.env('frontend', 'NODE_ENV')
+   * const port = config.env('api', 'PORT')
    * ```
    */
-  getApp(appName: Extract<keyof TApps, string>): ResolvedAppEnv
+  env(appName: Extract<keyof TApps, string>, key: string): string
   
   /**
-   * Get resolved environment variables for an app.
+   * Generate DNS name for different types of resources.
    * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
    * 
    * @param appName - Application name
-   * @returns Resolved environment variables as key-value pairs
+   * @param type - DNS type: 'cluster', 'service', or 'ingress'
+   * @returns DNS name
    * 
    * @example
    * ```ts
    * import config from './tsops.config'
-   * const env = config.getEnv('worken-api')
-   * console.log(env.DATABASE_URL)
+   * const clusterDns = config.dns('frontend', 'cluster')
+   * const serviceDns = config.dns('api', 'service')
+   * const ingressDns = config.dns('api', 'ingress')
    * ```
    */
-  getEnv(appName: Extract<keyof TApps, string>): Record<string, string>
+  dns(appName: Extract<keyof TApps, string>, type: 'cluster' | 'service' | 'ingress'): string
   
   /**
-   * Get internal Kubernetes endpoint for an app.
+   * Generate complete URL for different types of resources with automatic port resolution.
    * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
    * 
    * @param appName - Application name
-   * @returns Internal Kubernetes DNS endpoint (http://service.namespace.svc.cluster.local:port)
+   * @param type - URL type: 'cluster', 'service', or 'ingress'
+   * @param options - Optional URL options
+   * @returns Complete URL with protocol and port
    * 
    * @example
    * ```ts
    * import config from './tsops.config'
-   * const apiUrl = config.getInternalEndpoint('worken-api')
-   * // => 'http://worken-worken-api.dev.svc.cluster.local:3000'
+   * const clusterUrl = config.url('frontend', 'cluster')
+   * const serviceUrl = config.url('api', 'service')
+   * const ingressUrl = config.url('api', 'ingress')
    * ```
    */
-  getInternalEndpoint(appName: Extract<keyof TApps, string>): string
-  
-  /**
-   * Get external endpoint for an app (if configured).
-   * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
-   * Returns undefined if app has no external host configured via network.
-   * 
-   * @param appName - Application name
-   * @returns External HTTPS endpoint or undefined
-   * 
-   * @example
-   * ```ts
-   * import config from './tsops.config'
-   * const apiUrl = config.getExternalEndpoint('worken-front')
-   * // => 'https://worken.localtest.me' (if network host is configured)
-   * // => undefined (if no host)
-   * ```
-   */
-  getExternalEndpoint(appName: Extract<keyof TApps, string>): string | undefined
-  
-  /**
-   * Get current namespace name.
-   * Determined from TSOPS_NAMESPACE env variable or first namespace in config.
-   * 
-   * @returns Current namespace name
-   * 
-   * @example
-   * ```ts
-   * import config from './tsops.config'
-   * const namespace = config.getNamespace()
-   * console.log(`Running in: ${namespace}`)
-   * ```
-   */
-  getNamespace(): Extract<keyof TNamespaces, string>
+  url(appName: Extract<keyof TApps, string>, type: 'cluster' | 'service' | 'ingress', options?: { protocol?: 'http' | 'https' }): string
 }
 
 /**
@@ -145,21 +116,21 @@ export function defineConfig<
   type AppName = Extract<keyof TApps, string>
   type TConfig = TsOpsConfig<TProject, TNamespaces, TClusters, TImages, TApps, TSecrets, TConfigMaps>
   
-  // Lazy initialization: runtime config is created only when first accessed
-  let cachedRuntime: RuntimeConfig<TConfig> | null = null
+  // Lazy initialization: runtime helpers are created only when first accessed
+  let cachedHelpers: ReturnType<typeof createRuntimeHelpers<TConfig>> | null = null
   let cachedNamespace: string | null = null
   
-  function getRuntime(): RuntimeConfig<TConfig> {
+  function getHelpers() {
     const currentNamespace = getCurrentNamespace(config.namespaces)
     
-    // Re-create runtime if namespace changed
-    if (cachedRuntime && cachedNamespace === currentNamespace) {
-      return cachedRuntime
+    // Re-create helpers if namespace changed
+    if (cachedHelpers && cachedNamespace === currentNamespace) {
+      return cachedHelpers
     }
     
-    cachedRuntime = createRuntimeConfig(config as TConfig, currentNamespace)
+    cachedHelpers = createRuntimeHelpers(config as TConfig, currentNamespace)
     cachedNamespace = currentNamespace
-    return cachedRuntime
+    return cachedHelpers
   }
   
   return {
@@ -171,45 +142,19 @@ export function defineConfig<
     secrets: config.secrets,
     configMaps: config.configMaps,
     
-    getApp(appName: AppName): ResolvedAppEnv {
-      const runtime = getRuntime()
-      const app = runtime.apps[appName]
-      if (!app) {
-        throw new Error(`App "${String(appName)}" not found or not deployed in namespace "${runtime.namespace}"`)
-      }
-      return app
+    env(appName: AppName, key: string): string {
+      const helpers = getHelpers()
+      return helpers.env(appName, key)
     },
     
-    getEnv(appName: AppName): Record<string, string> {
-      const runtime = getRuntime()
-      const app = runtime.apps[appName]
-      if (!app) {
-        throw new Error(`App "${String(appName)}" not found or not deployed in namespace "${runtime.namespace}"`)
-      }
-      return app.env
+    dns(appName: AppName, type: 'cluster' | 'service' | 'ingress'): string {
+      const helpers = getHelpers()
+      return helpers.dns(appName, type)
     },
     
-    getInternalEndpoint(appName: AppName): string {
-      const runtime = getRuntime()
-      const app = runtime.apps[appName]
-      if (!app) {
-        throw new Error(`App "${String(appName)}" not found or not deployed in namespace "${runtime.namespace}"`)
-      }
-      return app.internalEndpoint
-    },
-    
-    getExternalEndpoint(appName: AppName): string | undefined {
-      const runtime = getRuntime()
-      const app = runtime.apps[appName]
-      if (!app) {
-        throw new Error(`App "${String(appName)}" not found or not deployed in namespace "${runtime.namespace}"`)
-      }
-      // External endpoint is derived from network host if present
-      return app.host ? `https://${app.host}` : undefined
-    },
-    
-    getNamespace(): Extract<keyof TNamespaces, string> {
-      return getCurrentNamespace(config.namespaces)
+    url(appName: AppName, type: 'cluster' | 'service' | 'ingress', options?: { protocol?: 'http' | 'https' }): string {
+      const helpers = getHelpers()
+      return helpers.url(appName, type, options)
     }
   }
 }

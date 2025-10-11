@@ -19,7 +19,7 @@ This document explains how the tsops monorepo is organised today. It is meant to
 │   - Operations: Planner • Builder • Deployer                   │
 │   - Ports: DockerClient • KubectlClient                        │
 │   - Logger & env providers (platform-neutral)                  │
-│   - Runtime config helpers (getEnv/getApp/…)                   │
+│   - Runtime config helpers (env/dns/url)                       │
 └─────────────┬─────────────────────┬────────────────────────────┘
               │                     │
      ┌────────▼────────┐   ┌────────▼────────┐
@@ -58,7 +58,7 @@ The monorepo is managed with **pnpm workspaces + Turborepo** (`turbo.json`). Glo
 - **ImagesResolver** — builds deterministic image refs. Supports strategies: `'git-sha' | 'git-tag' | 'timestamp' | string | { kind: string; … }`. The Node bundle layers in `GitEnvironmentProvider(ProcessEnvironmentProvider)` so Git metadata is available by default.
 - **AppsResolver** — resolves app definitions per namespace: build info, env (with Secret/ConfigMap refs), secrets/configMaps data, network configuration. Delegates to `network-normalizers.ts` to materialise ingress/Traefik/cert manifests and to `images` resolver for defaults.
 
-`defineConfig` (in `config/definer.ts`) reuses the same resolver stack lazily to provide runtime helpers (`getEnv`, `getApp`, `getInternalEndpoint`, `getExternalEndpoint`, `getNamespace`). Runtime resolution respects `TSOPS_NAMESPACE` or defaults to the first namespace.
+`defineConfig` (in `config/definer.ts`) reuses the same resolver stack lazily to provide runtime helpers (`env`, `dns`, `url`). Runtime resolution respects `TSOPS_NAMESPACE` or defaults to the first namespace.
 
 ## 4. Operations Layer
 
@@ -117,7 +117,7 @@ Individual builders live under `packages/k8/src/builders/` and are side-effect f
 
 ### Runtime helpers
 1. Application code `import config from './tsops.config.js'` (compiled to ESM).
-2. `config.getEnv('api')` triggers lazy runtime config creation for the current namespace, reusing resolvers to evaluate env/secrets/configMaps/network.
+2. `config.env('api', 'NODE_ENV')` triggers lazy runtime config creation for the current namespace, reusing resolvers to evaluate env/secrets/configMaps/ingress.
 3. Helpers cache until `TSOPS_NAMESPACE` changes.
 
 ## 8. Versioning & Release Notes

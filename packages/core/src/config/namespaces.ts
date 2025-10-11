@@ -3,7 +3,8 @@ import type {
   TsOpsConfig,
   SecretRef, 
   ConfigMapRef,
-  ServiceDNSOptions,
+  DNSOptions,
+  DNSType,
   ClusterMetadata,
   ResourceKind,
   ExtractNamespaceVarsFromConfig
@@ -14,6 +15,8 @@ import type { EnvironmentProvider } from '../environment-provider.js'
 export interface CreateHostContextOptions {
   appName?: string
   cluster?: ClusterMetadata
+  externalHosts?: Record<string, string>
+  appsConfig?: any
 }
 
 export interface NamespaceResolver<
@@ -66,7 +69,7 @@ export function createNamespaceResolver<
     if (!metadata) throw new Error(`Unknown namespace: ${namespace}`)
     
     const projectName = config.project
-    const { appName = '', cluster = { name: '', apiServer: '', context: '' } } = options
+    const { appName = '', cluster = { name: '', apiServer: '', context: '' }, externalHosts = {}, appsConfig = {} } = options
     
     // Create secret helper with overload support
     const secret = ((secretName: string, key?: string): SecretRef => {
@@ -90,56 +93,42 @@ export function createNamespaceResolver<
       (configMapName: string, key: string): ConfigMapRef
     }
     
-    // Enhanced serviceDNS with options support
-    const serviceDNS = (app: Extract<keyof TConfig['apps'], string>, options?: number | ServiceDNSOptions): string => {
-      // Backward compatibility: number -> port
-      if (typeof options === 'number') {
-        const dns = `${projectName}-${app}.${namespace}.svc.cluster.local`
-        return `${dns}:${options}`
+    // DNS helper with type support
+    const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType): string => {
+      switch (type) {
+        case 'service':
+          // Service name only
+          return app
+          
+        case 'ingress':
+          // External DNS - resolved from ingress configuration
+          return externalHosts[app] || app
+          
+        case 'cluster':
+        default:
+          // Cluster internal DNS
+          return `${app}.${namespace}.svc.cluster.local`
       }
+    }
+
+    // URL helper with automatic port resolution
+    const url = (app: Extract<keyof TConfig['apps'], string>, type: DNSType, options?: { protocol?: 'http' | 'https' }): string => {
+      const { protocol = 'http' } = options || {}
       
-      if (!options) {
-        return `${projectName}-${app}.${namespace}.svc.cluster.local`
-      }
+      // Get the first port from the app's configuration
+      const appConfig = appsConfig[app]
+      const firstPort = appConfig?.ports?.[0]?.port || 80
       
-      const {
-        port,
-        protocol,
-        headless = false,
-        podIndex,
-        external = false,
-        clusterDomain = 'cluster.local'
-      } = options
+      // Get the DNS name
+      const hostname = dns(app, type)
       
-      let dns: string
-      
-      if (external) {
-        dns = app
-      } else if (headless) {
-        const serviceName = `${projectName}-${app}`
-        if (podIndex !== undefined) {
-          dns = `${serviceName}-${podIndex}.${serviceName}.${namespace}.svc.${clusterDomain}`
-        } else {
-          dns = `${serviceName}.${namespace}.svc.${clusterDomain}`
-        }
-      } else {
-        dns = `${projectName}-${app}.${namespace}.svc.${clusterDomain}`
-      }
-      
-      if (protocol) {
-        dns = `${protocol}://${dns}`
-      }
-      
-      if (port) {
-        dns = `${dns}:${port}`
-      }
-      
-      return dns
+      // Build the complete URL
+      return `${protocol}://${hostname}:${firstPort}`
     }
     
     // Label generator
     const label = (key: string, value?: string): string => {
-      const labelValue = value || `${projectName}-${appName}`
+      const labelValue = value || appName
       return `app.kubernetes.io/${key}=${labelValue}`
     }
     
@@ -147,8 +136,8 @@ export function createNamespaceResolver<
     const resource = (kind: ResourceKind, name: string): string => {
       const suffix = kind === 'sa' || kind === 'serviceaccount' ? '' : `-${kind}`
       return appName 
-        ? `${projectName}-${appName}-${name}${suffix}`
-        : `${projectName}-${name}${suffix}`
+        ? `${appName}-${name}${suffix}`
+        : `${name}${suffix}`
     }
     
     // Environment variable getter
@@ -177,7 +166,8 @@ export function createNamespaceResolver<
       cluster,
       
       // Generators
-      serviceDNS,
+      dns,
+      url,
       label,
       resource,
       
@@ -204,4 +194,32 @@ export function createNamespaceResolver<
     select,
     createHostContext
   }
+}
+
+/**
+ * Standalone DNS utility function for building Kubernetes DNS names.
+ * This is used by runtime-config.ts to build internal endpoints consistently.
+ * 
+ * @param serviceName - Service name
+ * @param namespace - Kubernetes namespace
+ * @param port - Port number
+ * @param options - Additional options
+ * @returns Service DNS name with protocol and port
+ */
+export function buildDNS(
+  serviceName: string,
+  namespace: string,
+  port: number | string,
+  options: { protocol?: 'http' | 'https' | 'tcp' | 'udp'; clusterDomain?: string } = {}
+): string {
+  const portNum = typeof port === 'string' ? port : port
+  const { protocol = 'http', clusterDomain = 'cluster.local' } = options
+  
+  const dns = `${serviceName}.${namespace}.svc.${clusterDomain}`
+  
+  if (protocol) {
+    return `${protocol}://${dns}:${portNum}`
+  }
+  
+  return `${dns}:${portNum}`
 }

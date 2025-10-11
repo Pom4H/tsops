@@ -31,7 +31,8 @@ export type NamespaceDefinition = Record<string, unknown>
 type ReservedContextKeys = 
   | 'project' 
   | 'namespace' 
-  | 'serviceDNS' 
+  | 'dns' 
+  | 'url'
   | 'serviceName'
   | 'secret'
   | 'configMap' 
@@ -220,9 +221,14 @@ export interface ClusterMetadata {
 }
 
 /**
- * Options for serviceDNS helper function
+ * DNS type for dns helper function
  */
-export interface ServiceDNSOptions {
+export type DNSType = 'cluster' | 'service' | 'ingress'
+
+/**
+ * Options for dns helper function
+ */
+export interface DNSOptions {
   /** Port number */
   port?: number
   /** Protocol prefix (http, https, tcp, udp) */
@@ -235,6 +241,8 @@ export interface ServiceDNSOptions {
   external?: boolean
   /** Custom cluster domain (default: cluster.local) */
   clusterDomain?: string
+  /** External host for ingress type (overrides context externalHost) */
+  externalHost?: string
 }
 
 /**
@@ -278,36 +286,61 @@ export interface AppContextCoreHelpers<
   // ============================================================================
 
   /**
-   * Generate Kubernetes service DNS name
+   * Generate DNS name for different types of resources
    * @param app - Application name (type-safe from config.apps)
-   * @param options - Port number or ServiceDNSOptions
-   * @returns Full DNS name
+   * @param type - DNS type: 'cluster' for internal cluster DNS, 'service' for service name, 'ingress' for external DNS
+   * @returns DNS name
    * @example
-   * // Simple usage (backward compatible)
-   * serviceDNS('api') // -> 'my-project-api.my-namespace.svc.cluster.local'
-   * serviceDNS('api', 3000) // -> 'my-project-api.my-namespace.svc.cluster.local:3000'
+   * // Cluster internal DNS
+   * dns('api', 'cluster') // -> 'api.my-namespace.svc.cluster.local'
    * 
-   * // With protocol
-   * serviceDNS('api', { port: 3000, protocol: 'https' })
-   * // -> 'https://my-project-api.my-namespace.svc.cluster.local:3000'
+   * // Service name only
+   * dns('api', 'service') // -> 'api'
    * 
-   * // Headless service (StatefulSet)
-   * serviceDNS('postgres', { headless: true, podIndex: 0 })
-   * // -> 'my-project-postgres-0.my-project-postgres.my-namespace.svc.cluster.local'
+   * // External DNS (resolved from ingress configuration)
+   * dns('api', 'ingress') // -> 'api.example.com' (if ingress configured)
    * 
-   * // External service
-   * serviceDNS('external-api', { external: true, protocol: 'https', port: 443 })
-   * // -> 'https://external-api:443'
+   * // Usage in env:
+   * env: ({ dns }) => ({
+   *   BACKEND_URL: `https://${dns('backend', 'ingress')}`
+   * })
    */
-  serviceDNS: (app: TAppNames, options?: number | ServiceDNSOptions) => string
+  dns: (app: TAppNames, type: DNSType) => string
+
+  /**
+   * Generate complete URL for different types of resources with automatic port resolution
+   * @param app - Application name (type-safe from config.apps)
+   * @param type - URL type: 'cluster' for internal cluster URL, 'service' for service URL, 'ingress' for external URL
+   * @param options - Optional URL options
+   * @returns Complete URL with protocol and port
+   * @example
+   * // Cluster internal URL (uses first port from app.ports)
+   * url('api', 'cluster') // -> 'http://api.my-namespace.svc.cluster.local:3000'
+   * 
+   * // Service URL (uses first port from app.ports)
+   * url('api', 'service') // -> 'http://api:3000'
+   * 
+   * // External URL (uses ingress configuration, HTTPS without port by default)
+   * url('api', 'ingress') // -> 'https://api.example.com' (if ingress configured)
+   * 
+   * // With custom protocol
+   * url('api', 'cluster', { protocol: 'https' }) // -> 'https://api.my-namespace.svc.cluster.local:3000'
+   * 
+   * // Usage in env:
+   * env: ({ url }) => ({
+   *   BACKEND_URL: url('backend', 'ingress'),
+   *   API_URL: url('api', 'cluster')
+   * })
+   */
+  url: (app: TAppNames, type: DNSType, options?: { protocol?: 'http' | 'https' }) => string
 
   /**
    * Generate Kubernetes label selector
    * @param key - Label key (will be prefixed with app.kubernetes.io/)
-   * @param value - Optional label value (defaults to project-app)
+   * @param value - Optional label value (defaults to app name)
    * @returns Label selector string
    * @example
-   * label('name') // -> 'app.kubernetes.io/name=my-project-api'
+   * label('name') // -> 'app.kubernetes.io/name=api'
    * label('component', 'database') // -> 'app.kubernetes.io/component=database'
    */
   label: (key: string, value?: string) => string
@@ -318,8 +351,8 @@ export interface AppContextCoreHelpers<
    * @param name - Resource name suffix
    * @returns Full resource name
    * @example
-   * resource('secret', 'api-keys') // -> 'my-project-api-api-keys'
-   * resource('pvc', 'data') // -> 'my-project-api-data'
+   * resource('secret', 'api-keys') // -> 'api-api-keys'
+   * resource('pvc', 'data') // -> 'api-data'
    */
   resource: (kind: ResourceKind, name: string) => string
 
@@ -508,13 +541,13 @@ export interface AppCertificateOptions
   commonName?: CertificateSpec['commonName']
 }
 
-export interface AppNetworkOptions {
+export interface AppIngressOptions {
   ingress?: boolean | AppIngressOptions
   ingressRoute?: boolean | AppIngressRouteOptions
   certificate?: boolean | AppCertificateOptions
 }
 
-export type AppNetworkDefinition<
+export type AppIngressDefinition<
   TNamespaceVars extends NamespaceDefinition,
   TProject extends string = string,
   TNamespaceName extends string = string,
@@ -524,10 +557,10 @@ export type AppNetworkDefinition<
 > =
   | string
   | boolean
-  | AppNetworkOptions
+  | AppIngressOptions
   | ((
       ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
-    ) => string | boolean | AppNetworkOptions)
+    ) => string | boolean | AppIngressOptions)
 
 export type AppDeploySelection<TNamespaceName extends string> =
   | 'all'
@@ -604,7 +637,7 @@ export type AppDefinition<
   args?: string[]
   ports?: ServicePort[]
   deploy?: AppDeploySelection<TNamespaceName> | undefined
-  network?: AppNetworkDefinition<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+  ingress?: AppIngressDefinition<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
 } & Record<string, unknown>
 
 /**

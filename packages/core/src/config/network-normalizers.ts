@@ -8,8 +8,7 @@ import type {
   AppCertificateOptions,
   AppIngressOptions,
   AppIngressRouteOptions,
-  AppIngressRouteRouteOptions,
-  AppNetworkOptions
+  AppIngressRouteRouteOptions
 } from '../types.js'
 import type {
   ResolvedCertificateConfig,
@@ -89,7 +88,7 @@ export function createAutoHTTPS(
  * @param options - Network configuration options
  * @returns Extracted domain or undefined
  */
-export function extractHostFromNetwork(options: AppNetworkOptions): string | undefined {
+export function extractHostFromNetwork(options: AppIngressOptions): string | undefined {
   // 1. Try certificate.dnsNames
   if (options.certificate && typeof options.certificate === 'object') {
     const dnsNames = options.certificate.dnsNames

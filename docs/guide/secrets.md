@@ -310,15 +310,13 @@ import config from './tsops.config'
 process.env.TSOPS_NAMESPACE = 'prod'
 
 // Get resolved environment for an app
-const env = config.getEnv('api')
-console.log('JWT_SECRET:', env.JWT_SECRET)
-console.log('DB_PASSWORD:', env.DB_PASSWORD)
+const dbPassword = config.env('api', 'DB_PASSWORD')
+console.log('JWT_SECRET:', config.env('api', 'JWT_SECRET'))
+console.log('DB_PASSWORD:', dbPassword)
 
-// Or get full app info including endpoints
-const app = config.getApp('api')
-console.log('Internal endpoint:', app.internalEndpoint)
-console.log('External endpoint:', config.getExternalEndpoint('api'))
-console.log('Environment:', app.env)
+// Or get URLs directly
+console.log('Internal endpoint:', config.url('api', 'cluster'))
+console.log('External endpoint:', config.url('api', 'ingress'))
 ```
 
 This provides:

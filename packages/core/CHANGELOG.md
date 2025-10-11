@@ -1,5 +1,111 @@
 # @tsops/core
 
+## 0.5.0
+
+### Minor Changes
+
+- feat: add url helper for building complete URLs with automatic port resolution
+- feat: refactor runtime configuration with direct helper methods
+
+  ### Refactored Runtime Configuration
+
+  Completely refactored runtime configuration to provide direct helper methods: `env`, `dns`, and `url`. Replaced old methods (`getEnv`, `getInternalEndpoint`, `getExternalEndpoint`) with cleaner API.
+
+  **Usage:**
+  ```typescript
+  import config from './tsops.config'
+  
+  // DNS helpers
+  const clusterDns = config.dns('api', 'cluster')      // -> 'api.namespace.svc.cluster.local'
+  const serviceDns = config.dns('api', 'service')      // -> 'api'
+  const ingressDns = config.dns('api', 'ingress')      // -> 'api.example.com'
+  
+  // URL helpers with automatic port resolution
+  const clusterUrl = config.url('api', 'cluster')      // -> 'http://api.namespace.svc.cluster.local:3000'
+  const serviceUrl = config.url('api', 'service')      // -> 'http://api:3000'
+  const ingressUrl = config.url('api', 'ingress')      // -> 'https://api.example.com' (HTTPS, no port)
+  
+  // Environment variables
+  const nodeEnv = config.env('api', 'NODE_ENV')        // -> 'production'
+  const port = config.env('api', 'PORT')               // -> '3000'
+  ```
+
+  **Breaking Changes:**
+  - **Removed**: `config.getEnv()`, `config.getInternalEndpoint()`, `config.getExternalEndpoint()`, `config.getApp()`, `config.getNamespace()`
+  - **Added**: `config.env()`, `config.dns()`, `config.url()` with cleaner API
+  - **Renamed**: `network` configuration property → `ingress`
+  - **Changed**: Ingress URLs now return HTTPS without port by default
+
+  **Migration Guide:**
+  ```typescript
+  // Old API (deprecated)
+  const env = config.getEnv('api')
+  const internal = config.getInternalEndpoint('api')
+  const external = config.getExternalEndpoint('api')
+  
+  // New API (current)
+  const nodeEnv = config.env('api', 'NODE_ENV')
+  const internal = config.url('api', 'cluster')
+  const external = config.url('api', 'ingress')
+  ```
+
+  **Features:**
+  - **Direct methods**: `config.dns()`, `config.url()`, `config.env()` available directly on config
+  - **Smart URL generation**: Ingress URLs use HTTPS without port, others use HTTP with port
+  - **Clean interface**: Only essential methods, no complex runtime objects
+  - **Type safety**: Full TypeScript support with proper inference
+  - **Updated documentation**: All examples updated to use new API
+
+  ## New Features
+
+  ### URL Helper
+
+  Added a new `url` helper function that automatically builds complete URLs with ports, eliminating the need to manually construct URLs from DNS names and ports.
+
+  **Usage:**
+
+  ```typescript
+  env: ({ url }) => ({
+    BACKEND_URL: url('backend', 'ingress'), // -> 'https://api.example.com:3000'
+    API_URL: url('api', 'cluster'), // -> 'http://api.namespace.svc.cluster.local:8080'
+    SERVICE_URL: url('api', 'service') // -> 'http://api:8080'
+  })
+  ```
+
+  **Features:**
+
+  - **Automatic port resolution**: Uses the first port from `app.ports[0].port`
+  - **Protocol support**: Defaults to `http`, supports `https` via options
+  - **All DNS types**: Works with `'cluster'`, `'service'`, and `'ingress'` types
+  - **External DNS integration**: Properly resolves external hosts through `network` configuration
+
+  ### Simplified DNS Helper
+
+  - Removed 3rd argument (options) from `dns` helper for simplicity
+  - `dns` now returns only DNS names without ports or protocols
+  - `url` helper handles complete URL construction
+
+  ## Breaking Changes
+
+  - `dns` helper signature changed from `dns(app, type, options?)` to `dns(app, type)`
+  - All examples updated to use `url` helper instead of manual URL construction
+
+  ## Migration Guide
+
+  Replace manual URL construction:
+
+  ```typescript
+  // Before
+  env: ({ dns }) => ({
+    API_URL: `http://${dns('api', 'cluster')}:3000`
+  })
+
+  // After
+  env: ({ url }) => ({
+    API_URL: url('api', 'cluster')
+  })
+  ```
+
 ## 0.4.1
 
 ### Patch Changes

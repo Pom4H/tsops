@@ -15,7 +15,7 @@ export function createProjectResolver<
   return {
     name,
     serviceName(appName: string): string {
-      return `${name}-${appName}`
+      return appName
     }
   }
 }

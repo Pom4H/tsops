@@ -18,7 +18,7 @@ Thanks for taking the time to contribute!
 Use this checklist during PR review:
 
 - Naming
-  - Methods are verbs (`getEnv`, `getApp`); options/values are nouns.
+  - Methods are verbs (`env`, `dns`, `url`); options/values are nouns.
   - Option keys are consistent: `protocol`, `port`, `clusterDomain`.
 
 - Signatures
@@ -41,8 +41,8 @@ Use this checklist during PR review:
   - `env(key, fallback?)` returns `process.env[key]` or `fallback` or empty string.
 
 - Runtime API
-  - Expose only: `getApp`, `getEnv`, `getInternalEndpoint`, `getExternalEndpoint`, `getNamespace`.
-  - `getExternalEndpoint` derives from `network`.
+  - Expose only: `env`, `dns`, `url`.
+  - `url` with type 'ingress' derives from `ingress` configuration.
 
 - CI
   - ESLint passes; Vitest passes.

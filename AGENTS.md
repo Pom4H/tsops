@@ -24,7 +24,7 @@ This project is a **monorepo managed by Turborepo**.
 
 ## Domain Invariants (core)
 - Artifact names are deterministically derived from `{project, namespace, app}` — no hidden conventions.  
-- `getInternalEndpoint(app)` and `getExternalEndpoint(app)` share a single resolution strategy.  
+- `url(app, 'cluster')` and `url(app, 'ingress')` share a single resolution strategy.  
 - Secrets/configs are modeled but not stored; unresolved values block `plan`/`deploy`.  
 - Image tags are derived from VCS (`git-sha`) or semver; never from ad-hoc concatenation.
 

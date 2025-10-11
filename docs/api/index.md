@@ -65,7 +65,7 @@ export default defineConfig({
 
 `process.env` access happens at config-evaluation time, so make sure the variables you need are defined before running `tsops`.
 
-`defineConfig` ensures all namespaces share the same shape and returns an object that preserves your configuration plus runtime helpers (`getApp`, `getEnv`, `getExternalEndpoint`, ...).
+`defineConfig` ensures all namespaces share the same shape and returns an object that preserves your configuration plus runtime helpers (`env`, `dns`, `url`).
 
 ### TsOps
 
@@ -273,51 +273,42 @@ interface AppDefinition {
 }
 ```
 
-When `network` returns a domain string, tsops automatically provisions ingress/Traefik routes and exposes that host through runtime helpers (`getExternalEndpoint`). Set `network` to `false` to skip ingress generation.
+When `ingress` returns a domain string, tsops automatically provisions ingress/Traefik routes and exposes that host through runtime helpers (`url` with type 'ingress'). Set `ingress` to `false` to skip ingress generation.
 
 ## Runtime
 
-### getEnv()
+### env()
 
-Resolve environment variables at runtime directly from your config object.
+Get environment variable for an app.
 
 ```typescript
 import config from './tsops.config.js'
 
 process.env.TSOPS_NAMESPACE = 'prod'
 
-const env = config.getEnv('api')
-console.log(env.DATABASE_URL)
+const nodeEnv = config.env('api', 'NODE_ENV')
+const port = config.env('api', 'PORT')
+console.log(nodeEnv, port)
 ```
 
-### getInternalEndpoint()
+### dns()
 
-Get internal Kubernetes DNS endpoint for an app.
+Generate DNS name for different types of resources.
 
 ```typescript
-const endpoint = config.getInternalEndpoint('api')
-// => 'http://demo-api.prod.svc.cluster.local:8080'
+const clusterDns = config.dns('api', 'cluster')     // 'api.prod.svc.cluster.local'
+const serviceDns = config.dns('api', 'service')     // 'api'
+const ingressDns = config.dns('api', 'ingress')     // 'api.prod.example.com'
 ```
 
-### getExternalEndpoint()
+### url()
 
-Get the public URL (if `network` configured an external host).
-
-```typescript
-const external = config.getExternalEndpoint('api')
-// => 'https://api.prod.example.com' | undefined
-```
-
-### getApp()
-
-Get the full resolved configuration including metadata.
+Generate complete URL for different types of resources with automatic port resolution.
 
 ```typescript
-const app = config.getApp('api')
-console.log(app.env)               // Resolved environment variables
-console.log(app.internalEndpoint)  // Internal K8s endpoint
-console.log(app.host)              // Domain without protocol (use getExternalEndpoint for https://)
-console.log(app.image)             // Docker image reference
+const clusterUrl = config.url('api', 'cluster')     // 'http://api.prod.svc.cluster.local:8080'
+const serviceUrl = config.url('api', 'service')     // 'http://api:8080'
+const ingressUrl = config.url('api', 'ingress')     // 'https://api.prod.example.com'
 ```
 
 The active namespace is determined by `TSOPS_NAMESPACE`; when unset, the first namespace in your config is used.

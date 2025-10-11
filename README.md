@@ -139,9 +139,9 @@ Import the compiled config in your application to reuse resolved values at runti
 ```typescript
 import config from './tsops.config.js'
 
-const env = config.getEnv('api')
-const internal = config.getInternalEndpoint('api') // http://project-api.dev.svc.cluster.local:3000
-const external = config.getExternalEndpoint('api') // https://api.dev.example.com (if network configured)
+const nodeEnv = config.env('api', 'NODE_ENV')
+const internal = config.url('api', 'cluster') // http://api.dev.svc.cluster.local:3000
+const external = config.url('api', 'ingress') // https://api.dev.example.com (if ingress configured)
 ```
 
 ## License

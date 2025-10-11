@@ -88,7 +88,7 @@ const config = defineConfig({
       volumeMounts: [
         { name: 'otel-config', mountPath: '/etc/otel' }
       ],
-      network: false
+      ingress: false
     },
     loki: {
       image: 'grafana/loki:latest',
@@ -100,7 +100,7 @@ const config = defineConfig({
       volumeMounts: [
         { name: 'loki-config', mountPath: '/etc/loki' }
       ],
-      network: false
+      ingress: false
     },
     grafana: {
       image: 'grafana/grafana:latest',
@@ -112,7 +112,7 @@ const config = defineConfig({
       volumeMounts: [
         { name: 'grafana-provisioning', mountPath: '/etc/grafana/provisioning/datasources' }
       ],
-      network: ({ domain }) => `grafana.${domain}`
+      ingress: ({ domain }) => `grafana.${domain}`
     },
     postgres: {
       image: 'postgres:18',
@@ -120,7 +120,7 @@ const config = defineConfig({
         POSTGRES_PASSWORD: secret('otel-api-secrets', 'DB_PASSWORD')
       }),
       ports: [{ name: 'db', port: 5432, targetPort: 5432 }],
-      network: false
+      ingress: false
     },
     api: {
       build: {
@@ -128,18 +128,18 @@ const config = defineConfig({
         context: 'examples/otel/apps/api',
         dockerfile: 'examples/otel/apps/api/Dockerfile'
       },
-      env: ({ namespace, cluster, secret, project, appName, serviceDNS }) => ({
+      env: ({ namespace, cluster, secret, project, appName, url }) => ({
         NODE_ENV: 'production',
         NAMESPACE: namespace,
         CLUSTER: cluster.name,
         OTEL_SERVICE_NAME: `${project}-${appName}`,
-        OTEL_EXPORTER_OTLP_ENDPOINT: serviceDNS('otelCollector', { protocol: 'http', port: 4318 }),
+        OTEL_EXPORTER_OTLP_ENDPOINT: url('otelCollector', 'cluster'),
         JWT_SECRET: secret('otel-api-secrets', 'JWT_SECRET'),
         DB_PASSWORD: secret('otel-api-secrets', 'DB_PASSWORD'),
         API_KEY: secret('otel-api-secrets', 'API_KEY')
       }),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }],
-      network: ({ domain }) => `api.${domain}`
+      ingress: ({ domain }) => `api.${domain}`
     },
     frontend: {
       build: {
@@ -147,15 +147,15 @@ const config = defineConfig({
         context: 'examples/otel/apps/frontend',
         dockerfile: 'examples/otel/apps/frontend/Dockerfile'
       },
-      env: ({ namespace, cluster, project, appName, serviceDNS }) => ({
+      env: ({ namespace, cluster, project, appName, url }) => ({
         NODE_ENV: 'production',
         NAMESPACE: namespace,
         CLUSTER: cluster.name,
         OTEL_SERVICE_NAME: `${project}-${appName}`,
-        OTEL_EXPORTER_OTLP_ENDPOINT: serviceDNS('otelCollector', { protocol: 'http', port: 4318 })
+        OTEL_EXPORTER_OTLP_ENDPOINT: url('otelCollector', 'cluster')
       }),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }],
-      network: ({ domain }) => domain
+      ingress: ({ domain }) => domain
     }
   }
 })
