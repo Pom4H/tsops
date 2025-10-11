@@ -52,7 +52,7 @@ export default defineConfig({
         context: './api',
         dockerfile: './api/Dockerfile'
       },
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       env: ({ secret, serviceDNS }) => ({
         JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
         DATABASE_URL: serviceDNS('postgres', 5432)
@@ -263,7 +263,7 @@ interface AppDefinition {
   env?: Record<string, EnvValue> | ((ctx: AppContext) => Record<string, EnvValue> | SecretRef | ConfigMapRef)
   secrets?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
   configMaps?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
-  network?: string | boolean | AppNetworkOptions | ((ctx: AppContext) => string | boolean | AppNetworkOptions)
+  ingress?: string | boolean | AppIngressOptions | ((ctx: AppContext) => string | boolean | AppIngressOptions)
   deploy?: 'all' | readonly string[] | { include?: readonly string[]; exclude?: readonly string[] }
   ports?: ServicePort[]
   podAnnotations?: Record<string, string>

@@ -72,7 +72,7 @@ export default defineConfig({
   
   apps: {
     web: {
-      network: ({ domain }) => domain,
+      ingress: ({ domain }) => domain,
       build: {
         type: 'dockerfile',
         context: './web',
@@ -84,7 +84,7 @@ export default defineConfig({
       })
     },
     api: {
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       build: {
         type: 'dockerfile',
         context: './api',
@@ -154,7 +154,7 @@ export default async function Page() {
   <div class="why-card">
     <div class="why-icon">🌐</div>
     <div class="why-title">Auto Networking</div>
-    <div class="why-desc">Generate ingress, Traefik routes, and TLS certificates by returning a domain from <code>network</code> definitions.</div>
+    <div class="why-desc">Generate ingress, Traefik routes, and TLS certificates by returning a domain from <code>ingress</code> definitions.</div>
   </div>
   <div class="why-card">
     <div class="why-icon">🔁</div>
