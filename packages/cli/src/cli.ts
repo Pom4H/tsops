@@ -273,13 +273,18 @@ async function main(): Promise<void> {
     .option('-n, --namespace <name>', 'used to determine dev/prod context')
     .option('-c, --config <path>', 'path to config file', 'tsops.config')
     .option('--dry-run', 'skip external commands, log actions only')
+    .option('-f, --force', 'force rebuild even if image already exists in registry')
     .action(async (options) => {
       const config = await loadConfig(options.config)
       const tsops = createNodeTsOps(config, {
         dryRun: options.dryRun,
         env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
       })
-      const result = await tsops.build({ namespace: options.namespace, app: options.app })
+      const result = await tsops.build({ 
+        namespace: options.namespace, 
+        app: options.app,
+        force: options.force
+      })
 
       for (const item of result.images) {
         console.log(`- built ${item.app}: ${item.image}`)

@@ -1,5 +1,20 @@
 # @tsops/node
 
+## 0.2.3
+
+### Patch Changes
+
+- feat: add image existence check before build and force rebuild flag
+
+  - Add `imageExists()` method to DockerClient to check if image already exists in registry using `docker manifest inspect`
+  - Build process now automatically skips building images that already exist in the registry
+  - Add `--force` (`-f`) flag to CLI build command to force rebuild even if image exists
+  - Add `force` option to `build()` method in TsOps API
+  - Improves CI/CD efficiency by avoiding unnecessary rebuilds of existing images
+
+- Updated dependencies []:
+  - @tsops/core@0.5.2
+
 ## 0.2.2
 
 ### Patch Changes

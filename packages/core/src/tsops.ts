@@ -176,6 +176,7 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * @param options - Filtering options
    * @param options.app - Target a single app (optional)
    * @param options.namespace - Used to determine dev/prod context (optional)
+   * @param options.force - Force rebuild even if image exists in registry (optional)
    * @returns Build results with app names and image references
    *
    * @example
@@ -184,7 +185,7 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * console.log(result.images[0].image) // => 'ghcr.io/org/api:abc123'
    * ```
    */
-  build(options: { app?: string; namespace?: string } = {}) {
+  build(options: { app?: string; namespace?: string; force?: boolean } = {}) {
     return this.builder.build(options)
   }
 
