@@ -5,17 +5,17 @@
  */
 
 import type {
-  AppCertificateOptions,
-  AppIngressOptions,
-  AppIngressRouteOptions,
-  AppIngressRouteRouteOptions
-} from '../types.js'
-import type {
   ResolvedCertificateConfig,
   ResolvedIngressConfig,
   ResolvedIngressRouteConfig
 } from '@tsops/k8'
 import { DEFAULT_HTTP_PORT } from '@tsops/k8'
+import type {
+  AppCertificateOptions,
+  AppIngressOptions,
+  AppIngressRouteOptions,
+  AppIngressRouteRouteOptions
+} from '../types.js'
 
 /**
  * Creates a default network configuration with basic ingress.
@@ -128,7 +128,10 @@ export function extractHostFromNetwork(options: AppIngressOptions): string | und
  * @param options - Optional ingress customization
  * @returns Resolved ingress configuration
  */
-export function normalizeIngress(host: string, options?: AppIngressOptions): ResolvedIngressConfig {
+export function normalizeIngress(
+  _host: string,
+  options?: AppIngressOptions
+): ResolvedIngressConfig {
   return {
     className: options?.className,
     annotations: options?.annotations ? { ...options.annotations } : undefined,

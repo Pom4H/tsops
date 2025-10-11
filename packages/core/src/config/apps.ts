@@ -1,57 +1,80 @@
+import type { ResolvedNetworkConfig } from '@tsops/k8'
 import type {
   AppCertificateOptions,
   AppDefinition,
   AppHostContextWithHelpers,
   AppIngressOptions,
   AppIngressRouteOptions,
-  TsOpsConfig,
-  EnvValue,
-  SecretRef,
   ConfigMapRef,
-  ExtractNamespaceVarsFromConfig
+  EnvValue,
+  ExtractNamespaceVarsFromConfig,
+  SecretRef,
+  TsOpsConfig
 } from '../types.js'
-import { isSecretRef, isConfigMapRef } from '../types.js'
-import type {
-  ResolvedNetworkConfig
-} from '@tsops/k8'
+import { isConfigMapRef, isSecretRef } from '../types.js'
 import type { NamespaceResolver } from './namespaces.js'
-import type { ProjectResolver } from './project.js'
 import {
-  createDefaultNetwork,
   createAutoHTTPS,
+  createDefaultNetwork,
   extractHostFromNetwork,
+  normalizeCertificate,
   normalizeIngress,
-  normalizeIngressRoute,
-  normalizeCertificate
+  normalizeIngressRoute
 } from './network-normalizers.js'
+import type { ProjectResolver } from './project.js'
 
-export type ResolverApp<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
-> = AppDefinition<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps']>
+export type ResolverApp<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> =
+  AppDefinition<
+    ExtractNamespaceVarsFromConfig<TConfig>,
+    TConfig['project'],
+    Extract<keyof TConfig['namespaces'], string>,
+    TConfig['secrets'],
+    TConfig['configMaps']
+  >
 
-export type AppEntry<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
-> = [string, ResolverApp<TConfig>]
+export type AppEntry<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> = [
+  string,
+  ResolverApp<TConfig>
+]
 
-export interface AppsResolver<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
-> {
+export interface AppsResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> {
   select(target?: string): AppEntry<TConfig>[]
   shouldDeploy(app: ResolverApp<TConfig>, namespace: string): boolean
   resolveEnv(
     app: ResolverApp<TConfig>,
     namespace: string,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps'], TConfig['apps']>
+    context: AppHostContextWithHelpers<
+      ExtractNamespaceVarsFromConfig<TConfig>,
+      TConfig['project'],
+      Extract<keyof TConfig['namespaces'], string>,
+      TConfig['secrets'],
+      TConfig['configMaps'],
+      TConfig['apps']
+    >
   ): Record<string, EnvValue> | SecretRef | ConfigMapRef
   resolveSecrets(
     app: ResolverApp<TConfig>,
     namespace: string,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps'], TConfig['apps']>
+    context: AppHostContextWithHelpers<
+      ExtractNamespaceVarsFromConfig<TConfig>,
+      TConfig['project'],
+      Extract<keyof TConfig['namespaces'], string>,
+      TConfig['secrets'],
+      TConfig['configMaps'],
+      TConfig['apps']
+    >
   ): Record<string, Record<string, string>>
   resolveConfigMaps(
     app: ResolverApp<TConfig>,
     namespace: string,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps'], TConfig['apps']>
+    context: AppHostContextWithHelpers<
+      ExtractNamespaceVarsFromConfig<TConfig>,
+      TConfig['project'],
+      Extract<keyof TConfig['namespaces'], string>,
+      TConfig['secrets'],
+      TConfig['configMaps'],
+      TConfig['apps']
+    >
   ): Record<string, Record<string, string>>
   /**
    * Resolves network configuration. May return updated host if network is specified as domain string.
@@ -60,16 +83,21 @@ export interface AppsResolver<
     appName: string,
     app: ResolverApp<TConfig>,
     namespace: string,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps'], TConfig['apps']>,
+    context: AppHostContextWithHelpers<
+      ExtractNamespaceVarsFromConfig<TConfig>,
+      TConfig['project'],
+      Extract<keyof TConfig['namespaces'], string>,
+      TConfig['secrets'],
+      TConfig['configMaps'],
+      TConfig['apps']
+    >,
     host: string | undefined
   ): { network: ResolvedNetworkConfig | undefined; host: string | undefined }
 }
 
-export function createAppsResolver<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
->(
+export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>>(
   config: TConfig,
-  namespaces: NamespaceResolver<TConfig>,
+  _namespaces: NamespaceResolver<TConfig>,
   project: ProjectResolver<TConfig>
 ): AppsResolver<TConfig> {
   /**
@@ -91,13 +119,13 @@ export function createAppsResolver<
 
   /**
    * Determines if an app should be deployed to a namespace.
-   * 
+   *
    * Rules:
    * - undefined or 'all': deploy to all namespaces
    * - Array: deploy only to listed namespaces
    * - Filter object with include: deploy only to included namespaces (minus excluded)
    * - Filter object with exclude: deploy to all except excluded namespaces
-   * 
+   *
    * @example
    * shouldDeploy({ deploy: 'all' }, 'prod') // => true
    * shouldDeploy({ deploy: ['prod', 'stage'] }, 'prod') // => true
@@ -106,7 +134,7 @@ export function createAppsResolver<
   function shouldDeploy(app: ResolverApp<TConfig>, namespace: string): boolean {
     const deploy = app.deploy
     if (!deploy || deploy === 'all') return true
-    
+
     type TNamespaceName = Extract<keyof TConfig['namespaces'], string>
     if (Array.isArray(deploy)) {
       return (deploy as readonly TNamespaceName[]).includes(namespace as TNamespaceName)
@@ -115,8 +143,10 @@ export function createAppsResolver<
       const include = deploy.include ?? []
       const exclude = deploy.exclude ?? []
       if (include.length > 0) {
-        return (include as readonly TNamespaceName[]).includes(namespace as TNamespaceName) && 
-               !(exclude as readonly TNamespaceName[]).includes(namespace as TNamespaceName)
+        return (
+          (include as readonly TNamespaceName[]).includes(namespace as TNamespaceName) &&
+          !(exclude as readonly TNamespaceName[]).includes(namespace as TNamespaceName)
+        )
       }
       if (exclude.length > 0) {
         return !(exclude as readonly TNamespaceName[]).includes(namespace as TNamespaceName)
@@ -136,8 +166,14 @@ export function createAppsResolver<
    */
   function resolveEnv(
     app: ResolverApp<TConfig>,
-    namespace: string,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps']>
+    _namespace: string,
+    context: AppHostContextWithHelpers<
+      ExtractNamespaceVarsFromConfig<TConfig>,
+      TConfig['project'],
+      Extract<keyof TConfig['namespaces'], string>,
+      TConfig['secrets'],
+      TConfig['configMaps']
+    >
   ): Record<string, EnvValue> | SecretRef | ConfigMapRef {
     const env = app.env
     if (!env) return {}
@@ -154,7 +190,13 @@ export function createAppsResolver<
    */
   function evaluateNetworkDefinition(
     networkDef: ResolverApp<TConfig>['network'],
-    networkContext: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps']>
+    networkContext: AppHostContextWithHelpers<
+      ExtractNamespaceVarsFromConfig<TConfig>,
+      TConfig['project'],
+      Extract<keyof TConfig['namespaces'], string>,
+      TConfig['secrets'],
+      TConfig['configMaps']
+    >
   ) {
     if (typeof networkDef === 'function') {
       return networkDef(networkContext)
@@ -201,7 +243,9 @@ export function createAppsResolver<
       }
     } else if (ingressDef) {
       if (!effectiveHost) {
-        throw new Error(`App "${appName}" ingress requires a host to be configured or inferrable from network config.`)
+        throw new Error(
+          `App "${appName}" ingress requires a host to be configured or inferrable from network config.`
+        )
       }
       const ingressOptions: AppIngressOptions | undefined =
         typeof ingressDef === 'object' ? ingressDef : undefined
@@ -233,7 +277,7 @@ export function createAppsResolver<
   /**
    * Resolves network configuration for an app in a specific namespace.
    * Handles ingress, ingressRoute, and certificate settings.
-   * 
+   *
    * @param appName - The application name
    * @param app - The application definition
    * @param namespace - Target namespace
@@ -244,8 +288,14 @@ export function createAppsResolver<
   function resolveNetwork(
     appName: string,
     app: ResolverApp<TConfig>,
-    namespace: string,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps']>,
+    _namespace: string,
+    context: AppHostContextWithHelpers<
+      ExtractNamespaceVarsFromConfig<TConfig>,
+      TConfig['project'],
+      Extract<keyof TConfig['namespaces'], string>,
+      TConfig['secrets'],
+      TConfig['configMaps']
+    >,
     host: string | undefined
   ): { network: ResolvedNetworkConfig | undefined; host: string | undefined } {
     const networkDef = app.ingress
@@ -255,7 +305,7 @@ export function createAppsResolver<
 
     const serviceName = project.serviceName(appName)
     const resolved = evaluateNetworkDefinition(networkDef, context)
-    
+
     if (resolved === undefined) {
       return { network: host ? createDefaultNetwork(host) : undefined, host }
     }
@@ -294,7 +344,13 @@ export function createAppsResolver<
   function resolveSecrets(
     app: ResolverApp<TConfig>,
     namespace: string,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps']>
+    context: AppHostContextWithHelpers<
+      ExtractNamespaceVarsFromConfig<TConfig>,
+      TConfig['project'],
+      Extract<keyof TConfig['namespaces'], string>,
+      TConfig['secrets'],
+      TConfig['configMaps']
+    >
   ): Record<string, Record<string, string>> {
     if (!config.secrets) return {}
 
@@ -336,7 +392,13 @@ export function createAppsResolver<
   function resolveConfigMaps(
     app: ResolverApp<TConfig>,
     namespace: string,
-    context: AppHostContextWithHelpers<ExtractNamespaceVarsFromConfig<TConfig>, TConfig['project'], Extract<keyof TConfig['namespaces'], string>, TConfig['secrets'], TConfig['configMaps']>
+    context: AppHostContextWithHelpers<
+      ExtractNamespaceVarsFromConfig<TConfig>,
+      TConfig['project'],
+      Extract<keyof TConfig['namespaces'], string>,
+      TConfig['secrets'],
+      TConfig['configMaps']
+    >
   ): Record<string, Record<string, string>> {
     if (!config.configMaps) return {}
 
@@ -380,9 +442,7 @@ export function createAppsResolver<
 /**
  * Type guard to check if deploy configuration is a filter object.
  */
-function isDeployFilter<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any>
->(
+function isDeployFilter<TConfig extends TsOpsConfig<any, any, any, any, any, any>>(
   value: ResolverApp<TConfig>['deploy']
 ): value is {
   include?: readonly Extract<keyof TConfig['namespaces'], string>[]

@@ -4,7 +4,7 @@ import path from 'node:path'
 import process from 'node:process'
 import { promisify } from 'node:util'
 import { Command, Option } from 'commander'
-import openapiTS, { OpenAPI3, astToString } from 'openapi-typescript'
+import openapiTS, { astToString, type OpenAPI3 } from 'openapi-typescript'
 
 const execFileAsync = promisify(execFile)
 
@@ -38,19 +38,34 @@ function parseArgs(argv: string[]): GeneratorOptions {
     .showHelpAfterError()
 
   program
-    .option('-o, --output <path>', 'Output file path (default: src/kubernetes/generated/k8s-openapi.d.ts)')
+    .option(
+      '-o, --output <path>',
+      'Output file path (default: src/kubernetes/generated/k8s-openapi.d.ts)'
+    )
     .option('-u, --url <url>', 'URL to load OpenAPI spec')
     .option('-f, --file <path>', 'Local file path for OpenAPI spec JSON')
-    .addOption(new Option('-k, --kubectl [path]', 'Use kubectl discovery (optionally provide kubectl binary path)'))
     .addOption(
-      new Option('--kubectl-arg <value>', 'Pass through an additional argument to kubectl (repeatable)')
-        .argParser((value: string, previous: string[] | undefined) => (previous ? [...previous, value] : [value]))
+      new Option(
+        '-k, --kubectl [path]',
+        'Use kubectl discovery (optionally provide kubectl binary path)'
+      )
     )
-    .addHelpText('after', `\nEnvironment overrides:\n` +
-      `  K8S_OPENAPI_URL       Same as --url\n` +
-      `  K8S_OPENAPI_FILE      Same as --file\n` +
-      `  KUBECTL, KUBECTL_BIN  Path to kubectl binary\n` +
-      `  KUBECTL_ARGS          Extra kubectl args (quoted string, whitespace separated)\n`)
+    .addOption(
+      new Option(
+        '--kubectl-arg <value>',
+        'Pass through an additional argument to kubectl (repeatable)'
+      ).argParser((value: string, previous: string[] | undefined) =>
+        previous ? [...previous, value] : [value]
+      )
+    )
+    .addHelpText(
+      'after',
+      `\nEnvironment overrides:\n` +
+        `  K8S_OPENAPI_URL       Same as --url\n` +
+        `  K8S_OPENAPI_FILE      Same as --file\n` +
+        `  KUBECTL, KUBECTL_BIN  Path to kubectl binary\n` +
+        `  KUBECTL_ARGS          Extra kubectl args (quoted string, whitespace separated)\n`
+    )
 
   const parsed = program.parse(argv, { from: 'user' })
   const cliOptions = parsed.opts<RawCLIOptions>()
@@ -59,7 +74,7 @@ function parseArgs(argv: string[]): GeneratorOptions {
 
   const outputPath = path.resolve(
     process.cwd(),
-    cliOptions.output ?? 'src/kubernetes/generated/k8s-openapi.d.ts',
+    cliOptions.output ?? 'src/kubernetes/generated/k8s-openapi.d.ts'
   )
 
   const cliSpecFile = cliOptions.file ? path.resolve(process.cwd(), cliOptions.file) : undefined
@@ -116,15 +131,13 @@ function parseArgs(argv: string[]): GeneratorOptions {
     specFile,
     useKubectl,
     kubectlPath,
-    kubectlArgs,
+    kubectlArgs
   }
 }
 
 type OpenAPI = OpenAPI3
 
-type DiscoveryEntry =
-  | { serverRelativeURL?: string | undefined; [key: string]: unknown }
-  | string
+type DiscoveryEntry = { serverRelativeURL?: string | undefined; [key: string]: unknown } | string
 
 interface DiscoveryResponse {
   paths?: Record<string, DiscoveryEntry>
@@ -133,7 +146,9 @@ interface DiscoveryResponse {
 async function loadFromUrl(url: string): Promise<OpenAPI> {
   const response = await fetch(url)
   if (!response.ok) {
-    throw new Error(`Failed to download OpenAPI spec from ${url}: ${response.status} ${response.statusText}`)
+    throw new Error(
+      `Failed to download OpenAPI spec from ${url}: ${response.status} ${response.statusText}`
+    )
   }
   return (await response.json()) as OpenAPI
 }
@@ -143,7 +158,9 @@ async function loadFromFile(filePath: string): Promise<OpenAPI> {
   return JSON.parse(content) as OpenAPI
 }
 
-async function loadFromKubectl(options: Pick<GeneratorOptions, 'kubectlArgs' | 'kubectlPath'>): Promise<OpenAPI> {
+async function loadFromKubectl(
+  options: Pick<GeneratorOptions, 'kubectlArgs' | 'kubectlPath'>
+): Promise<OpenAPI> {
   const discoveryRaw = await kubectlRaw('/openapi/v3', options)
   let discovery: DiscoveryResponse
 
@@ -213,12 +230,15 @@ async function loadFromKubectl(options: Pick<GeneratorOptions, 'kubectlArgs' | '
   return mergeOpenAPISpecs(specs)
 }
 
-async function kubectlRaw(pathname: string, options: Pick<GeneratorOptions, 'kubectlArgs' | 'kubectlPath'>): Promise<string> {
+async function kubectlRaw(
+  pathname: string,
+  options: Pick<GeneratorOptions, 'kubectlArgs' | 'kubectlPath'>
+): Promise<string> {
   const args = [...options.kubectlArgs, 'get', '--raw', pathname]
 
   try {
     const { stdout } = await execFileAsync(options.kubectlPath, args, {
-      maxBuffer: 1024 * 1024 * 50,
+      maxBuffer: 1024 * 1024 * 50
     })
     return stdout
   } catch (error) {
@@ -240,7 +260,7 @@ function mergeOpenAPISpecs(specs: OpenAPI[]): OpenAPI {
   const openapiVersion = typeof primary.openapi === 'string' ? primary.openapi : '3.0.0'
   const fallbackInfo: OpenAPI['info'] = {
     title: 'Kubernetes API',
-    version: 'unknown',
+    version: 'unknown'
   }
   const info = primary.info ?? fallbackInfo
 
@@ -276,7 +296,7 @@ function mergeOpenAPISpecs(specs: OpenAPI[]): OpenAPI {
   const aggregate: OpenAPI = {
     openapi: openapiVersion,
     info,
-    paths: pathsAggregate as OpenAPI['paths'],
+    paths: pathsAggregate as OpenAPI['paths']
   }
 
   if (Object.keys(componentAggregate).length > 0) {
@@ -305,7 +325,10 @@ function mergeOpenAPISpecs(specs: OpenAPI[]): OpenAPI {
   return aggregate
 }
 
-function mergePathItems(target: Record<string, unknown>, source: OpenAPI['paths'] | undefined): void {
+function mergePathItems(
+  target: Record<string, unknown>,
+  source: OpenAPI['paths'] | undefined
+): void {
   if (!isPlainObject(source)) return
 
   for (const [pathKey, pathValue] of Object.entries(source)) {
@@ -333,7 +356,10 @@ function mergePathItems(target: Record<string, unknown>, source: OpenAPI['paths'
   }
 }
 
-function mergeComponents(target: Record<string, unknown>, source: OpenAPI['components'] | undefined): void {
+function mergeComponents(
+  target: Record<string, unknown>,
+  source: OpenAPI['components'] | undefined
+): void {
   if (!isPlainObject(source)) return
 
   for (const [componentType, componentValue] of Object.entries(source)) {
@@ -429,7 +455,6 @@ function determinePreference(argv: string[]): SourcePreference {
 
     if (arg.startsWith('--file=')) {
       preference = 'file'
-      continue
     }
   }
 
@@ -447,7 +472,7 @@ function stripMatchingQuotes(token: string): string {
   if (token.length >= 2) {
     const first = token[0]
     const last = token[token.length - 1]
-    if ((first === '"' && last === '"') || (first === '\'' && last === '\'')) {
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
       return token.slice(1, -1)
     }
   }
@@ -466,7 +491,7 @@ async function main(): Promise<void> {
   const options = parseArgs(process.argv.slice(2))
   const specSource = options.useKubectl
     ? `${[options.kubectlPath, ...options.kubectlArgs].join(' ')} get --raw /openapi/v3`
-    : options.specFile ?? options.specUrl!
+    : (options.specFile ?? options.specUrl!)
   console.log(`Loading OpenAPI spec from ${specSource}`)
 
   const specAst = options.useKubectl
@@ -477,7 +502,7 @@ async function main(): Promise<void> {
 
   console.log('Generating TypeScript definitions...')
   const ast = await openapiTS(specAst, {
-    alphabetize: true,
+    alphabetize: true
   })
   const output = astToString(ast)
 

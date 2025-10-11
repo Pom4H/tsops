@@ -28,14 +28,14 @@ export type NamespaceDefinition = Record<string, unknown>
  * Reserved context keys that cannot be used as namespace variables.
  * These are built-in helper functions and metadata.
  */
-type ReservedContextKeys = 
-  | 'project' 
-  | 'namespace' 
-  | 'dns' 
+type ReservedContextKeys =
+  | 'project'
+  | 'namespace'
+  | 'dns'
   | 'url'
   | 'serviceName'
   | 'secret'
-  | 'configMap' 
+  | 'configMap'
   | 'secretKey'
   | 'configMapKey'
   | 'service'
@@ -43,13 +43,15 @@ type ReservedContextKeys =
 /**
  * Validate that namespace variables don't use reserved names
  */
-export type ValidateNamespaceVars<T extends Record<string, unknown>> = 
-  Extract<keyof T, ReservedContextKeys> extends never
-    ? T
-    : { 
-        __error: 'Namespace variables cannot use reserved context names',
-        __conflicts: Extract<keyof T, ReservedContextKeys>
-      }
+export type ValidateNamespaceVars<T extends Record<string, unknown>> = Extract<
+  keyof T,
+  ReservedContextKeys
+> extends never
+  ? T
+  : {
+      __error: 'Namespace variables cannot use reserved context names'
+      __conflicts: Extract<keyof T, ReservedContextKeys>
+    }
 
 export type ClusterDefinition<TNamespaceName extends string> = {
   apiServer: string
@@ -113,13 +115,13 @@ export type SecretValueKeys<
   TSecrets,
   TName extends SecretKey<TSecrets>
 > = NonNullable<TSecrets> extends Record<string, unknown>
-  ? (NonNullable<TSecrets>[TName] extends (...args: never[]) => infer R
-      ? R extends Record<string, string>
-        ? Extract<keyof R, string>
-        : string
-      : NonNullable<TSecrets>[TName] extends Record<string, string>
-        ? Extract<keyof NonNullable<TSecrets>[TName], string>
-        : string)
+  ? NonNullable<TSecrets>[TName] extends (...args: never[]) => infer R
+    ? R extends Record<string, string>
+      ? Extract<keyof R, string>
+      : string
+    : NonNullable<TSecrets>[TName] extends Record<string, string>
+      ? Extract<keyof NonNullable<TSecrets>[TName], string>
+      : string
   : string
 
 /**
@@ -130,13 +132,13 @@ export type ConfigMapValueKeys<
   TConfigMaps,
   TName extends ConfigMapKey<TConfigMaps>
 > = NonNullable<TConfigMaps> extends Record<string, unknown>
-  ? (NonNullable<TConfigMaps>[TName] extends (...args: never[]) => infer R
-      ? R extends Record<string, string>
-        ? Extract<keyof R, string>
-        : string
-      : NonNullable<TConfigMaps>[TName] extends Record<string, string>
-        ? Extract<keyof NonNullable<TConfigMaps>[TName], string>
-        : string)
+  ? NonNullable<TConfigMaps>[TName] extends (...args: never[]) => infer R
+    ? R extends Record<string, string>
+      ? Extract<keyof R, string>
+      : string
+    : NonNullable<TConfigMaps>[TName] extends Record<string, string>
+      ? Extract<keyof NonNullable<TConfigMaps>[TName], string>
+      : string
   : string
 
 /**
@@ -161,14 +163,24 @@ export interface ConfigMapRef {
  * Type guard to check if value is a SecretRef
  */
 export function isSecretRef(value: unknown): value is SecretRef {
-  return typeof value === 'object' && value !== null && '__type' in value && (value as Record<string, unknown>).__type === 'SecretRef'
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    '__type' in value &&
+    (value as Record<string, unknown>).__type === 'SecretRef'
+  )
 }
 
 /**
  * Type guard to check if value is a ConfigMapRef
  */
 export function isConfigMapRef(value: unknown): value is ConfigMapRef {
-  return typeof value === 'object' && value !== null && '__type' in value && (value as Record<string, unknown>).__type === 'ConfigMapRef'
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    '__type' in value &&
+    (value as Record<string, unknown>).__type === 'ConfigMapRef'
+  )
 }
 
 /**
@@ -192,10 +204,10 @@ export type EnvValue = string | SecretRef | ConfigMapRef
 export type ExtractSecretNames<T> = T extends Record<string, Record<string, string>>
   ? Extract<keyof T, string>
   : T extends (ctx: never) => infer R
-  ? R extends Record<string, Record<string, string>>
-    ? Extract<keyof R, string>
+    ? R extends Record<string, Record<string, string>>
+      ? Extract<keyof R, string>
+      : string
     : string
-  : string
 
 /**
  * Extract configMap names from app's configMaps definition
@@ -203,10 +215,10 @@ export type ExtractSecretNames<T> = T extends Record<string, Record<string, stri
 export type ExtractConfigMapNames<T> = T extends Record<string, Record<string, string>>
   ? Extract<keyof T, string>
   : T extends (ctx: never) => infer R
-  ? R extends Record<string, Record<string, string>>
-    ? Extract<keyof R, string>
+    ? R extends Record<string, Record<string, string>>
+      ? Extract<keyof R, string>
+      : string
     : string
-  : string
 
 /**
  * Cluster metadata available in context
@@ -268,7 +280,7 @@ export interface AppContextCoreHelpers<
   // ============================================================================
   // METADATA
   // ============================================================================
-  
+
   /** Current project name from config */
   project: TProject
 
@@ -293,13 +305,13 @@ export interface AppContextCoreHelpers<
    * @example
    * // Cluster internal DNS
    * dns('api', 'cluster') // -> 'api.my-namespace.svc.cluster.local'
-   * 
+   *
    * // Service name only
    * dns('api', 'service') // -> 'api'
-   * 
+   *
    * // External DNS (resolved from ingress configuration)
    * dns('api', 'ingress') // -> 'api.example.com' (if ingress configured)
-   * 
+   *
    * // Usage in env:
    * env: ({ dns }) => ({
    *   BACKEND_URL: `https://${dns('backend', 'ingress')}`
@@ -316,16 +328,16 @@ export interface AppContextCoreHelpers<
    * @example
    * // Cluster internal URL (uses first port from app.ports)
    * url('api', 'cluster') // -> 'http://api.my-namespace.svc.cluster.local:3000'
-   * 
+   *
    * // Service URL (uses first port from app.ports)
    * url('api', 'service') // -> 'http://api:3000'
-   * 
+   *
    * // External URL (uses ingress configuration, HTTPS without port by default)
    * url('api', 'ingress') // -> 'https://api.example.com' (if ingress configured)
-   * 
+   *
    * // With custom protocol
    * url('api', 'cluster', { protocol: 'https' }) // -> 'https://api.my-namespace.svc.cluster.local:3000'
-   * 
+   *
    * // Usage in env:
    * env: ({ url }) => ({
    *   BACKEND_URL: url('backend', 'ingress'),
@@ -369,7 +381,7 @@ export interface AppContextCoreHelpers<
    * // Reference entire secret (envFrom)
    * env: ({ secret }) => secret('api-secrets')
    * // Generates: envFrom: [{ secretRef: { name: 'api-secrets' } }]
-   * 
+   *
    * // Reference specific key (valueFrom)
    * env: ({ secret }) => ({
    *   JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
@@ -379,7 +391,7 @@ export interface AppContextCoreHelpers<
   secret: {
     (secretName: TSecretNames): SecretRef
     <TName extends SecretKey<TSecrets>>(
-      secretName: TName, 
+      secretName: TName,
       key: SecretValueKeys<TSecrets, TName>
     ): SecretRef
   }
@@ -393,7 +405,7 @@ export interface AppContextCoreHelpers<
    * // Reference entire configMap (envFrom)
    * env: ({ configMap }) => configMap('api-config')
    * // Generates: envFrom: [{ configMapRef: { name: 'api-config' } }]
-   * 
+   *
    * // Reference specific key (valueFrom)
    * env: ({ configMap }) => ({
    *   LOG_LEVEL: configMap('api-config', 'LOG_LEVEL')
@@ -403,7 +415,7 @@ export interface AppContextCoreHelpers<
   configMap: {
     (configMapName: TConfigMapNames): ConfigMapRef
     <TName extends ConfigMapKey<TConfigMaps>>(
-      configMapName: TName, 
+      configMapName: TName,
       key: ConfigMapValueKeys<TConfigMaps, TName>
     ): ConfigMapRef
   }
@@ -455,12 +467,13 @@ export type AppHostContextWithHelpers<
   TConfigMaps,
   TApps,
   AppKey<TApps>
-> & ValidateNamespaceVars<TNamespaceVars>
+> &
+  ValidateNamespaceVars<TNamespaceVars>
 
 /**
  * Extended context with helper functions for app configuration.
  * This is what env/secrets/configMaps config functions receive.
- * 
+ *
  * Note: Variables like `dev`, `production`, etc. should be declared in namespace definitions.
  */
 export type AppEnvContext<
@@ -470,7 +483,14 @@ export type AppEnvContext<
   TSecrets = undefined,
   TConfigMaps = undefined,
   TApps = undefined
-> = AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+> = AppHostContextWithHelpers<
+  TNamespaceVars,
+  TProject,
+  TNamespaceName,
+  TSecrets,
+  TConfigMaps,
+  TApps
+>
 
 export type AppEnvResolver<
   TNamespaceVars extends NamespaceDefinition,
@@ -582,7 +602,9 @@ export type AppSecretsDefinition<
   TConfigMaps = undefined
 > =
   | Record<string, Record<string, string>> // secretName -> key-value pairs
-  | ((ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps>) => Record<string, Record<string, string>>)
+  | ((
+      ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps>
+    ) => Record<string, Record<string, string>>)
 
 /**
  * Defines ConfigMaps that should be created for an app.
@@ -596,7 +618,9 @@ export type AppConfigMapsDefinition<
   TConfigMaps = undefined
 > =
   | Record<string, Record<string, string>> // configMapName -> key-value pairs
-  | ((ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps>) => Record<string, Record<string, string>>)
+  | ((
+      ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps>
+    ) => Record<string, Record<string, string>>)
 
 export interface VolumeMount {
   name: string
@@ -637,7 +661,14 @@ export type AppDefinition<
   args?: string[]
   ports?: ServicePort[]
   deploy?: AppDeploySelection<TNamespaceName> | undefined
-  ingress?: AppIngressDefinition<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+  ingress?: AppIngressDefinition<
+    TNamespaceVars,
+    TProject,
+    TNamespaceName,
+    TSecrets,
+    TConfigMaps,
+    TApps
+  >
 } & Record<string, unknown>
 
 /**
@@ -652,7 +683,9 @@ export type SecretDefinition<
   TApps = undefined
 > =
   | Record<string, string> // key-value pairs
-  | ((ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>) => Record<string, string>)
+  | ((
+      ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+    ) => Record<string, string>)
 
 /**
  * Single configMap definition - can be static or a function that resolves per namespace.
@@ -666,7 +699,9 @@ export type ConfigMapDefinition<
   TApps = undefined
 > =
   | Record<string, string> // key-value pairs
-  | ((ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>) => Record<string, string>)
+  | ((
+      ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+    ) => Record<string, string>)
 
 /**
  * Secrets collection organized by secret name at config root level.
@@ -694,14 +729,15 @@ export type ConfigMapsMap<
  * Extract the shape of namespace variables (all namespaces must have consistent shape).
  * Returns the type of the first namespace's value.
  */
-export type ExtractNamespaceVars<TNamespaces extends Record<string, NamespaceDefinition>> = 
+export type ExtractNamespaceVars<TNamespaces extends Record<string, NamespaceDefinition>> =
   TNamespaces[keyof TNamespaces]
 
 /**
  * Extract namespace variables type from TsOpsConfig
  */
-export type ExtractNamespaceVarsFromConfig<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> = 
-  ExtractNamespaceVars<TConfig['namespaces']>
+export type ExtractNamespaceVarsFromConfig<
+  TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
+> = ExtractNamespaceVars<TConfig['namespaces']>
 
 export type TsOpsConfig<
   TProject extends string,
@@ -718,10 +754,10 @@ export type TsOpsConfig<
    * Namespace definitions with custom variables.
    * All namespaces must have the same shape (consistent structure).
    * Variables defined here are available in app configuration functions.
-   * 
+   *
    * @example
    * namespaces: {
-   *   dev: { 
+   *   dev: {
    *     domain: 'dev.example.com',
    *     replicas: 1,
    *     dbHost: 'dev-db.internal'
@@ -746,7 +782,7 @@ export type TsOpsConfig<
       TApps
     >
   }
-  /** 
+  /**
    * Secrets collection organized by secret name.
    * @example
    * secrets: {

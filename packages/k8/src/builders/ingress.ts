@@ -1,11 +1,11 @@
 import type {
-  IngressManifest,
-  ManifestBuilderContext,
-  ResolvedIngressConfig,
   HTTPIngressPath,
-  IngressRule
+  IngressManifest,
+  IngressRule,
+  ManifestBuilderContext,
+  ResolvedIngressConfig
 } from '../types.js'
-import { DEFAULT_HTTP_PORT, createMetadata } from '../utils.js'
+import { createMetadata, DEFAULT_HTTP_PORT } from '../utils.js'
 
 export function buildIngress(
   ctx: ManifestBuilderContext,

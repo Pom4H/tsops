@@ -40,7 +40,10 @@ type WithoutStatus<TManifest, TStatus> = Omit<TManifest, 'status'> & { status?: 
 export type DeploymentManifest = WithoutStatus<RawDeployment, DeploymentStatus>
 export type ServiceManifest = WithoutStatus<RawService, ServiceStatus>
 export type IngressManifest = WithoutStatus<RawIngress, IngressStatus>
-export type NamespaceManifest = Omit<RawNamespace, 'status' | 'spec'> & { status?: NamespaceStatus; spec?: RawNamespace['spec'] }
+export type NamespaceManifest = Omit<RawNamespace, 'status' | 'spec'> & {
+  status?: NamespaceStatus
+  spec?: RawNamespace['spec']
+}
 export type SecretManifest = RawSecret
 export type ConfigMapManifest = RawConfigMap
 export type IngressRouteManifest = RawIngressRoute
@@ -103,7 +106,7 @@ export interface ManifestBuilderContext {
   serviceName: string
   image: string
   host?: string
-  env: any  // Can be Record<string, string> or Record<string, EnvValue> or SecretRef or ConfigMapRef
+  env: any // Can be Record<string, string> or Record<string, EnvValue> or SecretRef or ConfigMapRef
   network?: ResolvedNetworkConfig
   podAnnotations?: Record<string, string>
   volumes?: Array<{

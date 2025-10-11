@@ -3,18 +3,14 @@ import type {
   ManifestBuilderContext,
   ResolvedIngressRouteConfig
 } from '../types.js'
-import { DEFAULT_HTTP_PORT, createMetadata } from '../utils.js'
+import { createMetadata, DEFAULT_HTTP_PORT } from '../utils.js'
 
 export function buildIngressRoute(
   ctx: ManifestBuilderContext,
   baseLabels: Record<string, string>,
   config: ResolvedIngressRouteConfig
 ): IngressRouteManifest {
-  const metadata = createMetadata(
-    `${ctx.serviceName}-ingressroute`,
-    ctx.namespace,
-    baseLabels
-  )
+  const metadata = createMetadata(`${ctx.serviceName}-ingressroute`, ctx.namespace, baseLabels)
 
   const routes = config.routes.map((route) => {
     const services =

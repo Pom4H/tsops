@@ -1,14 +1,12 @@
+import type { EnvironmentProvider } from '../environment-provider.js'
 import type { TsOpsConfig } from '../types.js'
 import type { ProjectResolver } from './project.js'
-import type { EnvironmentProvider } from '../environment-provider.js'
 
 /**
  * Resolver for Docker image references.
  * Handles repository naming and tag resolution based on configured strategy.
  */
-export interface ImagesResolver<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any>
-> {
+export interface ImagesResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
   /**
    * Builds a complete Docker image reference (repository:tag) for an app.
    * @param appName - The application name
@@ -17,9 +15,7 @@ export interface ImagesResolver<
   buildRef(appName: string): string
 }
 
-export function createImagesResolver<
-  TConfig extends TsOpsConfig<any, any, any, any, any, any>
->(
+export function createImagesResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any>>(
   config: TConfig,
   project: ProjectResolver<TConfig>,
   env: EnvironmentProvider
@@ -33,7 +29,7 @@ export function createImagesResolver<
 
   /**
    * Resolves the Docker image tag based on the configured strategy.
-   * 
+   *
    * Supports:
    * - 'git-sha': Automatically uses git SHA (first 12 chars), falls back to env var GIT_SHA, then 'dev'
    * - 'git-tag': Automatically uses git tag, falls back to env var GIT_TAG, then 'latest'

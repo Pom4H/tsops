@@ -1,9 +1,9 @@
-import type { ManifestBuilderContext, ManifestSet } from './types.js'
+import { buildCertificate } from './builders/certificate.js'
 import { buildDeployment } from './builders/deployment.js'
-import { buildService } from './builders/service.js'
 import { buildIngress } from './builders/ingress.js'
 import { buildIngressRoute } from './builders/ingress-route.js'
-import { buildCertificate } from './builders/certificate.js'
+import { buildService } from './builders/service.js'
+import type { ManifestBuilderContext, ManifestSet } from './types.js'
 
 export class ManifestBuilder<TConfig extends { project: string }> {
   constructor(private readonly config: TConfig) {}

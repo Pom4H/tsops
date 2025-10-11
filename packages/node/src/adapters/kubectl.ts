@@ -1,10 +1,5 @@
+import type { ApplyManifestOptions, KubectlClient, Logger, SupportedManifest } from '@tsops/core'
 import type {
-  Logger,
-  KubectlClient,
-  SupportedManifest,
-  ApplyManifestOptions
-} from '@tsops/core'
-import {
   CertificateManifest,
   ConfigMapManifest,
   DeploymentManifest,
@@ -87,8 +82,7 @@ export class Kubectl implements KubectlClient {
       return refs.map((ref) => `${ref} (dry-run)`)
     }
 
-    const serialized =
-      manifests.map((manifest) => JSON.stringify(manifest)).join('\n---\n') + '\n'
+    const serialized = `${manifests.map((manifest) => JSON.stringify(manifest)).join('\n---\n')}\n`
 
     await this.runner.run('kubectl', ['apply', '-f', '-'], {
       inheritStdio: false,
@@ -180,10 +174,8 @@ export class Kubectl implements KubectlClient {
       await this.runner.run('kubectl', args, {
         inheritStdio: false,
         input: serialized,
-        onStdout: (data) =>
-          this.logger.debug('kubectl stdout', { output: data.trim() }),
-        onStderr: (data) =>
-          this.logger.debug('kubectl stderr', { output: data.trim() })
+        onStdout: (data) => this.logger.debug('kubectl stdout', { output: data.trim() }),
+        onStderr: (data) => this.logger.debug('kubectl stderr', { output: data.trim() })
       })
       return true
     } catch (error) {
@@ -196,11 +188,7 @@ export class Kubectl implements KubectlClient {
     }
   }
 
-  async get(
-    kind: string,
-    name: string,
-    namespace: string
-  ): Promise<SupportedManifest | null> {
+  async get(kind: string, name: string, namespace: string): Promise<SupportedManifest | null> {
     if (this.dryRun) {
       return null
     }
@@ -221,10 +209,7 @@ export class Kubectl implements KubectlClient {
     }
   }
 
-  async diff(
-    manifest: SupportedManifest,
-    options: ApplyManifestOptions
-  ): Promise<string | null> {
+  async diff(manifest: SupportedManifest, options: ApplyManifestOptions): Promise<string | null> {
     const kind = String(manifest.kind ?? 'Unknown')
     const name = String(manifest.metadata?.name ?? 'unnamed')
 

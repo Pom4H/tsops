@@ -1,5 +1,5 @@
 import type { ResolvedNetworkConfig } from '@tsops/k8'
-import type { EnvValue, SecretRef, ConfigMapRef } from '../types.js'
+import type { ConfigMapRef, EnvValue, SecretRef } from '../types.js'
 
 export interface EnvFromSource {
   type: 'secret' | 'configMap'

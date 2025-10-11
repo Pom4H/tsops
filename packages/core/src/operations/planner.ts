@@ -1,6 +1,6 @@
+import type { ConfigResolver } from '../config/resolver.js'
 import type { TsOpsConfig } from '../types.js'
 import type { PlanEntry, PlanResult } from './types.js'
-import type { ConfigResolver } from '../config/resolver.js'
 
 /**
  * Dependencies required by Planner.
@@ -49,14 +49,20 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         if (!this.resolver.apps.shouldDeploy(app, namespace)) continue
 
         const context = this.resolver.namespaces.createHostContext(namespace, { appName })
-        let host: string | undefined = undefined
+        let host: string | undefined
         const env = this.resolver.apps.resolveEnv(app, namespace, context)
         const secrets = this.resolver.apps.resolveSecrets(app, namespace, context)
         const configMaps = this.resolver.apps.resolveConfigMaps(app, namespace, context)
         // Use app.image if provided (for external images), otherwise build from registry
         const image = app.image || this.resolver.images.buildRef(appName)
         // resolveNetwork may update host if network returns a domain string
-        const { network, host: updatedHost } = this.resolver.apps.resolveNetwork(appName, app, namespace, context, host)
+        const { network, host: updatedHost } = this.resolver.apps.resolveNetwork(
+          appName,
+          app,
+          namespace,
+          context,
+          host
+        )
         host = updatedHost || host
 
         entries.push({

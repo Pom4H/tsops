@@ -1,13 +1,13 @@
 import { ManifestBuilder } from '@tsops/k8'
+import { type ConfigResolver, createConfigResolver } from './config/resolver.js'
+import { type EnvironmentProvider, GlobalEnvironmentProvider } from './environment-provider.js'
+import { ConsoleLogger, type Logger } from './logger.js'
 import { Builder } from './operations/builder.js'
 import { Deployer } from './operations/deployer.js'
-import { ConsoleLogger, Logger } from './logger.js'
 import { Planner } from './operations/planner.js'
-import { createConfigResolver, type ConfigResolver } from './config/resolver.js'
-import type { TsOpsConfig } from './types.js'
 import type { DockerClient } from './ports/docker.js'
 import type { KubectlClient } from './ports/kubectl.js'
-import { GlobalEnvironmentProvider, type EnvironmentProvider } from './environment-provider.js'
+import type { TsOpsConfig } from './types.js'
 
 /**
  * Options for configuring TsOps behavior.
@@ -62,7 +62,6 @@ export interface TsOpsOptions {
  * For simple Node setups use `createNodeTsOps(config)` from `@tsops/node`, which wires these defaults automatically.
  */
 export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> {
-  private readonly config: TConfig
   private readonly logger: Logger
   private readonly env: EnvironmentProvider
   private readonly dryRun: boolean
@@ -81,7 +80,6 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
       )
     }
 
-    this.config = config
     this.logger = options.logger ?? new ConsoleLogger()
     this.env = options.env ?? new GlobalEnvironmentProvider()
     this.dryRun = options.dryRun ?? false
@@ -127,25 +125,25 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
 
   /**
    * Generates deployment plan with validation and diff against cluster state.
-   * 
+   *
    * This is useful for previewing what changes will be applied without actually
    * deploying anything. The method:
    * 1. Collects all unique global artifacts (namespaces, secrets, configmaps)
    * 2. Validates and diffs each global artifact once (no duplicates)
    * 3. For each app, validates and diffs app-specific resources (Deployment, Service, Ingress, etc.)
-   * 
+   *
    * This approach ensures that shared resources (like secrets used by multiple apps)
    * are only checked once, avoiding duplicates in the plan output.
-   * 
+   *
    * @param options - Filtering options
    * @param options.namespace - Target a single namespace (optional)
    * @param options.app - Target a single app (optional)
    * @returns Plan with global artifacts and per-app resource changes
-   * 
+   *
    * @example
    * ```typescript
    * const result = await tsops.planWithChanges({ namespace: 'prod' })
-   * 
+   *
    * // Check global resources
    * for (const change of result.global.namespaces) {
    *   console.log(`${change.action}: Namespace/${change.name}`)
@@ -153,7 +151,7 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * for (const change of result.global.secrets) {
    *   console.log(`${change.action}: Secret/${change.namespace}/${change.name}`)
    * }
-   * 
+   *
    * // Check app-specific resources
    * for (const app of result.apps) {
    *   console.log(`\nApp: ${app.app} @ ${app.namespace}`)

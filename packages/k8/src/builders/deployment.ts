@@ -1,5 +1,5 @@
-import type { DeploymentManifest, ManifestBuilderContext, PodSpec, Container } from '../types.js'
-import { DEFAULT_HTTP_PORT, createEnvVars, createMetadata } from '../utils.js'
+import type { Container, DeploymentManifest, ManifestBuilderContext, PodSpec } from '../types.js'
+import { createEnvVars, createMetadata, DEFAULT_HTTP_PORT } from '../utils.js'
 
 export function buildDeployment(
   appName: string,
@@ -17,25 +17,26 @@ export function buildDeployment(
   const envFrom = isSecretRef
     ? [{ secretRef: { name: (ctx.env as any).secretName } }]
     : isConfigMapRef
-    ? [{ configMapRef: { name: (ctx.env as any).configMapName } }]
-    : undefined
+      ? [{ configMapRef: { name: (ctx.env as any).configMapName } }]
+      : undefined
 
   const envVars = !envFrom ? createEnvVars(ctx.env) : []
 
   // Use custom ports if provided, otherwise use PORT env var or default to 80
-  const containerPorts = ctx.ports && ctx.ports.length > 0
-    ? ctx.ports.map(p => ({
-        containerPort: typeof p.targetPort === 'number' ? p.targetPort : (p.port),
-        name: p.name,
-        protocol: p.protocol || 'TCP'
-      }))
-    : [
-        {
-          containerPort: ctx.env.PORT ? parseInt(ctx.env.PORT, 10) : DEFAULT_HTTP_PORT,
-          name: 'http',
-          protocol: 'TCP' as const
-        }
-      ]
+  const containerPorts =
+    ctx.ports && ctx.ports.length > 0
+      ? ctx.ports.map((p) => ({
+          containerPort: typeof p.targetPort === 'number' ? p.targetPort : p.port,
+          name: p.name,
+          protocol: p.protocol || 'TCP'
+        }))
+      : [
+          {
+            containerPort: ctx.env.PORT ? parseInt(ctx.env.PORT, 10) : DEFAULT_HTTP_PORT,
+            name: 'http',
+            protocol: 'TCP' as const
+          }
+        ]
 
   const container: Container = {
     name: appName,
@@ -56,11 +57,12 @@ export function buildDeployment(
 
   // Grafana needs replicas=1 due to SQLite session storage
   // Other stateful apps should also use replicas=1
-  const isStateful = appName.toLowerCase().includes('grafana') || 
-                     appName.toLowerCase().includes('postgres') ||
-                     appName.toLowerCase().includes('mysql')
-  
-  const replicas = isStateful ? 1 : (ctx.namespace.toLowerCase().includes('prod') ? 3 : 1)
+  const isStateful =
+    appName.toLowerCase().includes('grafana') ||
+    appName.toLowerCase().includes('postgres') ||
+    appName.toLowerCase().includes('mysql')
+
+  const replicas = isStateful ? 1 : ctx.namespace.toLowerCase().includes('prod') ? 3 : 1
 
   return {
     apiVersion: 'apps/v1',

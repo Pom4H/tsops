@@ -2,13 +2,13 @@ import type { SecretManifest } from '../types.js'
 
 /**
  * Builds a Secret manifest with opaque data.
- * 
+ *
  * @param name - The secret name
  * @param namespace - The namespace where the secret will be created
  * @param data - Key-value pairs to store (will be base64 encoded)
  * @param labels - Optional labels
  * @returns Kubernetes Secret manifest
- * 
+ *
  * @example
  * ```typescript
  * const secret = buildSecret('db-credentials', 'prod', {
@@ -45,13 +45,13 @@ export function buildSecret(
 /**
  * Builds a Secret manifest from string literals (already base64 encoded).
  * Useful when loading from external sources.
- * 
+ *
  * @param name - The secret name
  * @param namespace - The namespace where the secret will be created
  * @param stringData - Key-value pairs (plain text, Kubernetes will encode)
  * @param labels - Optional labels
  * @returns Kubernetes Secret manifest
- * 
+ *
  * @example
  * ```typescript
  * const secret = buildSecretFromStringData('tls-cert', 'prod', {
@@ -78,4 +78,3 @@ export function buildSecretFromStringData(
     stringData
   }
 }
-
