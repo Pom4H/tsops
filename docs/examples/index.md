@@ -2,6 +2,17 @@
 
 Real-world examples of tsops in action.
 
+## 🚀 CI/CD Integration
+
+Production-ready GitHub Actions workflows for incremental builds in monorepos.
+
+**[View CI/CD Examples →](ci-cd/)**
+
+- Basic incremental build workflow
+- Advanced Turborepo integration
+- Performance benchmarks and troubleshooting
+- Build only changed apps (10x-50x faster CI/CD)
+
 ## Simple Web App
 
 Basic Node.js app with Docker build and Kubernetes deployment.

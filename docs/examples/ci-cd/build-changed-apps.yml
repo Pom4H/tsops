@@ -1,0 +1,98 @@
+name: Build Changed Apps (Monorepo Optimization)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-changed:
+    name: Build Only Changed Applications
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Required for git diff to work
+      
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      
+      - name: Install dependencies
+        run: pnpm install
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Determine base reference for comparison
+        id: git-base
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "base=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
+          else
+            echo "base=HEAD^1" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Build changed applications
+        env:
+          GIT_SHA: ${{ github.sha }}
+          DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
+        run: |
+          echo "🔍 Comparing changes against: ${{ steps.git-base.outputs.base }}"
+          
+          # Build only apps affected by changes
+          pnpm tsops build --filter ${{ steps.git-base.outputs.base }}
+          
+          # Exit with success even if no apps changed
+          exit 0
+      
+      - name: Deploy to staging (PRs only)
+        if: github.event_name == 'pull_request'
+        run: |
+          pnpm tsops deploy --namespace staging
+      
+      - name: Deploy to production (main branch only)
+        if: github.ref == 'refs/heads/main'
+        run: |
+          pnpm tsops deploy --namespace prod
+
+  # Optional: Show what would be built without actually building
+  dry-run-plan:
+    name: Preview Changes (Dry Run)
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - uses: pnpm/action-setup@v2
+        with:
+          version: 10
+      
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+      
+      - run: pnpm install
+      
+      - name: Show affected apps
+        run: |
+          BASE_REF="${{ github.event.pull_request.base.sha || 'HEAD^1' }}"
+          echo "📋 Apps that would be built:"
+          pnpm tsops build --filter $BASE_REF --dry-run

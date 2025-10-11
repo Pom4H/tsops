@@ -65,6 +65,45 @@ export class Git {
       return false
     }
   }
+
+  /**
+   * Get list of changed files compared to a base reference.
+   * @param base - Git reference to compare against (e.g., 'HEAD^1', 'main', 'origin/main')
+   * @returns Array of changed file paths relative to repository root
+   */
+  getChangedFiles(base = 'HEAD^1'): string[] {
+    try {
+      const output = execSync(`git diff --name-only ${base}`, {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim()
+
+      if (!output) return []
+
+      return output.split('\n').filter((line) => line.length > 0)
+    } catch {
+      return []
+    }
+  }
+
+  /**
+   * Get list of changed files in the working directory (uncommitted changes).
+   * @returns Array of changed file paths relative to repository root
+   */
+  getUncommittedChanges(): string[] {
+    try {
+      const output = execSync('git diff --name-only HEAD', {
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'ignore']
+      }).trim()
+
+      if (!output) return []
+
+      return output.split('\n').filter((line) => line.length > 0)
+    } catch {
+      return []
+    }
+  }
 }
 
 /**

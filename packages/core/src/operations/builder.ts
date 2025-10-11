@@ -25,12 +25,34 @@ export class Builder<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
   }
 
   async build(
-    options: { app?: string; namespace?: string; force?: boolean } = {}
+    options: { app?: string; namespace?: string; force?: boolean; changedFiles?: string[] } = {}
   ): Promise<BuildResult> {
     // Login to Docker registry before building (reads from env vars)
     await this.docker.login()
 
-    const apps = this.resolver.apps.select(options.app)
+    // Determine which apps to build
+    let apps: ReturnType<typeof this.resolver.apps.select>
+
+    if (options.changedFiles && options.changedFiles.length > 0) {
+      // Filter by changed files (incremental build)
+      apps = this.resolver.apps.selectByChangedFiles(options.changedFiles)
+
+      if (apps.length === 0) {
+        this.logger.info('No apps affected by changed files. Skipping build.')
+        return { images: [] }
+      }
+
+      this.logger.info(
+        `Building ${apps.length} affected app(s): ${apps.map(([name]) => name).join(', ')}`
+      )
+    } else if (options.app) {
+      // Filter by specific app name
+      apps = this.resolver.apps.select(options.app)
+    } else {
+      // Build all apps
+      apps = this.resolver.apps.select()
+    }
+
     const results: BuildResult['images'] = []
 
     for (const [appName, app] of apps) {
