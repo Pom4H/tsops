@@ -1,6 +1,6 @@
 {
   "name": "tsops",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "TypeScript-first toolkit for planning, building, and deploying to Kubernetes",
   "type": "module",
   "bin": {
