@@ -52,7 +52,7 @@ export default defineConfig({
         context: './api',
         dockerfile: './api/Dockerfile'
       },
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       env: ({ secret, dns }) => ({
         JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
         DATABASE_URL: dns('postgres', 5432)
