@@ -108,7 +108,7 @@ env: ({ secret }) => secret('api-secrets')
 // Runtime (in your app)
 import config from './tsops.config'
 process.env.TSOPS_NAMESPACE = 'production'
-const env = config.getEnv('api')
+const nodeEnv = config.env('api', 'NODE_ENV')
 ```
 
 ## Comparison

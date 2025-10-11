@@ -11,7 +11,6 @@
  * - Automatic secret loading
  */
 
-import { getEnv } from '@tsops/runtime'
 import config from '../../tsops.production.config.v3.js'
 
 /**
@@ -58,11 +57,17 @@ export async function loadConfig(): Promise<AppConfig> {
   const namespace = process.env.NAMESPACE || process.env.K8S_NAMESPACE || 'worken-dev'
   
   // ✨ Load env from tsops config
-  // In production: reads from K8s secret mounted at /var/run/secrets/api-secrets/
-  // In development: uses static values from config
-  const env = await getEnv(config, 'api', namespace, {
-    source: process.env.NODE_ENV === 'production' ? 'kubernetes' : 'process'
-  })
+  // Set the namespace for runtime resolution
+  process.env.TSOPS_NAMESPACE = namespace
+  
+  // Get environment variables using new API
+  const env = {
+    NODE_ENV: config.env('api', 'NODE_ENV'),
+    PORT: config.env('api', 'PORT'),
+    JWT_SECRET: config.env('api', 'JWT_SECRET'),
+    DB_PASSWORD: config.env('api', 'DB_PASSWORD'),
+    API_KEY: config.env('api', 'API_KEY')
+  }
   
   return env as AppConfig
 }
@@ -182,10 +187,15 @@ export async function verifyToken(token: string) {
  */
 export async function loadTestConfig(): Promise<AppConfig> {
   // For tests, use development config
-  const env = await getEnv(config, 'api', 'worken-dev', {
-    source: 'process',
-    envPrefix: 'TEST_'
-  })
+  process.env.TSOPS_NAMESPACE = 'worken-dev'
+  
+  const env = {
+    NODE_ENV: config.env('api', 'NODE_ENV'),
+    PORT: config.env('api', 'PORT'),
+    JWT_SECRET: config.env('api', 'JWT_SECRET'),
+    DB_PASSWORD: config.env('api', 'DB_PASSWORD'),
+    API_KEY: config.env('api', 'API_KEY')
+  }
   
   return env as AppConfig
 }

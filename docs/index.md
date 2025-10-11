@@ -113,7 +113,7 @@ Import your `tsops.config.ts` in any service to access resolved endpoints and en
 import config from './tsops.config'
 
 // Automatically respects TSOPS_NAMESPACE (dev/prod)
-const backendBase = config.getExternalEndpoint('api')
+const backendBase = config.url('api', 'ingress')
 // e.g. https://api.dev.example.com
 
 export default async function Page() {

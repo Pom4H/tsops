@@ -9,7 +9,7 @@
 
   ### Refactored Runtime Configuration
 
-  Completely refactored `createRuntimeConfig` to provide direct helper methods: `env`, `dns`, and `url`. Removed complex runtime objects and dead code.
+  Completely refactored runtime configuration to provide direct helper methods: `env`, `dns`, and `url`. Replaced old methods (`getEnv`, `getInternalEndpoint`, `getExternalEndpoint`) with cleaner API.
 
   **Usage:**
   ```typescript
@@ -23,19 +23,38 @@
   // URL helpers with automatic port resolution
   const clusterUrl = config.url('api', 'cluster')      // -> 'http://api.namespace.svc.cluster.local:3000'
   const serviceUrl = config.url('api', 'service')      // -> 'http://api:3000'
-  const ingressUrl = config.url('api', 'ingress')      // -> 'http://api.example.com:3000'
+  const ingressUrl = config.url('api', 'ingress')      // -> 'https://api.example.com' (HTTPS, no port)
   
   // Environment variables
   const nodeEnv = config.env('api', 'NODE_ENV')        // -> 'production'
   const port = config.env('api', 'PORT')               // -> '3000'
   ```
 
+  **Breaking Changes:**
+  - **Removed**: `config.getEnv()`, `config.getInternalEndpoint()`, `config.getExternalEndpoint()`, `config.getApp()`, `config.getNamespace()`
+  - **Added**: `config.env()`, `config.dns()`, `config.url()` with cleaner API
+  - **Renamed**: `network` configuration property → `ingress`
+  - **Changed**: Ingress URLs now return HTTPS without port by default
+
+  **Migration Guide:**
+  ```typescript
+  // Old API (deprecated)
+  const env = config.getEnv('api')
+  const internal = config.getInternalEndpoint('api')
+  const external = config.getExternalEndpoint('api')
+  
+  // New API (current)
+  const nodeEnv = config.env('api', 'NODE_ENV')
+  const internal = config.url('api', 'cluster')
+  const external = config.url('api', 'ingress')
+  ```
+
   **Features:**
   - **Direct methods**: `config.dns()`, `config.url()`, `config.env()` available directly on config
-  - **Automatic port resolution**: URLs include correct ports from app configuration
+  - **Smart URL generation**: Ingress URLs use HTTPS without port, others use HTTP with port
   - **Clean interface**: Only essential methods, no complex runtime objects
   - **Type safety**: Full TypeScript support with proper inference
-  - **Clean codebase**: Removed dead code and unused types
+  - **Updated documentation**: All examples updated to use new API
 
   ## New Features
 

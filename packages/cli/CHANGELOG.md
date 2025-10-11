@@ -5,6 +5,30 @@
 ### Minor Changes
 
 - feat: add url helper for building complete URLs with automatic port resolution
+- feat: refactor runtime configuration with direct helper methods
+
+  ### Refactored Runtime Configuration
+
+  Completely refactored runtime configuration to provide direct helper methods: `env`, `dns`, and `url`. Replaced old methods (`getEnv`, `getInternalEndpoint`, `getExternalEndpoint`) with cleaner API.
+
+  **Breaking Changes:**
+  - **Removed**: `config.getEnv()`, `config.getInternalEndpoint()`, `config.getExternalEndpoint()`, `config.getApp()`, `config.getNamespace()`
+  - **Added**: `config.env()`, `config.dns()`, `config.url()` with cleaner API
+  - **Renamed**: `network` configuration property → `ingress`
+  - **Changed**: Ingress URLs now return HTTPS without port by default
+
+  **Migration Guide:**
+  ```typescript
+  // Old API (deprecated)
+  const env = config.getEnv('api')
+  const internal = config.getInternalEndpoint('api')
+  const external = config.getExternalEndpoint('api')
+  
+  // New API (current)
+  const nodeEnv = config.env('api', 'NODE_ENV')
+  const internal = config.url('api', 'cluster')
+  const external = config.url('api', 'ingress')
+  ```
 
   ## New Features
 
