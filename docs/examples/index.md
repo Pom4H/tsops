@@ -36,7 +36,7 @@ export default defineConfig({
         dockerfile: './web/Dockerfile'
       },
       
-      network: ({ domain }) => `www.${domain}`,
+      ingress: ({ domain }) => `www.${domain}`,
       
       env: ({ production }) => ({
         NODE_ENV: production ? 'production' : 'development',
@@ -57,14 +57,14 @@ Frontend + Backend + Database with secrets and service discovery.
 export default defineConfig({
   apps: {
     frontend: {
-      network: ({ domain }) => `app.${domain}`,
+      ingress: ({ domain }) => `app.${domain}`,
       env: ({ dns }) => ({
         API_URL: dns('backend', 3000)
       })
     },
     
     backend: {
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       env: ({ dns, secret, production }) => {
         if (production) {
           return secret('backend-secrets')
@@ -105,7 +105,7 @@ Multiple services with shared configuration.
 export default defineConfig({
   apps: {
     gateway: {
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       env: ({ dns }) => ({
         AUTH_SERVICE: dns('auth', 3001),
         USER_SERVICE: dns('users', 3002),
@@ -164,12 +164,12 @@ export default defineConfig({
     
     prometheus: {
       image: 'prom/prometheus:latest',
-      network: ({ domain }) => `prometheus.${domain}`
+      ingress: ({ domain }) => `prometheus.${domain}`
     },
     
     grafana: {
       image: 'grafana/grafana:latest',
-      network: ({ domain }) => `grafana.${domain}`,
+      ingress: ({ domain }) => `grafana.${domain}`,
       env: ({ dns }) => ({
         GF_DATABASE_URL: dns('postgres', 5432),
         GF_DATASOURCES_PROMETHEUS: dns('prometheus', 9090),
@@ -204,7 +204,7 @@ export default defineConfig({
   
   apps: {
     api: {
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       
       env: ({ production, dev, dns, secret }) => {
         if (production) {

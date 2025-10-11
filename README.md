@@ -11,13 +11,7 @@ Build only what changed. Deploy with confidence. Scale from prototype to product
 
 ## Why tsops?
 
-Modern teams use **monorepos** to manage multiple microservices. But traditional K8s tooling wasn't built for this workflow:
-
-- ❌ Helm rebuilds/redeploys everything on every change
-- ❌ kubectl apply doesn't know which apps changed
-- ❌ CI pipelines waste 30+ minutes rebuilding unchanged services
-
-**tsops solves this** by treating your monorepo as a typed configuration and building only affected applications.
+Modern teams use **monorepos** to manage multiple microservices. **tsops** treats your monorepo as a typed configuration and builds only affected applications.
 
 ### The tsops Approach
 
@@ -29,12 +23,12 @@ export default defineConfig({
   apps: {
     api: {
       build: { context: './apps/api', dockerfile: './apps/api/Dockerfile' },
-      network: ({ domain }) => `api.${domain}`
+      ingress: ({ domain }) => `api.${domain}`
     },
     
     frontend: {
       build: { context: './apps/frontend', dockerfile: './apps/frontend/Dockerfile' },
-      network: ({ domain }) => `app.${domain}`,
+      ingress: ({ domain }) => `app.${domain}`,
       env: ({ url }) => ({ API_URL: url('api', 'cluster') })
     },
     
@@ -138,7 +132,7 @@ Generate Deployments, Services, Ingress, and Traefik routes from one definition:
 ```typescript
 apps: {
   api: {
-    network: ({ domain }) => `api.${domain}`,  // Auto-generates Ingress + Service
+    ingress: ({ domain }) => `api.${domain}`,  // Auto-generates Ingress + Service
     ports: [{ name: 'http', port: 80, targetPort: 8080 }],
     replicas: ({ production }) => production ? 3 : 1
   }
@@ -230,7 +224,7 @@ export default defineConfig({
         context: './apps/api',
         dockerfile: './apps/api/Dockerfile'
       },
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       ports: [{ name: 'http', port: 80, targetPort: 8080 }],
       env: ({ production, dns, secret }) => ({
         NODE_ENV: production ? 'production' : 'development',
@@ -245,7 +239,7 @@ export default defineConfig({
         context: './apps/frontend',
         dockerfile: './apps/frontend/Dockerfile'
       },
-      network: ({ domain }) => `app.${domain}`,
+      ingress: ({ domain }) => `app.${domain}`,
       env: ({ url }) => ({
         NEXT_PUBLIC_API_URL: url('api', 'ingress')
       })
@@ -362,18 +356,11 @@ pnpm tsops build --filter HEAD^1
 
 ## Performance Benefits
 
-Real-world monorepo improvements:
-
-| Scenario | Before | After | Speedup |
-|----------|--------|-------|---------|
-| 1/10 apps changed | 30 min | 5 min | **6x faster** |
-| 2/10 apps changed | 30 min | 8 min | **3.75x faster** |
-| Config-only change | 30 min | 10 sec | **180x faster** |
-
-**Additional savings:**
-- 50-80% reduction in Docker registry bandwidth
-- 60-90% reduction in CI compute costs
-- Sub-5min feedback loop for developers
+Incremental builds mean:
+- Build only what changed, not the entire monorepo
+- Faster CI/CD feedback loops
+- Reduced Docker registry bandwidth
+- Lower compute costs
 
 ---
 

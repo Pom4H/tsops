@@ -72,7 +72,7 @@ export default defineConfig({
   
   apps: {
     web: {
-      network: ({ domain }) => domain,
+      ingress: ({ domain }) => domain,
       build: {
         type: 'dockerfile',
         context: './web',
@@ -84,7 +84,7 @@ export default defineConfig({
       })
     },
     api: {
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       build: {
         type: 'dockerfile',
         context: './api',

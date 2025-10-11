@@ -36,7 +36,7 @@ export default defineConfig({
   
   apps: {
     api: {
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       env: ({ dns }) => ({
         DB_URL: dns('postgres', 5432)
       })
@@ -72,7 +72,7 @@ Built-in helpers for common patterns:
   // → 'my-app-postgres.production.svc.cluster.local:5432'
   
   // Use namespace variables for domain
-  network: ({ domain }) => `api.${domain}`
+  ingress: ({ domain }) => `api.${domain}`
   // → 'api.example.com'
   
   secret('api-secrets')
