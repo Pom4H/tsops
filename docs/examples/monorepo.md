@@ -20,7 +20,7 @@ pnpm tsops plan --config examples/monorepo/tsops.config.ts
 
 - Uses `image` or Dockerfile `build` as needed
 - Secrets managed via root-level `secrets` and referenced with `secret()`
-- Uses `serviceDNS` between backend and frontend
+- Uses `dns` between backend and frontend
 
 ## Incremental Builds for Monorepo
 

@@ -9,11 +9,11 @@ All context helpers are automatically available in app configuration functions:
 ```typescript
 apps: {
   api: {
-    env: ({ serviceDNS, secret, appName, production }) => ({
+    env: ({ dns, secret, appName, production }) => ({
       // Use helpers here
       NODE_ENV: production ? 'production' : 'development',
       SERVICE_NAME: appName,
-      DB_URL: serviceDNS('postgres', 5432),
+      DB_URL: dns('postgres', 5432),
       JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
     })
   }
@@ -84,16 +84,16 @@ env: ({ cluster }) => ({
 
 Functions that generate names and DNS entries.
 
-### `serviceDNS(app, options?)`
+### `dns(app, options?)`
 
 Generate Kubernetes service DNS name with support for protocols, ports, headless services, and external services.
 
 #### Signature
 
 ```typescript
-serviceDNS(app: string, options?: number | ServiceDNSOptions): string
+dns(app: string, options?: number | DNSOptions): string
 
-interface ServiceDNSOptions {
+interface DNSOptions {
   port?: number
   protocol?: 'http' | 'https' | 'tcp' | 'udp'
   headless?: boolean      // For StatefulSets
@@ -108,13 +108,13 @@ interface ServiceDNSOptions {
 **Simple usage (backward compatible):**
 
 ```typescript
-env: ({ serviceDNS }) => ({
+env: ({ dns }) => ({
   // Without port
-  POSTGRES_HOST: serviceDNS('postgres'),
+  POSTGRES_HOST: dns('postgres'),
   // -> 'my-project-postgres.production.svc.cluster.local'
   
   // With port (shorthand)
-  POSTGRES_URL: serviceDNS('postgres', 5432),
+  POSTGRES_URL: dns('postgres', 5432),
   // -> 'my-project-postgres.production.svc.cluster.local:5432'
 })
 ```
@@ -122,11 +122,11 @@ env: ({ serviceDNS }) => ({
 **With protocol:**
 
 ```typescript
-env: ({ serviceDNS }) => ({
-  API_URL: serviceDNS('api', { port: 3000, protocol: 'https' }),
+env: ({ dns }) => ({
+  API_URL: dns('api', { port: 3000, protocol: 'https' }),
   // -> 'https://my-project-api.production.svc.cluster.local:3000'
   
-  REDIS_URL: serviceDNS('redis', { port: 6379, protocol: 'tcp' }),
+  REDIS_URL: dns('redis', { port: 6379, protocol: 'tcp' }),
   // -> 'tcp://my-project-redis.production.svc.cluster.local:6379'
 })
 ```
@@ -134,16 +134,16 @@ env: ({ serviceDNS }) => ({
 **Headless service (StatefulSet):**
 
 ```typescript
-env: ({ serviceDNS }) => ({
+env: ({ dns }) => ({
   // Specific pod
-  POSTGRES_MASTER: serviceDNS('postgres', { 
+  POSTGRES_MASTER: dns('postgres', { 
     headless: true, 
     podIndex: 0 
   }),
   // -> 'my-project-postgres-0.my-project-postgres.production.svc.cluster.local'
   
   // Service (all pods)
-  POSTGRES_SERVICE: serviceDNS('postgres', { headless: true }),
+  POSTGRES_SERVICE: dns('postgres', { headless: true }),
   // -> 'my-project-postgres.production.svc.cluster.local'
 })
 ```
@@ -151,8 +151,8 @@ env: ({ serviceDNS }) => ({
 **External service:**
 
 ```typescript
-env: ({ serviceDNS }) => ({
-  EXTERNAL_API: serviceDNS('api.external.com', { 
+env: ({ dns }) => ({
+  EXTERNAL_API: dns('api.external.com', { 
     external: true,
     protocol: 'https',
     port: 443
@@ -164,8 +164,8 @@ env: ({ serviceDNS }) => ({
 **Custom cluster domain:**
 
 ```typescript
-env: ({ serviceDNS }) => ({
-  SERVICE_URL: serviceDNS('api', { port: 3000, clusterDomain: 'custom.local' }),
+env: ({ dns }) => ({
+  SERVICE_URL: dns('api', { port: 3000, clusterDomain: 'custom.local' }),
   // -> 'my-project-api.production.svc.custom.local:3000'
 })
 ```
@@ -390,12 +390,12 @@ template(str: string, vars: Record<string, string>): string
 #### Examples
 
 ```typescript
-env: ({ template, serviceDNS }) => ({
+env: ({ template, dns }) => ({
   // Database URL
   DATABASE_URL: template('postgresql://{user}:{pass}@{host}:{port}/{db}', {
     user: 'admin',
     pass: 'secret',
-    host: serviceDNS('postgres'),
+    host: dns('postgres'),
     port: '5432',
     db: 'myapp'
   }),
@@ -463,7 +463,7 @@ export default defineConfig({
         cluster,
         
         // Generators
-        serviceDNS,
+        dns,
         label,
         resource,
         
@@ -492,8 +492,8 @@ export default defineConfig({
         DEBUG: production ? 'false' : 'true',
         
         // Service DNS
-        REDIS_URL: serviceDNS('redis', 6379),
-        POSTGRES_URL: serviceDNS('postgres', {
+        REDIS_URL: dns('redis', 6379),
+        POSTGRES_URL: dns('postgres', {
           port: 5432,
           protocol: 'postgresql' as any
         }),
@@ -503,7 +503,7 @@ export default defineConfig({
         
         // Template
         DATABASE_URL: template('postgresql://{host}:{port}/myapp', {
-          host: serviceDNS('postgres'),
+          host: dns('postgres'),
           port: '5432'
         }),
         

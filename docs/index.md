@@ -78,9 +78,9 @@ export default defineConfig({
         context: './web',
         dockerfile: './web/Dockerfile'
       },
-      env: ({ production, serviceDNS }) => ({
+      env: ({ production, dns }) => ({
         NODE_ENV: production ? 'production' : 'development',
-        OTEL_EXPORTER_OTLP_ENDPOINT: serviceDNS('otelCollector')
+        OTEL_EXPORTER_OTLP_ENDPOINT: dns('otelCollector')
       })
     },
     api: {
@@ -90,8 +90,8 @@ export default defineConfig({
         context: './api',
         dockerfile: './api/Dockerfile'
       },
-      env: ({ serviceDNS }) => ({
-        OTEL_EXPORTER_OTLP_ENDPOINT: serviceDNS('otelCollector')
+      env: ({ dns }) => ({
+        OTEL_EXPORTER_OTLP_ENDPOINT: dns('otelCollector')
       })
     },
     otelCollector: {
@@ -144,7 +144,7 @@ export default async function Page() {
   <div class="why-card">
     <div class="why-icon">✨</div>
     <div class="why-title">Smart Helpers</div>
-    <div class="why-desc">Access helpers like <code>serviceDNS()</code>, <code>secret()</code>, and <code>template()</code> directly inside app definitions.</div>
+    <div class="why-desc">Access helpers like <code>dns()</code>, <code>secret()</code>, and <code>template()</code> directly inside app definitions.</div>
   </div>
   <div class="why-card">
     <div class="why-icon">🔒</div>
@@ -179,7 +179,7 @@ export default async function Page() {
 > 
 > — *Production User*
 
-> "The context helpers are a game-changer. serviceDNS() alone saved us hours of configuration work."
+> "The context helpers are a game-changer. dns() alone saved us hours of configuration work."
 > 
 > — *DevOps Engineer*
 

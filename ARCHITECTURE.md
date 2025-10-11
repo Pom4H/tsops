@@ -54,7 +54,7 @@ The monorepo is managed with **pnpm workspaces + Turborepo** (`turbo.json`). Glo
 `createConfigResolver(config, { env })` composes specialised resolvers. Each resolver is a pure abstraction so the rest of the system stays declarative.
 
 - **ProjectResolver** — naming helpers (`${project}-${app}`), service names.
-- **NamespaceResolver** — namespace iteration/filtering, helper context creation (exposes `serviceDNS`, `label`, `resource`, `secret`, `configMap`, `env`, `template`, namespace vars, cluster metadata).
+- **NamespaceResolver** — namespace iteration/filtering, helper context creation (exposes `dns`, `label`, `resource`, `secret`, `configMap`, `env`, `template`, namespace vars, cluster metadata).
 - **ImagesResolver** — builds deterministic image refs. Supports strategies: `'git-sha' | 'git-tag' | 'timestamp' | string | { kind: string; … }`. The Node bundle layers in `GitEnvironmentProvider(ProcessEnvironmentProvider)` so Git metadata is available by default.
 - **AppsResolver** — resolves app definitions per namespace: build info, env (with Secret/ConfigMap refs), secrets/configMaps data, network configuration. Delegates to `network-normalizers.ts` to materialise ingress/Traefik/cert manifests and to `images` resolver for defaults.
 

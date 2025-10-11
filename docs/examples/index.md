@@ -58,27 +58,27 @@ export default defineConfig({
   apps: {
     frontend: {
       network: ({ domain }) => `app.${domain}`,
-      env: ({ serviceDNS }) => ({
-        API_URL: serviceDNS('backend', 3000)
+      env: ({ dns }) => ({
+        API_URL: dns('backend', 3000)
       })
     },
     
     backend: {
       network: ({ domain }) => `api.${domain}`,
-      env: ({ serviceDNS, secret, production }) => {
+      env: ({ dns, secret, production }) => {
         if (production) {
           return secret('backend-secrets')
         }
         return {
-          DB_URL: serviceDNS('postgres', 5432),
-          REDIS_URL: serviceDNS('redis', 6379)
+          DB_URL: dns('postgres', 5432),
+          REDIS_URL: dns('redis', 6379)
         }
       },
       
-      secrets: ({ serviceDNS, production }) => ({
+      secrets: ({ dns, production }) => ({
         'backend-secrets': {
           JWT_SECRET: production ? process.env.PROD_JWT! : 'dev-jwt',
-          DB_URL: serviceDNS('postgres', 5432)
+          DB_URL: dns('postgres', 5432)
         }
       })
     },
@@ -106,33 +106,33 @@ export default defineConfig({
   apps: {
     gateway: {
       network: ({ domain }) => `api.${domain}`,
-      env: ({ serviceDNS }) => ({
-        AUTH_SERVICE: serviceDNS('auth', 3001),
-        USER_SERVICE: serviceDNS('users', 3002),
-        ORDER_SERVICE: serviceDNS('orders', 3003)
+      env: ({ dns }) => ({
+        AUTH_SERVICE: dns('auth', 3001),
+        USER_SERVICE: dns('users', 3002),
+        ORDER_SERVICE: dns('orders', 3003)
       })
     },
     
     auth: {
-      env: ({ serviceDNS, secret }) => ({
+      env: ({ dns, secret }) => ({
         ...secret('auth-secrets'),
-        DB_URL: serviceDNS('postgres', 5432)
+        DB_URL: dns('postgres', 5432)
       })
     },
     
     users: {
-      env: ({ serviceDNS, secret }) => ({
+      env: ({ dns, secret }) => ({
         ...secret('users-secrets'),
-        DB_URL: serviceDNS('postgres', 5432),
-        CACHE_URL: serviceDNS('redis', 6379)
+        DB_URL: dns('postgres', 5432),
+        CACHE_URL: dns('redis', 6379)
       })
     },
     
     orders: {
-      env: ({ serviceDNS, secret }) => ({
+      env: ({ dns, secret }) => ({
         ...secret('orders-secrets'),
-        DB_URL: serviceDNS('postgres', 5432),
-        PAYMENT_SERVICE: serviceDNS('payments', 3004)
+        DB_URL: dns('postgres', 5432),
+        PAYMENT_SERVICE: dns('payments', 3004)
       })
     }
   }
@@ -149,16 +149,16 @@ Add Prometheus, Grafana, and Loki.
 export default defineConfig({
   apps: {
     api: {
-      env: ({ serviceDNS }) => ({
-        OTEL_ENDPOINT: serviceDNS('otel-collector', 4318)
+      env: ({ dns }) => ({
+        OTEL_ENDPOINT: dns('otel-collector', 4318)
       })
     },
     
     'otel-collector': {
       image: 'otel/opentelemetry-collector-contrib:0.100.0',
-      env: ({ serviceDNS }) => ({
-        PROMETHEUS_ENDPOINT: serviceDNS('prometheus', 9090),
-        LOKI_ENDPOINT: serviceDNS('loki', 3100)
+      env: ({ dns }) => ({
+        PROMETHEUS_ENDPOINT: dns('prometheus', 9090),
+        LOKI_ENDPOINT: dns('loki', 3100)
       })
     },
     
@@ -170,10 +170,10 @@ export default defineConfig({
     grafana: {
       image: 'grafana/grafana:latest',
       network: ({ domain }) => `grafana.${domain}`,
-      env: ({ serviceDNS }) => ({
-        GF_DATABASE_URL: serviceDNS('postgres', 5432),
-        GF_DATASOURCES_PROMETHEUS: serviceDNS('prometheus', 9090),
-        GF_DATASOURCES_LOKI: serviceDNS('loki', 3100)
+      env: ({ dns }) => ({
+        GF_DATABASE_URL: dns('postgres', 5432),
+        GF_DATASOURCES_PROMETHEUS: dns('prometheus', 9090),
+        GF_DATASOURCES_LOKI: dns('loki', 3100)
       })
     },
     
@@ -206,7 +206,7 @@ export default defineConfig({
     api: {
       network: ({ domain }) => `api.${domain}`,
       
-      env: ({ production, dev, serviceDNS, secret }) => {
+      env: ({ production, dev, dns, secret }) => {
         if (production) {
           return secret('api-secrets')
         }
@@ -214,7 +214,7 @@ export default defineConfig({
         return {
           NODE_ENV: dev ? 'development' : 'staging',
           LOG_LEVEL: dev ? 'debug' : 'info',
-          DB_URL: serviceDNS('postgres', 5432)
+          DB_URL: dns('postgres', 5432)
         }
       },
       
@@ -263,9 +263,9 @@ export default defineConfig({
         context: './packages/api',
         dockerfile: './packages/api/Dockerfile'
       },
-      env: ({ serviceDNS }): AppConfig => ({
-        database: serviceDNS('postgres', 5432),
-        redis: serviceDNS('redis', 6379)
+      env: ({ dns }): AppConfig => ({
+        database: dns('postgres', 5432),
+        redis: dns('redis', 6379)
       })
     },
     
@@ -275,9 +275,9 @@ export default defineConfig({
         context: './packages/worker',
         dockerfile: './packages/worker/Dockerfile'
       },
-      env: ({ serviceDNS }): AppConfig => ({
-        database: serviceDNS('postgres', 5432),
-        redis: serviceDNS('redis', 6379)
+      env: ({ dns }): AppConfig => ({
+        database: dns('postgres', 5432),
+        redis: dns('redis', 6379)
       })
     }
   }

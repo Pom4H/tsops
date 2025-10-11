@@ -20,6 +20,6 @@ pnpm tsops plan --config examples/otel/tsops.config.ts
 
 - `otelCollector`, `loki`, `grafana` are defined with `image`
 - ConfigMaps are embedded as JSON strings and mounted into containers
-- Apps use `serviceDNS('otelCollector', { protocol: 'http', port: 4318 })` for OTLP
+- Apps use `dns('otelCollector', { protocol: 'http', port: 4318 })` for OTLP
 
 

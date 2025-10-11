@@ -40,9 +40,9 @@ export default defineConfig({
     
     worker: {
       build: { context: './apps/worker', dockerfile: './apps/worker/Dockerfile' },
-      env: ({ serviceDNS, secret }) => ({
-        DATABASE_URL: serviceDNS('postgres', 5432),
-        REDIS_URL: serviceDNS('redis', 6379),
+      env: ({ dns, secret }) => ({
+        DATABASE_URL: dns('postgres', 5432),
+        REDIS_URL: dns('redis', 6379),
         API_KEY: secret('worker-secrets', 'API_KEY')
       })
     }
@@ -67,7 +67,6 @@ Building 1 affected app(s): api
 $ tsops deploy --namespace prod --app api
 ```
 
-**Result:** 5-minute builds instead of 30 minutes. 10x-50x faster CI/CD.
 
 ---
 
@@ -97,9 +96,9 @@ Full TypeScript autocomplete for your entire infrastructure:
 ```typescript
 apps: {
   api: {
-    env: ({ serviceDNS, secret, production }) => ({
+    env: ({ dns, secret, production }) => ({
       NODE_ENV: production ? 'production' : 'development',
-      DATABASE_URL: serviceDNS('postgres', 5432),  // ← Autocomplete!
+      DATABASE_URL: dns('postgres', 5432),  // ← Autocomplete!
       JWT_SECRET: secret('api-secrets', 'JWT_SECRET')  // ← Type-checked!
     })
   }
@@ -233,9 +232,9 @@ export default defineConfig({
       },
       network: ({ domain }) => `api.${domain}`,
       ports: [{ name: 'http', port: 80, targetPort: 8080 }],
-      env: ({ production, serviceDNS, secret }) => ({
+      env: ({ production, dns, secret }) => ({
         NODE_ENV: production ? 'production' : 'development',
-        DATABASE_URL: serviceDNS('postgres', 5432),
+        DATABASE_URL: dns('postgres', 5432),
         JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
       })
     },
@@ -385,9 +384,9 @@ Real-world monorepo improvements:
 ```typescript
 apps: {
   frontend: {
-    env: ({ serviceDNS, url }) => ({
+    env: ({ dns, url }) => ({
       // Cluster-internal DNS (fast)
-      API_URL: serviceDNS('api', 8080),
+      API_URL: dns('api', 8080),
       // http://api.prod.svc.cluster.local:8080
       
       // External URL (for client-side)
@@ -410,9 +409,9 @@ namespaces: {
 apps: {
   api: {
     replicas: ({ replicas }) => replicas,  // Auto-scales per environment
-    env: ({ production, serviceDNS }) => ({
+    env: ({ production, dns }) => ({
       LOG_LEVEL: production ? 'info' : 'debug',
-      DATABASE_URL: serviceDNS('postgres', 5432)
+      DATABASE_URL: dns('postgres', 5432)
     })
   }
 }
@@ -424,15 +423,15 @@ apps: {
 // Common database for multiple apps
 apps: {
   api: {
-    env: ({ serviceDNS }) => ({
-      DATABASE_URL: serviceDNS('postgres', 5432)
+    env: ({ dns }) => ({
+      DATABASE_URL: dns('postgres', 5432)
     })
   },
   
   worker: {
-    env: ({ serviceDNS }) => ({
-      DATABASE_URL: serviceDNS('postgres', 5432),  // Same database
-      QUEUE_URL: serviceDNS('redis', 6379)
+    env: ({ dns }) => ({
+      DATABASE_URL: dns('postgres', 5432),  // Same database
+      QUEUE_URL: dns('redis', 6379)
     })
   },
   
@@ -517,17 +516,6 @@ const external = config.url('api', 'ingress')
 
 ---
 
-## Comparison
-
-| Tool | Monorepo Support | Incremental Builds | Type Safety | Diff Preview |
-|------|------------------|-------------------|-------------|--------------|
-| **tsops** | ✅ Built-in | ✅ `--filter` flag | ✅ Full TypeScript | ✅ Yes |
-| Helm | ❌ Manual | ❌ No | ❌ YAML | ❌ No |
-| Skaffold | ⚠️ Partial | ⚠️ File watching | ❌ YAML | ❌ No |
-| kubectl | ❌ No | ❌ No | ❌ YAML | ❌ No |
-
----
-
 ## Contributing
 
 Contributions are welcome! Please check out [CONTRIBUTING.md](CONTRIBUTING.md) and [AGENTS.md](AGENTS.md) for development guidelines.
@@ -547,10 +535,8 @@ MIT © Roman Popov
 Built for teams who:
 - Manage multiple microservices in monorepos
 - Want type-safe infrastructure definitions
-- Need fast, incremental CI/CD pipelines
+- Need incremental CI/CD pipelines
 - Value deterministic, reproducible deployments
-
-**Start building only what changed. Try tsops today.**
 
 ```bash
 pnpm add tsops

@@ -189,20 +189,13 @@ env:
 --filter abc123
 ```
 
-## Performance Benchmarks
+## Benefits
 
-Typical improvements in large monorepos:
-
-| Scenario | Without --filter | With --filter | Speedup |
-|----------|------------------|---------------|---------|
-| 1/10 apps changed | 30 min | 5 min | **6x faster** |
-| 2/10 apps changed | 30 min | 8 min | **3.75x faster** |
-| Config only changed | 30 min | 10 sec | **180x faster** |
-
-Additional benefits:
-- **50-80% reduction** in Docker registry bandwidth
-- **60-90% reduction** in CI compute costs
-- **Faster feedback** for developers (sub-5min builds common)
+Using `--filter` in monorepos provides:
+- Build only changed applications
+- Reduce Docker registry bandwidth usage
+- Lower CI compute costs
+- Faster feedback for developers
 
 ## Troubleshooting
 
