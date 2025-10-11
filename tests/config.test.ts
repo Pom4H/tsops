@@ -85,6 +85,29 @@ describe('defineConfig runtime API', () => {
 
   it('resolves runtime for dev', () => {
     withNamespace('dev', () => {
+      // Set runtime environment variables; runtime env helper must read from process.env
+      const keys = [
+        'ENDPOINT',
+        'HOST',
+        'NODE_ENV',
+        'SHARED_KEY',
+        'TOKEN',
+        'LOG_LEVEL',
+        'NAMESPACE',
+        'PROJECT'
+      ] as const
+      const prev: Partial<Record<typeof keys[number], string>> = {}
+      for (const k of keys) prev[k] = process.env[k]
+      process.env.ENDPOINT = 'http://api.dev.svc.cluster.local:80'
+      process.env.HOST = 'api.dev.example.com'
+      process.env.NODE_ENV = 'production'
+      process.env.SHARED_KEY = 'secret:shared-secrets:SHARED_KEY'
+      process.env.TOKEN = 'secret:token-secrets:PROJECT'
+      process.env.LOG_LEVEL = 'configmap:app-settings:LOG_LEVEL'
+      process.env.NAMESPACE = 'configmap:namespace-flags:NAMESPACE'
+      process.env.PROJECT = 'demo'
+      
+      try {
       // test dns helper
       expect(cfg.dns('api', 'cluster')).toBe('api.dev.svc.cluster.local')
       expect(cfg.dns('api', 'service')).toBe('api')
@@ -104,6 +127,14 @@ describe('defineConfig runtime API', () => {
       expect(cfg.env('api', 'LOG_LEVEL')).toBe('configmap:app-settings:LOG_LEVEL')
       expect(cfg.env('api', 'NAMESPACE')).toBe('configmap:namespace-flags:NAMESPACE')
       expect(cfg.env('api', 'PROJECT')).toBe('demo')
+      } finally {
+        // restore env
+        for (const k of keys) {
+          const val = prev[k]
+          if (val === undefined) delete process.env[k]
+          else process.env[k] = val
+        }
+      }
     })
   })
 
