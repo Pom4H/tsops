@@ -26,7 +26,7 @@ export class Builder<
     this.resolver = dependencies.resolver
   }
 
-  async build(options: { app?: string; namespace?: string } = {}): Promise<BuildResult> {
+  async build(options: { app?: string; namespace?: string; force?: boolean } = {}): Promise<BuildResult> {
     // Login to Docker registry before building (reads from env vars)
     await this.docker.login()
 
@@ -49,15 +49,22 @@ export class Builder<
         continue
       }
 
-      // Check if image already exists in registry
-      const exists = await this.docker.imageExists(imageRef)
-      if (exists) {
-        this.logger.info('Image already exists in registry. Skipping build.', {
+      // Check if image already exists in registry (unless force rebuild is requested)
+      if (!options.force) {
+        const exists = await this.docker.imageExists(imageRef)
+        if (exists) {
+          this.logger.info('Image already exists in registry. Skipping build.', {
+            app: appName,
+            image: imageRef
+          })
+          results.push({ app: appName, image: imageRef })
+          continue
+        }
+      } else {
+        this.logger.info('Force rebuild requested. Building image.', {
           app: appName,
           image: imageRef
         })
-        results.push({ app: appName, image: imageRef })
-        continue
       }
 
       // Build context can be extended with namespace variables if needed
