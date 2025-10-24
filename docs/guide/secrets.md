@@ -268,11 +268,11 @@ secrets: {
 
 ```typescript
 secrets: {
-  'api-secrets': ({ dns }) => ({
+  'api-secrets': ({ url }) => ({
     DATABASE_URL: template('postgresql://{user}:{pwd}@{host}/{db}', {
       user: 'myuser',
       pwd: process.env.DB_PASSWORD ?? '',
-      host: dns('postgres', 5432),
+      host: url('postgres', 'cluster'),
       db: 'myapp'
     })
   })

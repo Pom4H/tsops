@@ -45,7 +45,7 @@ export default defineConfig({
         context: './web',
         dockerfile: './web/Dockerfile'
       },
-      network: ({ domain }) => `www.${domain}`,
+      ingress: ({ domain }) => `www.${domain}`,
       ports: [{ name: 'http', port: 80, targetPort: 3000 }],
       env: ({ production }) => ({ 
         NODE_ENV: production ? 'production' : 'development' 

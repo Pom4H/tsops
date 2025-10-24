@@ -29,20 +29,20 @@ export default defineConfig({
   apps: {
     api: {
       build: { context: './apps/api', dockerfile: './apps/api/Dockerfile' },
-      network: ({ domain }) => `api.${domain}`
+      ingress: ({ domain }) => `api.${domain}`
     },
     
     frontend: {
       build: { context: './apps/frontend', dockerfile: './apps/frontend/Dockerfile' },
-      network: ({ domain }) => `app.${domain}`,
+      ingress: ({ domain }) => `app.${domain}`,
       env: ({ url }) => ({ API_URL: url('api', 'cluster') })
     },
     
     worker: {
       build: { context: './apps/worker', dockerfile: './apps/worker/Dockerfile' },
-      env: ({ dns, secret }) => ({
-        DATABASE_URL: dns('postgres', 5432),
-        REDIS_URL: dns('redis', 6379),
+      env: ({ url, secret }) => ({
+        DATABASE_URL: url('postgres', 'cluster'),
+        REDIS_URL: url('redis', 'cluster'),
         API_KEY: secret('worker-secrets', 'API_KEY')
       })
     }
@@ -96,9 +96,9 @@ Full TypeScript autocomplete for your entire infrastructure:
 ```typescript
 apps: {
   api: {
-    env: ({ dns, secret, production }) => ({
+    env: ({ url, secret, production }) => ({
       NODE_ENV: production ? 'production' : 'development',
-      DATABASE_URL: dns('postgres', 5432),  // ← Autocomplete!
+      DATABASE_URL: url('postgres', 'cluster'),  // ← Autocomplete!
       JWT_SECRET: secret('api-secrets', 'JWT_SECRET')  // ← Type-checked!
     })
   }
@@ -138,7 +138,7 @@ Generate Deployments, Services, Ingress, and Traefik routes from one definition:
 ```typescript
 apps: {
   api: {
-    network: ({ domain }) => `api.${domain}`,  // Auto-generates Ingress + Service
+    ingress: ({ domain }) => `api.${domain}`,  // Auto-generates Ingress + Service
     ports: [{ name: 'http', port: 80, targetPort: 8080 }],
     replicas: ({ production }) => production ? 3 : 1
   }
@@ -230,11 +230,11 @@ export default defineConfig({
         context: './apps/api',
         dockerfile: './apps/api/Dockerfile'
       },
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       ports: [{ name: 'http', port: 80, targetPort: 8080 }],
-      env: ({ production, dns, secret }) => ({
+      env: ({ production, url, secret }) => ({
         NODE_ENV: production ? 'production' : 'development',
-        DATABASE_URL: dns('postgres', 5432),
+        DATABASE_URL: url('postgres', 'cluster'),
         JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
       })
     },
@@ -245,7 +245,7 @@ export default defineConfig({
         context: './apps/frontend',
         dockerfile: './apps/frontend/Dockerfile'
       },
-      network: ({ domain }) => `app.${domain}`,
+      ingress: ({ domain }) => `app.${domain}`,
       env: ({ url }) => ({
         NEXT_PUBLIC_API_URL: url('api', 'ingress')
       })
@@ -384,9 +384,9 @@ Real-world monorepo improvements:
 ```typescript
 apps: {
   frontend: {
-    env: ({ dns, url }) => ({
-      // Cluster-internal DNS (fast)
-      API_URL: dns('api', 8080),
+    env: ({ url }) => ({
+      // Cluster-internal URL (fast)
+      API_URL: url('api', 'cluster'),
       // http://api.prod.svc.cluster.local:8080
       
       // External URL (for client-side)
@@ -409,9 +409,9 @@ namespaces: {
 apps: {
   api: {
     replicas: ({ replicas }) => replicas,  // Auto-scales per environment
-    env: ({ production, dns }) => ({
+    env: ({ production, url }) => ({
       LOG_LEVEL: production ? 'info' : 'debug',
-      DATABASE_URL: dns('postgres', 5432)
+      DATABASE_URL: url('postgres', 'cluster')
     })
   }
 }
@@ -423,15 +423,15 @@ apps: {
 // Common database for multiple apps
 apps: {
   api: {
-    env: ({ dns }) => ({
-      DATABASE_URL: dns('postgres', 5432)
+    env: ({ url }) => ({
+      DATABASE_URL: url('postgres', 'cluster')
     })
   },
   
   worker: {
-    env: ({ dns }) => ({
-      DATABASE_URL: dns('postgres', 5432),  // Same database
-      QUEUE_URL: dns('redis', 6379)
+    env: ({ url }) => ({
+      DATABASE_URL: url('postgres', 'cluster'),  // Same database
+      QUEUE_URL: url('redis', 'cluster')
     })
   },
   

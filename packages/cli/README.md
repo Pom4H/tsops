@@ -303,7 +303,7 @@ export default defineConfig({
   
   apps: {
     api: {
-      host: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       build: {
         type: 'dockerfile',
         context: '.',
@@ -312,18 +312,7 @@ export default defineConfig({
       env: ({ replicas }) => ({
         NODE_ENV: replicas > 1 ? 'production' : 'development',
         REPLICAS: String(replicas)
-      }),
-      network: {
-        ingress: {
-          className: 'nginx'
-        },
-        certificate: {
-          issuerRef: {
-            kind: 'ClusterIssuer',
-            name: 'letsencrypt-prod'
-          }
-        }
-      }
+      })
     }
   }
 })

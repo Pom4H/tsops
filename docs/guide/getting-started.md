@@ -71,14 +71,14 @@ export default defineConfig({
         dockerfile: './api/Dockerfile'
       },
       
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       
       ports: [{ name: 'http', port: 80, targetPort: 8080 }],
       
-      env: ({ dns, template, production }) => ({
+      env: ({ url, template, production }) => ({
         NODE_ENV: production ? 'production' : 'development',
         DB_URL: template('postgresql://{host}/mydb', {
-          host: dns('postgres', 5432)
+          host: url('postgres', 'cluster')
         })
       })
     }

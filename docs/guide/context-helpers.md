@@ -9,11 +9,12 @@ All context helpers are automatically available in app configuration functions:
 ```typescript
 apps: {
   api: {
-    env: ({ dns, secret, appName, production }) => ({
+    env: ({ url, dns, secret, appName, production }) => ({
       // Use helpers here
       NODE_ENV: production ? 'production' : 'development',
       SERVICE_NAME: appName,
-      DB_URL: dns('postgres', 5432),
+      DB_URL: url('postgres', 'cluster'),
+      API_HOST: dns('api', 'cluster'),
       JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
     })
   }
@@ -84,107 +85,145 @@ env: ({ cluster }) => ({
 
 Functions that generate names and DNS entries.
 
-### `dns(app, options?)`
+### `dns(app, type)`
 
-Generate Kubernetes service DNS name with support for protocols, ports, headless services, and external services.
+Generate DNS name for different types of resources.
 
 #### Signature
 
 ```typescript
-dns(app: string, options?: number | DNSOptions): string
+dns(app: string, type: DNSType): string
 
-interface DNSOptions {
-  port?: number
-  protocol?: 'http' | 'https' | 'tcp' | 'udp'
-  headless?: boolean      // For StatefulSets
-  podIndex?: number       // Pod index for headless service
-  external?: boolean      // External service (no cluster domain)
-  clusterDomain?: string  // Default: 'cluster.local'
-}
+type DNSType = 'cluster' | 'service' | 'ingress'
 ```
 
 #### Examples
 
-**Simple usage (backward compatible):**
+**Cluster internal DNS:**
 
 ```typescript
 env: ({ dns }) => ({
-  // Without port
-  POSTGRES_HOST: dns('postgres'),
-  // -> 'my-project-postgres.production.svc.cluster.local'
+  POSTGRES_HOST: dns('postgres', 'cluster'),
+  // -> 'postgres.production.svc.cluster.local'
   
-  // With port (shorthand)
-  POSTGRES_URL: dns('postgres', 5432),
-  // -> 'my-project-postgres.production.svc.cluster.local:5432'
+  API_URL: dns('api', 'cluster'),
+  // -> 'api.production.svc.cluster.local'
 })
 ```
 
-**With protocol:**
+**Service name only:**
 
 ```typescript
 env: ({ dns }) => ({
-  API_URL: dns('api', { port: 3000, protocol: 'https' }),
-  // -> 'https://my-project-api.production.svc.cluster.local:3000'
+  REDIS_HOST: dns('redis', 'service'),
+  // -> 'redis'
   
-  REDIS_URL: dns('redis', { port: 6379, protocol: 'tcp' }),
-  // -> 'tcp://my-project-redis.production.svc.cluster.local:6379'
+  DB_HOST: dns('postgres', 'service'),
+  // -> 'postgres'
 })
 ```
 
-**Headless service (StatefulSet):**
+**External DNS (from ingress configuration):**
 
 ```typescript
 env: ({ dns }) => ({
-  // Specific pod
-  POSTGRES_MASTER: dns('postgres', { 
-    headless: true, 
-    podIndex: 0 
-  }),
-  // -> 'my-project-postgres-0.my-project-postgres.production.svc.cluster.local'
+  PUBLIC_API: dns('api', 'ingress'),
+  // -> 'api.example.com' (if ingress configured)
   
-  // Service (all pods)
-  POSTGRES_SERVICE: dns('postgres', { headless: true }),
-  // -> 'my-project-postgres.production.svc.cluster.local'
-})
-```
-
-**External service:**
-
-```typescript
-env: ({ dns }) => ({
-  EXTERNAL_API: dns('api.external.com', { 
-    external: true,
-    protocol: 'https',
-    port: 443
-  }),
-  // -> 'https://api.external.com:443'
-})
-```
-
-**Custom cluster domain:**
-
-```typescript
-env: ({ dns }) => ({
-  SERVICE_URL: dns('api', { port: 3000, clusterDomain: 'custom.local' }),
-  // -> 'my-project-api.production.svc.custom.local:3000'
+  FRONTEND_URL: dns('frontend', 'ingress'),
+  // -> 'app.example.com' (if ingress configured)
 })
 ```
 
 #### Pattern
 
+**Cluster DNS (`type: 'cluster'`):**
 ```
-[protocol://]{project}-{app}.{namespace}.svc.{clusterDomain}[:port]
-```
-
-For headless with podIndex:
-```
-[protocol://]{project}-{app}-{podIndex}.{project}-{app}.{namespace}.svc.{clusterDomain}[:port]
+{app}.{namespace}.svc.cluster.local
 ```
 
-For external:
+**Service DNS (`type: 'service'`):**
 ```
-[protocol://]{app}[:port]
+{app}
 ```
+
+**Ingress DNS (`type: 'ingress'`):**
+```
+{domain from ingress configuration}
+```
+
+**Note:** For complete URLs with protocol and port, use the `url()` helper instead.
+
+---
+
+### `url(app, type, options?)`
+
+Generate complete URL for different types of resources with automatic port resolution.
+
+#### Signature
+
+```typescript
+url(app: string, type: DNSType, options?: { protocol?: 'http' | 'https' }): string
+
+type DNSType = 'cluster' | 'service' | 'ingress'
+```
+
+#### Examples
+
+**Cluster internal URL:**
+
+```typescript
+env: ({ url }) => ({
+  POSTGRES_URL: url('postgres', 'cluster'),
+  // -> 'http://postgres.production.svc.cluster.local:5432'
+  
+  API_URL: url('api', 'cluster', { protocol: 'https' }),
+  // -> 'https://api.production.svc.cluster.local:3000'
+})
+```
+
+**Service URL:**
+
+```typescript
+env: ({ url }) => ({
+  REDIS_URL: url('redis', 'service'),
+  // -> 'http://redis:6379'
+  
+  DB_URL: url('postgres', 'service'),
+  // -> 'http://postgres:5432'
+})
+```
+
+**External URL (from ingress configuration):**
+
+```typescript
+env: ({ url }) => ({
+  PUBLIC_API: url('api', 'ingress'),
+  // -> 'https://api.example.com' (HTTPS by default for ingress)
+  
+  FRONTEND_URL: url('frontend', 'ingress'),
+  // -> 'https://app.example.com'
+})
+```
+
+#### Pattern
+
+**Cluster URL (`type: 'cluster'`):**
+```
+{protocol}://{app}.{namespace}.svc.cluster.local:{port}
+```
+
+**Service URL (`type: 'service'`):**
+```
+{protocol}://{app}:{port}
+```
+
+**Ingress URL (`type: 'ingress'`):**
+```
+https://{domain from ingress configuration}
+```
+
+**Note:** Port is automatically resolved from the first port in the app's `ports` configuration. Default protocol is `http`, except for ingress type which defaults to `https`.
 
 ---
 
@@ -453,7 +492,7 @@ export default defineConfig({
   
   apps: {
     api: {
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       
       env: ({
         // Metadata
@@ -491,12 +530,9 @@ export default defineConfig({
         NODE_ENV: production ? 'production' : 'development',
         DEBUG: production ? 'false' : 'true',
         
-        // Service DNS
-        REDIS_URL: dns('redis', 6379),
-        POSTGRES_URL: dns('postgres', {
-          port: 5432,
-          protocol: 'postgresql' as any
-        }),
+        // Service URLs
+        REDIS_URL: url('redis', 'cluster'),
+        POSTGRES_URL: url('postgres', 'cluster'),
         
         // Secrets
         JWT_SECRET: secret('app-secrets', 'JWT_SECRET'),
