@@ -22,7 +22,7 @@ Use this checklist during PR review:
   - Option keys are consistent: `protocol`, `port`, `clusterDomain`.
 
 - Signatures
-  - Options object is last; numeric shorthand allowed where applicable (e.g., `dns('api', 3000)`).
+  - Options object is last (e.g., `url('api', 'cluster', { protocol: 'https' })`).
   - Avoid overloads that reduce IntelliSense. Prefer a single options object.
   - Return `undefined` for missing optional values, not magic defaults (exception: `env()` documented behavior).
 
