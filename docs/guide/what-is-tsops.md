@@ -18,7 +18,7 @@ Deploying to Kubernetes traditionally involves:
 tsops provides:
 
 - ✅ **Type-safe configuration** - Catch errors at compile time
-- ✅ **Context helpers** - dns(), network(), secret()
+- ✅ **Context helpers** - dns(), url(), secret()
 - ✅ **Single source of truth** - Define once, use everywhere
 - ✅ **Secret validation** - Automatic checks before deployment
 - ✅ **Built-in Docker** - Build and push images
@@ -32,13 +32,16 @@ import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'my-app',
-  domain: { prod: 'example.com' },
+  
+  namespaces: {
+    prod: { domain: 'example.com' }
+  },
   
   apps: {
     api: {
-      network: ({ domain }) => `api.${domain}`,
-      env: ({ dns }) => ({
-        DB_URL: dns('postgres', 5432)
+      ingress: ({ domain }) => `api.${domain}`,
+      env: ({ url }) => ({
+        DB_URL: url('postgres', 'cluster')
       })
     }
   }
@@ -68,11 +71,14 @@ Built-in helpers for common patterns:
 
 ```typescript
 {
-  dns('postgres', 5432)
-  // → 'my-app-postgres.production.svc.cluster.local:5432'
+  url('postgres', 'cluster')
+  // → 'http://postgres.production.svc.cluster.local:5432'
+  
+  dns('postgres', 'cluster')
+  // → 'postgres.production.svc.cluster.local'
   
   // Use namespace variables for domain
-  network: ({ domain }) => `api.${domain}`
+  ingress: ({ domain }) => `api.${domain}`
   // → 'api.example.com'
   
   secret('api-secrets')

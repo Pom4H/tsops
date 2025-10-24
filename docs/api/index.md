@@ -52,10 +52,10 @@ export default defineConfig({
         context: './api',
         dockerfile: './api/Dockerfile'
       },
-      network: ({ domain }) => `api.${domain}`,
-      env: ({ secret, dns }) => ({
+      ingress: ({ domain }) => `api.${domain}`,
+      env: ({ secret, url }) => ({
         JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
-        DATABASE_URL: dns('postgres', 5432)
+        DATABASE_URL: url('postgres', 'cluster')
       }),
       ports: [{ name: 'http', port: 80, targetPort: 8080 }]
     }
@@ -153,16 +153,18 @@ cluster: ClusterMetadata // Cluster info
 ### dns()
 
 ```typescript
-dns(app: string, options?: number | DNSOptions): string
+dns(app: string, type: DNSType): string
+
+type DNSType = 'cluster' | 'service' | 'ingress'
 ```
 
-Generate Kubernetes service DNS with support for protocols, headless/stateful services, and external lookups.
+Generate DNS name for different types of resources.
 
 **Examples:**
 ```typescript
-dns('api', 3000)  // Simple with port
-dns('api', { port: 3000, protocol: 'https' })  // With protocol prefix
-dns('postgres', { headless: true, podIndex: 0 })  // StatefulSet pod DNS
+dns('api', 'cluster')   // Internal cluster DNS -> 'api.namespace.svc.cluster.local'
+dns('api', 'service')   // Service name only -> 'api'
+dns('api', 'ingress')   // External DNS -> 'api.example.com' (from ingress config)
 ```
 
 ### secret()
@@ -263,7 +265,7 @@ interface AppDefinition {
   env?: Record<string, EnvValue> | ((ctx: AppContext) => Record<string, EnvValue> | SecretRef | ConfigMapRef)
   secrets?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
   configMaps?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
-  network?: string | boolean | AppNetworkOptions | ((ctx: AppContext) => string | boolean | AppNetworkOptions)
+  ingress?: string | boolean | AppIngressOptions | ((ctx: AppContext) => string | boolean | AppIngressOptions)
   deploy?: 'all' | readonly string[] | { include?: readonly string[]; exclude?: readonly string[] }
   ports?: ServicePort[]
   podAnnotations?: Record<string, string>

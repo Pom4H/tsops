@@ -22,10 +22,9 @@ import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'my-app',
-  domain: { prod: 'example.com' },
   
   namespaces: {
-    production: { region: 'prod' }
+    production: { domain: 'example.com', region: 'prod' }
   },
   
   apps: {
@@ -36,7 +35,7 @@ export default defineConfig({
         dockerfile: './web/Dockerfile'
       },
       
-      network: ({ domain }) => `www.${domain}`,
+      ingress: ({ domain }) => `www.${domain}`,
       
       env: ({ production }) => ({
         NODE_ENV: production ? 'production' : 'development',
@@ -57,28 +56,28 @@ Frontend + Backend + Database with secrets and service discovery.
 export default defineConfig({
   apps: {
     frontend: {
-      network: ({ domain }) => `app.${domain}`,
-      env: ({ dns }) => ({
-        API_URL: dns('backend', 3000)
+      ingress: ({ domain }) => `app.${domain}`,
+      env: ({ url }) => ({
+        API_URL: url('backend', 'cluster')
       })
     },
     
     backend: {
-      network: ({ domain }) => `api.${domain}`,
-      env: ({ dns, secret, production }) => {
+      ingress: ({ domain }) => `api.${domain}`,
+      env: ({ url, secret, production }) => {
         if (production) {
           return secret('backend-secrets')
         }
         return {
-          DB_URL: dns('postgres', 5432),
-          REDIS_URL: dns('redis', 6379)
+          DB_URL: url('postgres', 'cluster'),
+          REDIS_URL: url('redis', 'cluster')
         }
       },
       
-      secrets: ({ dns, production }) => ({
+      secrets: ({ url, production }) => ({
         'backend-secrets': {
           JWT_SECRET: production ? process.env.PROD_JWT! : 'dev-jwt',
-          DB_URL: dns('postgres', 5432)
+          DB_URL: url('postgres', 'cluster')
         }
       })
     },
@@ -105,34 +104,34 @@ Multiple services with shared configuration.
 export default defineConfig({
   apps: {
     gateway: {
-      network: ({ domain }) => `api.${domain}`,
-      env: ({ dns }) => ({
-        AUTH_SERVICE: dns('auth', 3001),
-        USER_SERVICE: dns('users', 3002),
-        ORDER_SERVICE: dns('orders', 3003)
+      ingress: ({ domain }) => `api.${domain}`,
+      env: ({ url }) => ({
+        AUTH_SERVICE: url('auth', 'cluster'),
+        USER_SERVICE: url('users', 'cluster'),
+        ORDER_SERVICE: url('orders', 'cluster')
       })
     },
     
     auth: {
-      env: ({ dns, secret }) => ({
+      env: ({ url, secret }) => ({
         ...secret('auth-secrets'),
-        DB_URL: dns('postgres', 5432)
+        DB_URL: url('postgres', 'cluster')
       })
     },
     
     users: {
-      env: ({ dns, secret }) => ({
+      env: ({ url, secret }) => ({
         ...secret('users-secrets'),
-        DB_URL: dns('postgres', 5432),
-        CACHE_URL: dns('redis', 6379)
+        DB_URL: url('postgres', 'cluster'),
+        CACHE_URL: url('redis', 'cluster')
       })
     },
     
     orders: {
-      env: ({ dns, secret }) => ({
+      env: ({ url, secret }) => ({
         ...secret('orders-secrets'),
-        DB_URL: dns('postgres', 5432),
-        PAYMENT_SERVICE: dns('payments', 3004)
+        DB_URL: url('postgres', 'cluster'),
+        PAYMENT_SERVICE: url('payments', 'cluster')
       })
     }
   }
@@ -149,31 +148,31 @@ Add Prometheus, Grafana, and Loki.
 export default defineConfig({
   apps: {
     api: {
-      env: ({ dns }) => ({
-        OTEL_ENDPOINT: dns('otel-collector', 4318)
+      env: ({ url }) => ({
+        OTEL_ENDPOINT: url('otel-collector', 'cluster')
       })
     },
     
     'otel-collector': {
       image: 'otel/opentelemetry-collector-contrib:0.100.0',
-      env: ({ dns }) => ({
-        PROMETHEUS_ENDPOINT: dns('prometheus', 9090),
-        LOKI_ENDPOINT: dns('loki', 3100)
+      env: ({ url }) => ({
+        PROMETHEUS_ENDPOINT: url('prometheus', 'cluster'),
+        LOKI_ENDPOINT: url('loki', 'cluster')
       })
     },
     
     prometheus: {
       image: 'prom/prometheus:latest',
-      network: ({ domain }) => `prometheus.${domain}`
+      ingress: ({ domain }) => `prometheus.${domain}`
     },
     
     grafana: {
       image: 'grafana/grafana:latest',
-      network: ({ domain }) => `grafana.${domain}`,
-      env: ({ dns }) => ({
-        GF_DATABASE_URL: dns('postgres', 5432),
-        GF_DATASOURCES_PROMETHEUS: dns('prometheus', 9090),
-        GF_DATASOURCES_LOKI: dns('loki', 3100)
+      ingress: ({ domain }) => `grafana.${domain}`,
+      env: ({ url }) => ({
+        GF_DATABASE_URL: url('postgres', 'cluster'),
+        GF_DATASOURCES_PROMETHEUS: url('prometheus', 'cluster'),
+        GF_DATASOURCES_LOKI: url('loki', 'cluster')
       })
     },
     
@@ -190,21 +189,15 @@ Dev, staging, and production with different configurations.
 
 ```typescript
 export default defineConfig({
-  domain: {
-    dev: 'dev.example.com',
-    staging: 'staging.example.com',
-    prod: 'example.com'
-  },
-  
   namespaces: {
-    development: { region: 'dev' },
-    staging: { region: 'staging' },
-    production: { region: 'prod' }
+    development: { domain: 'dev.example.com', region: 'dev' },
+    staging: { domain: 'staging.example.com', region: 'staging' },
+    production: { domain: 'example.com', region: 'prod' }
   },
   
   apps: {
     api: {
-      network: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => `api.${domain}`,
       
       env: ({ production, dev, dns, secret }) => {
         if (production) {
@@ -214,7 +207,7 @@ export default defineConfig({
         return {
           NODE_ENV: dev ? 'development' : 'staging',
           LOG_LEVEL: dev ? 'debug' : 'info',
-          DB_URL: dns('postgres', 5432)
+          DB_URL: url('postgres', 'cluster')
         }
       },
       
@@ -263,9 +256,9 @@ export default defineConfig({
         context: './packages/api',
         dockerfile: './packages/api/Dockerfile'
       },
-      env: ({ dns }): AppConfig => ({
-        database: dns('postgres', 5432),
-        redis: dns('redis', 6379)
+      env: ({ url }): AppConfig => ({
+        database: url('postgres', 'cluster'),
+        redis: url('redis', 'cluster')
       })
     },
     
@@ -275,9 +268,9 @@ export default defineConfig({
         context: './packages/worker',
         dockerfile: './packages/worker/Dockerfile'
       },
-      env: ({ dns }): AppConfig => ({
-        database: dns('postgres', 5432),
-        redis: dns('redis', 6379)
+      env: ({ url }): AppConfig => ({
+        database: url('postgres', 'cluster'),
+        redis: url('redis', 'cluster')
       })
     }
   }
