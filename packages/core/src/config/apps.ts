@@ -13,14 +13,7 @@ import type {
 } from '../types.js'
 import { isConfigMapRef, isSecretRef } from '../types.js'
 import type { NamespaceResolver } from './namespaces.js'
-import {
-  createAutoHTTPS,
-  createDefaultNetwork,
-  extractHostFromNetwork,
-  normalizeCertificate,
-  normalizeIngress,
-  normalizeIngressRoute
-} from './network-normalizers.js'
+import { createAutoHTTPS } from './ingress.js'
 import type { ProjectResolver } from './project.js'
 
 export type ResolverApp<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>> =
@@ -78,12 +71,12 @@ export interface AppsResolver<TConfig extends TsOpsConfig<any, any, any, any, an
     >
   ): Record<string, Record<string, string>>
   /**
-   * Resolves network configuration. May return updated host if network is specified as domain string.
+   * Resolves network configuration from ingress definition.
+   * Returns ingress config, domain host, and protocol (http/https).
    */
   resolveNetwork(
     appName: string,
     app: ResolverApp<TConfig>,
-    namespace: string,
     context: AppHostContextWithHelpers<
       ExtractNamespaceVarsFromConfig<TConfig>,
       TConfig['project'],
@@ -91,9 +84,8 @@ export interface AppsResolver<TConfig extends TsOpsConfig<any, any, any, any, an
       TConfig['secrets'],
       TConfig['configMaps'],
       TConfig['apps']
-    >,
-    host: string | undefined
-  ): { network: ResolvedNetworkConfig | undefined; host: string | undefined }
+    >
+  ): { network: ResolvedNetworkConfig | undefined; host: string | undefined; protocol?: 'http' | 'https' }
 }
 
 export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>>(
@@ -236,94 +228,6 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     return { ...env }
   }
 
-  /**
-   * Evaluates network definition (calls it if it's a function).
-   */
-  function evaluateNetworkDefinition(
-    networkDef: ResolverApp<TConfig>['network'],
-    networkContext: AppHostContextWithHelpers<
-      ExtractNamespaceVarsFromConfig<TConfig>,
-      TConfig['project'],
-      Extract<keyof TConfig['namespaces'], string>,
-      TConfig['secrets'],
-      TConfig['configMaps']
-    >
-  ) {
-    if (typeof networkDef === 'function') {
-      return networkDef(networkContext)
-    }
-    return networkDef
-  }
-
-  /**
-   * Handles boolean network configuration.
-   * true = enable default network, false = disable network
-   */
-  function handleBooleanNetwork(
-    resolved: boolean,
-    host: string | undefined,
-    appName: string
-  ): ResolvedNetworkConfig | undefined {
-    if (!resolved) return undefined
-    if (!host) {
-      throw new Error(`App "${appName}" enabled network helpers, but no host is configured.`)
-    }
-    return createDefaultNetwork(host)
-  }
-
-  /**
-   * Builds the final network config from user-provided options.
-   * Handles ingress, ingressRoute, and certificate configuration.
-   */
-  function buildNetworkConfig(
-    appName: string,
-    networkOptions: AppIngressOptions,
-    host: string | undefined,
-    serviceName: string
-  ): ResolvedNetworkConfig | undefined {
-    const result: ResolvedNetworkConfig = {}
-
-    // Try to extract host from network config if not provided
-    const effectiveHost = host || extractHostFromNetwork(networkOptions)
-
-    // Handle ingress
-    const ingressDef = networkOptions.ingress
-    if (ingressDef === undefined) {
-      if (effectiveHost) {
-        result.ingress = normalizeIngress(effectiveHost)
-      }
-    } else if (ingressDef) {
-      if (!effectiveHost) {
-        throw new Error(
-          `App "${appName}" ingress requires a host to be configured or inferrable from network config.`
-        )
-      }
-      const ingressOptions: AppIngressOptions | undefined =
-        typeof ingressDef === 'object' ? ingressDef : undefined
-      result.ingress = normalizeIngress(effectiveHost, ingressOptions)
-    }
-
-    // Handle ingressRoute (Traefik)
-    const ingressRouteDef = networkOptions.ingressRoute
-    if (ingressRouteDef !== undefined && ingressRouteDef !== false) {
-      const ingressRouteOptions: AppIngressRouteOptions =
-        ingressRouteDef === true ? {} : ingressRouteDef
-      result.ingressRoute = normalizeIngressRoute(effectiveHost, serviceName, ingressRouteOptions)
-    }
-
-    // Handle certificate (cert-manager)
-    const certificateDef = networkOptions.certificate
-    if (certificateDef !== undefined && certificateDef !== false) {
-      const options: AppCertificateOptions | undefined =
-        certificateDef === true ? undefined : certificateDef
-      if (!options || !options.issuerRef) {
-        throw new Error(`App "${appName}" certificate configuration requires issuerRef.`)
-      }
-      result.certificate = normalizeCertificate(effectiveHost, serviceName, options)
-    }
-
-    return Object.keys(result).length > 0 ? result : undefined
-  }
 
   /**
    * Resolves network configuration for an app in a specific namespace.
@@ -339,49 +243,42 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
   function resolveNetwork(
     appName: string,
     app: ResolverApp<TConfig>,
-    _namespace: string,
     context: AppHostContextWithHelpers<
       ExtractNamespaceVarsFromConfig<TConfig>,
       TConfig['project'],
       Extract<keyof TConfig['namespaces'], string>,
       TConfig['secrets'],
       TConfig['configMaps']
-    >,
-    host: string | undefined
-  ): { network: ResolvedNetworkConfig | undefined; host: string | undefined } {
-    const networkDef = app.ingress
-    if (networkDef === undefined) {
-      return { network: host ? createDefaultNetwork(host) : undefined, host }
+    >
+  ): { network: ResolvedNetworkConfig | undefined; host: string | undefined; protocol?: 'http' | 'https' } {
+    const ingressDef = app.ingress
+    if (!ingressDef) {
+      return { network: undefined, host: undefined }
     }
 
     const serviceName = project.serviceName(appName)
-    const resolved = evaluateNetworkDefinition(networkDef, context)
+    const resolved = typeof ingressDef === 'function' ? ingressDef(context) : ingressDef
 
-    if (resolved === undefined) {
-      return { network: host ? createDefaultNetwork(host) : undefined, host }
+    // Auto-detect protocol if not specified
+    const protocol =
+      resolved.protocol ||
+      (resolved.domain.includes('localtest.me') ||
+      resolved.domain.includes('localhost') ||
+      resolved.domain.includes('.local')
+        ? 'http'
+        : 'https')
+
+    const result = createAutoHTTPS(resolved.domain, serviceName, {
+      issuer: context.env('CERT_ISSUER', 'letsencrypt-prod'),
+      className: context.env('INGRESS_CLASS', 'traefik'),
+      protocol
+    })
+
+    return {
+      network: { ingress: result.ingress },
+      host: resolved.domain,
+      protocol: result.protocol
     }
-
-    // Handle string: domain for auto-HTTPS
-    // The string becomes the host AND is used to create network config
-    if (typeof resolved === 'string') {
-      return {
-        network: createAutoHTTPS(resolved, serviceName, {
-          issuer: context.env('CERT_ISSUER', 'letsencrypt-prod'),
-          className: context.env('INGRESS_CLASS', 'traefik')
-        }),
-        host: resolved
-      }
-    }
-
-    if (typeof resolved === 'boolean') {
-      return { network: handleBooleanNetwork(resolved, host, appName), host }
-    }
-
-    if (!resolved || typeof resolved !== 'object') {
-      return { network: undefined, host }
-    }
-
-    return { network: buildNetworkConfig(appName, resolved, host, serviceName), host }
   }
 
   /**

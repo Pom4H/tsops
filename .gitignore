@@ -1,6 +1,7 @@
 node_modules
 dist
 cache
+.temp
 .turbo
 .env
 .DS_Store

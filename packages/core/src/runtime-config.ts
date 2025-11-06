@@ -11,8 +11,9 @@ export function createRuntimeHelpers<
   const resolver = createConfigResolver(config)
   const namespaceVars = config.namespaces[namespace] as ExtractNamespaceVarsFromConfig<TConfig>
 
-  // Collect all external hosts and app configs
+  // Collect all external hosts with protocol information
   const externalHosts: Record<string, string> = {}
+  const externalProtocols: Record<string, 'http' | 'https'> = {}
   const appsConfig: Record<string, any> = {}
 
   const appEntries = resolver.apps.select()
@@ -27,17 +28,17 @@ export function createRuntimeHelpers<
     // Create temporary context to resolve ingress
     const tempContext = resolver.namespaces.createHostContext(namespace as string, { appName })
 
-    // Resolve ingress to get external host
-    const { host } = resolver.apps.resolveNetwork(
+    // Resolve ingress to get external host and protocol
+    const { host, protocol } = resolver.apps.resolveNetwork(
       appName,
       app,
-      namespace as string,
-      tempContext,
-      undefined
+      tempContext
     )
 
     if (host) {
       externalHosts[appName] = host
+      // Store protocol, default to http if not specified
+      externalProtocols[appName] = protocol || 'http'
     }
   }
 
@@ -56,29 +57,18 @@ export function createRuntimeHelpers<
   }
 
   /**
-   * Generate complete URL for different types of resources with automatic port resolution
+   * Generate complete URL for different types of resources
    */
-  const url = (
-    app: Extract<keyof TConfig['apps'], string>,
-    type: DNSType,
-    options?: { protocol?: 'http' | 'https' }
-  ): string => {
+  const url = (app: Extract<keyof TConfig['apps'], string>, type: DNSType): string => {
     // Get the DNS name
     const hostname = dns(app, type)
 
-    // For ingress, use HTTPS without port by default
-    if (type === 'ingress') {
-      const { protocol = 'https' } = options || {}
-      return `${protocol}://${hostname}`
-    }
-
-    // For other types, use HTTP with port by default
-    const { protocol = 'http' } = options || {}
-    const appConfig = appsConfig[app]
-    const firstPort = appConfig?.ports?.[0]?.port || 80
+    // For ingress type, use configured protocol (from ingress definition)
+    // For cluster/service types, default to http (internal communication)
+    const protocol = type === 'ingress' ? (externalProtocols[app] || 'http') : 'http'
 
     // Build the complete URL
-    return `${protocol}://${hostname}:${firstPort}`
+    return `${protocol}://${hostname}`
   }
 
   /**
