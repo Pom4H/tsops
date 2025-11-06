@@ -264,19 +264,25 @@ secrets: {
 }
 ```
 
-### ✅ Use dns in secrets
+### ✅ Use template for external database URLs
 
 ```typescript
 secrets: {
-  'api-secrets': ({ url }) => ({
-    DATABASE_URL: template('postgresql://{user}:{pwd}@{host}/{db}', {
+  'api-secrets': ({ template, env }) => ({
+    // For EXTERNAL databases with credentials:
+    DATABASE_URL: template('postgresql://{user}:{pwd}@{host}:{port}/{db}', {
       user: 'myuser',
-      pwd: process.env.DB_PASSWORD ?? '',
-      host: url('postgres', 'cluster'),
+      pwd: env('DB_PASSWORD', ''),
+      host: env('DB_HOST', 'external-db.example.com'),  // External host
+      port: '5432',
       db: 'myapp'
     })
   })
 }
+
+// ⚠️ For INTERNAL services, use runtime config in your app code:
+// import config from './tsops.config'
+// const POSTGRES_URL = config.url('postgres', 'service')
 ```
 
 ### ❌ Don't hardcode secrets

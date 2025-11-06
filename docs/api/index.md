@@ -52,10 +52,16 @@ export default defineConfig({
         context: './api',
         dockerfile: './api/Dockerfile'
       },
-      ingress: ({ domain }) => `api.${domain}`,
-      env: ({ secret, url }) => ({
-        JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
-        DATABASE_URL: url('postgres', 'cluster')
+      // Single object format - protocol is optional (auto-detects based on domain)
+      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
+      // Or with explicit protocol:
+      // ingress: ({ domain, production }) => ({
+      //   domain: `api.${domain}`,
+      //   protocol: production ? 'https' : 'http'
+      // }),
+      env: ({ secret }) => ({
+        JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
+        // ✅ In your app: config.url('postgres', 'service')
       }),
       ports: [{ name: 'http', port: 80, targetPort: 8080 }]
     }
@@ -84,7 +90,7 @@ await tsops.deploy({ namespace: 'prod', app: 'api' })
 
 `createNodeTsOps` bundles the Node adapters (command runner, Docker, kubectl, Git-aware environment provider). If you are targeting a different runtime, instantiate `TsOps` directly and provide implementations for the `DockerClient` and `KubectlClient` ports exported by `@tsops/core`.
 
-Use `plan()` for resolved entries only, or `planWithChanges()` to include Kubernetes validation, diffs, and orphan detection.
+Use `plan()` for resolved entries only, or `planWithChanges()` to include cluster validation, diffs, and orphan detection.
 
 ## CLI
 
@@ -150,22 +156,34 @@ cluster: ClusterMetadata // Cluster info
 // + all namespace variables (e.g., production, replicas, domain, etc.)
 ```
 
-### dns()
+### Service Discovery
+
+**⚠️ Do NOT use ENV variables for internal service endpoints.**
+
+Use runtime config in your application code:
 
 ```typescript
-dns(app: string, type: DNSType): string
+// ✅ In your app code:
+import config from './tsops.config'
 
-type DNSType = 'cluster' | 'service' | 'ingress'
+const API_URL = config.url('api', 'service')  // http://api
+const POSTGRES_URL = config.url('postgres', 'service')  // http://postgres
+const REDIS_URL = config.url('redis', 'service')  // http://redis
+
+// Full cluster DNS (cross-namespace safe):
+const API_URL = config.url('api', 'cluster')  // http://api.prod.svc.cluster.local
+
+// Public ingress:
+const PUBLIC_URL = config.url('api', 'ingress')  // https://api.example.com
 ```
 
-Generate DNS name for different types of resources.
+**Benefits:** Type-safe, namespace-aware, single source of truth.
 
-**Examples:**
-```typescript
-dns('api', 'cluster')   // Internal cluster DNS -> 'api.namespace.svc.cluster.local'
-dns('api', 'service')   // Service name only -> 'api'
-dns('api', 'ingress')   // External DNS -> 'api.example.com' (from ingress config)
-```
+Use ENV variables **only** for:
+- Secrets (passwords, API keys)
+- External services (outside the cluster)
+- Feature flags
+- Build-time values
 
 ### secret()
 
@@ -197,7 +215,7 @@ configMap(name: string, key: string): ConfigMapRef  // Reference specific key
 label(key: string, value?: string): string
 ```
 
-Generate Kubernetes labels following project conventions.
+Generate resource labels following project conventions.
 
 ### resource()
 
@@ -265,7 +283,7 @@ interface AppDefinition {
   env?: Record<string, EnvValue> | ((ctx: AppContext) => Record<string, EnvValue> | SecretRef | ConfigMapRef)
   secrets?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
   configMaps?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
-  ingress?: string | boolean | AppIngressOptions | ((ctx: AppContext) => string | boolean | AppIngressOptions)
+  network?: string | boolean | AppNetworkOptions | ((ctx: AppContext) => string | boolean | AppNetworkOptions)
   deploy?: 'all' | readonly string[] | { include?: readonly string[]; exclude?: readonly string[] }
   ports?: ServicePort[]
   podAnnotations?: Record<string, string>
@@ -275,7 +293,21 @@ interface AppDefinition {
 }
 ```
 
-When `ingress` returns a domain string, tsops automatically provisions ingress/Traefik routes and exposes that host through runtime helpers (`url` with type 'ingress'). Set `ingress` to `false` to skip ingress generation.
+The `ingress` field uses a simple object format:
+
+```typescript
+ingress: ({ domain }) => ({ 
+  domain: `api.${domain}`,
+  protocol: 'https'  // optional, auto-detects if omitted
+})
+```
+
+**Protocol auto-detection:**
+- `*.localtest.me`, `localhost`, `*.local` → `http` (no certificate warnings)
+- Other domains → `https` (with TLS)
+- Explicit `protocol` overrides auto-detection for special cases
+
+The protocol is automatically used by the `url()` runtime helper when called with type `'ingress'`.
 
 ## Runtime
 
@@ -305,13 +337,17 @@ const ingressDns = config.dns('api', 'ingress')     // 'api.prod.example.com'
 
 ### url()
 
-Generate complete URL for different types of resources with automatic port resolution.
+Generate complete URL for different types of resources with automatic protocol resolution.
 
 ```typescript
-const clusterUrl = config.url('api', 'cluster')     // 'http://api.prod.svc.cluster.local:8080'
-const serviceUrl = config.url('api', 'service')     // 'http://api:8080'
-const ingressUrl = config.url('api', 'ingress')     // 'https://api.prod.example.com'
+const clusterUrl = config.url('api', 'cluster')     // 'http://api.prod.svc.cluster.local'
+const serviceUrl = config.url('api', 'service')     // 'http://api'
+const ingressUrl = config.url('api', 'ingress')     // Protocol from ingress config
+                                                     // 'http://api.dev.localtest.me' (dev)
+                                                     // 'https://api.example.com' (prod)
 ```
+
+The protocol for `'ingress'` type is determined from the `ingress` configuration in your app definition. For `'cluster'` and `'service'` types, `http` is always used (internal communication).
 
 The active namespace is determined by `TSOPS_NAMESPACE`; when unset, the first namespace in your config is used.
 

@@ -49,21 +49,12 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         if (!this.resolver.apps.shouldDeploy(app, namespace)) continue
 
         const context = this.resolver.namespaces.createHostContext(namespace, { appName })
-        let host: string | undefined
         const env = this.resolver.apps.resolveEnv(app, namespace, context)
         const secrets = this.resolver.apps.resolveSecrets(app, namespace, context)
         const configMaps = this.resolver.apps.resolveConfigMaps(app, namespace, context)
         // Use app.image if provided (for external images), otherwise build from registry
         const image = app.image || this.resolver.images.buildRef(appName)
-        // resolveNetwork may update host if network returns a domain string
-        const { network, host: updatedHost } = this.resolver.apps.resolveNetwork(
-          appName,
-          app,
-          namespace,
-          context,
-          host
-        )
-        host = updatedHost || host
+        const { network, host } = this.resolver.apps.resolveNetwork(appName, app, context)
 
         entries.push({
           namespace,

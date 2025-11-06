@@ -153,11 +153,10 @@ export function defineConfig<
 
     url(
       appName: AppName,
-      type: 'cluster' | 'service' | 'ingress',
-      options?: { protocol?: 'http' | 'https' }
+      type: 'cluster' | 'service' | 'ingress'
     ): string {
       const helpers = getHelpers()
-      return helpers.url(appName, type, options)
+      return helpers.url(appName, type)
     }
   }
 }

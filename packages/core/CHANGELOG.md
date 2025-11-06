@@ -1,5 +1,115 @@
 # @tsops/core
 
+## 0.6.0
+
+### Minor Changes
+
+- ## Breaking Changes
+
+  ### Simplified Ingress Definition
+
+  The `ingress` definition now only accepts an object format or a function returning an object. String and boolean formats have been removed for better type safety and explicit protocol control.
+
+  **Before:**
+
+  ```typescript
+  ingress: "example.com"; // ❌ No longer supported
+  ingress: true; // ❌ No longer supported
+  ```
+
+  **After:**
+
+  ```typescript
+  ingress: ({ domain }) => ({ domain: `api.${domain}` });
+  // With explicit protocol:
+  ingress: ({ domain }) => ({
+    domain: `api.${domain}`,
+    protocol: "https", // optional, auto-detected by default
+  });
+  ```
+
+  ### Protocol Auto-Detection
+
+  Ingress protocol is now automatically detected based on the domain:
+
+  - Local domains (`*.localtest.me`, `localhost`, `*.local`) → `http`
+  - Production domains → `https`
+  - Can be explicitly overridden via `protocol` option
+
+  ## Features
+
+  ### Service Discovery Documentation
+
+  Added comprehensive documentation and examples for proper service-to-service communication using runtime config helpers:
+
+  ```typescript
+  // ✅ Correct: Use runtime config
+  import config from "./tsops.config";
+
+  const apiUrl = config.url("api", "service"); // http://api
+  const apiUrl = config.url("api", "cluster"); // http://api.prod.svc.cluster.local
+  const publicUrl = config.url("api", "ingress"); // https://api.example.com
+  ```
+
+  Benefits:
+
+  - Type-safe with compile-time checking
+  - Respects `TSOPS_NAMESPACE` environment variable
+  - Single source of truth
+  - No container restarts needed for endpoint changes
+
+  ### Platform-Agnostic Documentation
+
+  All documentation has been updated to be platform-agnostic, removing specific references to Kubernetes to prepare for future multi-platform support.
+
+  ## Migration Guide
+
+  ### Update Ingress Definitions
+
+  Change all ingress definitions to use object format:
+
+  ```typescript
+  // Before
+  apps: {
+    api: {
+      ingress: "api.example.com"; // ❌
+    }
+  }
+
+  // After
+  apps: {
+    api: {
+      ingress: ({ domain }) => ({ domain: `api.${domain}` }); // ✅
+    }
+  }
+  ```
+
+  ### Use Runtime Config for Service Discovery
+
+  Replace hardcoded DNS or ENV variables with runtime config:
+
+  ```typescript
+  // ❌ Before: Hardcoded in ENV
+  env: () => ({
+    BACKEND_URL: "http://backend:3000", // Anti-pattern!
+  });
+
+  // ✅ After: In your application code
+  import config from "./tsops.config";
+  const backendUrl = config.url("backend", "service");
+  ```
+
+  ### ENV Variables Are Only For
+
+  Use ENV variables **only** for:
+
+  - Secrets (API keys, passwords, tokens)
+  - External services (outside the cluster)
+  - Feature flags and configuration
+  - Build-time values
+
+  **Never** use ENV for internal service URLs - use `config.url()` in runtime instead.
+
 ## 0.5.2
 
 ### Patch Changes
@@ -36,21 +146,21 @@
   **Usage:**
 
   ```typescript
-  import config from './tsops.config'
+  import config from "./tsops.config";
 
   // DNS helpers
-  const clusterDns = config.dns('api', 'cluster') // -> 'api.namespace.svc.cluster.local'
-  const serviceDns = config.dns('api', 'service') // -> 'api'
-  const ingressDns = config.dns('api', 'ingress') // -> 'api.example.com'
+  const clusterDns = config.dns("api", "cluster"); // -> 'api.namespace.svc.cluster.local'
+  const serviceDns = config.dns("api", "service"); // -> 'api'
+  const ingressDns = config.dns("api", "ingress"); // -> 'api.example.com'
 
   // URL helpers with automatic port resolution
-  const clusterUrl = config.url('api', 'cluster') // -> 'http://api.namespace.svc.cluster.local:3000'
-  const serviceUrl = config.url('api', 'service') // -> 'http://api:3000'
-  const ingressUrl = config.url('api', 'ingress') // -> 'https://api.example.com' (HTTPS, no port)
+  const clusterUrl = config.url("api", "cluster"); // -> 'http://api.namespace.svc.cluster.local:3000'
+  const serviceUrl = config.url("api", "service"); // -> 'http://api:3000'
+  const ingressUrl = config.url("api", "ingress"); // -> 'https://api.example.com' (HTTPS, no port)
 
   // Environment variables
-  const nodeEnv = config.env('api', 'NODE_ENV') // -> 'production'
-  const port = config.env('api', 'PORT') // -> '3000'
+  const nodeEnv = config.env("api", "NODE_ENV"); // -> 'production'
+  const port = config.env("api", "PORT"); // -> '3000'
   ```
 
   **Breaking Changes:**
@@ -64,14 +174,14 @@
 
   ```typescript
   // Old API (deprecated)
-  const env = config.getEnv('api')
-  const internal = config.getInternalEndpoint('api')
-  const external = config.getExternalEndpoint('api')
+  const env = config.getEnv("api");
+  const internal = config.getInternalEndpoint("api");
+  const external = config.getExternalEndpoint("api");
 
   // New API (current)
-  const nodeEnv = config.env('api', 'NODE_ENV')
-  const internal = config.url('api', 'cluster')
-  const external = config.url('api', 'ingress')
+  const nodeEnv = config.env("api", "NODE_ENV");
+  const internal = config.url("api", "cluster");
+  const external = config.url("api", "ingress");
   ```
 
   **Features:**
@@ -92,10 +202,10 @@
 
   ```typescript
   env: ({ url }) => ({
-    BACKEND_URL: url('backend', 'ingress'), // -> 'https://api.example.com:3000'
-    API_URL: url('api', 'cluster'), // -> 'http://api.namespace.svc.cluster.local:8080'
-    SERVICE_URL: url('api', 'service') // -> 'http://api:8080'
-  })
+    BACKEND_URL: url("backend", "ingress"), // -> 'https://api.example.com:3000'
+    API_URL: url("api", "cluster"), // -> 'http://api.namespace.svc.cluster.local:8080'
+    SERVICE_URL: url("api", "service"), // -> 'http://api:8080'
+  });
   ```
 
   **Features:**
@@ -123,13 +233,13 @@
   ```typescript
   // Before
   env: ({ dns }) => ({
-    API_URL: `http://${dns('api', 'cluster')}:3000`
-  })
+    API_URL: `http://${dns("api", "cluster")}:3000`,
+  });
 
   // After
   env: ({ url }) => ({
-    API_URL: url('api', 'cluster')
-  })
+    API_URL: url("api", "cluster"),
+  });
   ```
 
 ## 0.4.1

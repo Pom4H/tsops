@@ -9,13 +9,12 @@ All context helpers are automatically available in app configuration functions:
 ```typescript
 apps: {
   api: {
-    env: ({ url, dns, secret, appName, production }) => ({
+    env: ({ secret, appName, production }) => ({
       // Use helpers here
       NODE_ENV: production ? 'production' : 'development',
       SERVICE_NAME: appName,
-      DB_URL: url('postgres', 'cluster'),
-      API_HOST: dns('api', 'cluster'),
       JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
+      // ✅ In your app: config.url('postgres', 'service')
     })
   }
 }
@@ -81,155 +80,49 @@ env: ({ cluster }) => ({
 
 ---
 
+## Service Discovery
+
+**⚠️ Important: Use runtime config in your application code, not ENV variables.**
+
+For service-to-service communication, use `config.url()` in your application:
+
+```typescript
+// ✅ In your application code (e.g., backend/src/index.ts):
+import config from './tsops.config'
+
+// Short DNS (same namespace) - best for most cases
+const API_URL = config.url('api', 'service')  // http://api
+const POSTGRES_URL = config.url('postgres', 'service')  // http://postgres
+
+// Full cluster DNS (cross-namespace safe)
+const API_URL = config.url('api', 'cluster')  // http://api.prod.svc.cluster.local
+
+// Public ingress URL (external)
+const PUBLIC_URL = config.url('api', 'ingress')  // https://api.example.com
+```
+
+**Benefits:**
+- ✅ Type-safe (compile-time checks)
+- ✅ Respects `TSOPS_NAMESPACE` environment variable
+- ✅ Single source of truth
+- ✅ No container restarts needed
+- ✅ Zero-downtime deployments work correctly
+
+**Use ENV variables ONLY for:**
+- Secrets (passwords, API keys)
+- External services (outside the cluster)
+- Feature flags and configuration
+- Build-time values
+
 ## Generators
 
-Functions that generate names and DNS entries.
-
-### `dns(app, type)`
-
-Generate DNS name for different types of resources.
-
-#### Signature
-
-```typescript
-dns(app: string, type: DNSType): string
-
-type DNSType = 'cluster' | 'service' | 'ingress'
-```
-
-#### Examples
-
-**Cluster internal DNS:**
-
-```typescript
-env: ({ dns }) => ({
-  POSTGRES_HOST: dns('postgres', 'cluster'),
-  // -> 'postgres.production.svc.cluster.local'
-  
-  API_URL: dns('api', 'cluster'),
-  // -> 'api.production.svc.cluster.local'
-})
-```
-
-**Service name only:**
-
-```typescript
-env: ({ dns }) => ({
-  REDIS_HOST: dns('redis', 'service'),
-  // -> 'redis'
-  
-  DB_HOST: dns('postgres', 'service'),
-  // -> 'postgres'
-})
-```
-
-**External DNS (from ingress configuration):**
-
-```typescript
-env: ({ dns }) => ({
-  PUBLIC_API: dns('api', 'ingress'),
-  // -> 'api.example.com' (if ingress configured)
-  
-  FRONTEND_URL: dns('frontend', 'ingress'),
-  // -> 'app.example.com' (if ingress configured)
-})
-```
-
-#### Pattern
-
-**Cluster DNS (`type: 'cluster'`):**
-```
-{app}.{namespace}.svc.cluster.local
-```
-
-**Service DNS (`type: 'service'`):**
-```
-{app}
-```
-
-**Ingress DNS (`type: 'ingress'`):**
-```
-{domain from ingress configuration}
-```
-
-**Note:** For complete URLs with protocol and port, use the `url()` helper instead.
-
----
-
-### `url(app, type, options?)`
-
-Generate complete URL for different types of resources with automatic port resolution.
-
-#### Signature
-
-```typescript
-url(app: string, type: DNSType, options?: { protocol?: 'http' | 'https' }): string
-
-type DNSType = 'cluster' | 'service' | 'ingress'
-```
-
-#### Examples
-
-**Cluster internal URL:**
-
-```typescript
-env: ({ url }) => ({
-  POSTGRES_URL: url('postgres', 'cluster'),
-  // -> 'http://postgres.production.svc.cluster.local:5432'
-  
-  API_URL: url('api', 'cluster', { protocol: 'https' }),
-  // -> 'https://api.production.svc.cluster.local:3000'
-})
-```
-
-**Service URL:**
-
-```typescript
-env: ({ url }) => ({
-  REDIS_URL: url('redis', 'service'),
-  // -> 'http://redis:6379'
-  
-  DB_URL: url('postgres', 'service'),
-  // -> 'http://postgres:5432'
-})
-```
-
-**External URL (from ingress configuration):**
-
-```typescript
-env: ({ url }) => ({
-  PUBLIC_API: url('api', 'ingress'),
-  // -> 'https://api.example.com' (HTTPS by default for ingress)
-  
-  FRONTEND_URL: url('frontend', 'ingress'),
-  // -> 'https://app.example.com'
-})
-```
-
-#### Pattern
-
-**Cluster URL (`type: 'cluster'`):**
-```
-{protocol}://{app}.{namespace}.svc.cluster.local:{port}
-```
-
-**Service URL (`type: 'service'`):**
-```
-{protocol}://{app}:{port}
-```
-
-**Ingress URL (`type: 'ingress'`):**
-```
-https://{domain from ingress configuration}
-```
-
-**Note:** Port is automatically resolved from the first port in the app's `ports` configuration. Default protocol is `http`, except for ingress type which defaults to `https`.
+Functions that generate resource names and labels.
 
 ---
 
 ### `label(key, value?)`
 
-Generate Kubernetes label selector following best practices.
+Generate resource label selector following best practices.
 
 #### Signature
 
@@ -429,16 +322,16 @@ template(str: string, vars: Record<string, string>): string
 #### Examples
 
 ```typescript
-env: ({ template, dns }) => ({
-  // Database URL
+env: ({ template, env }) => ({
+  // Database URL (for external database with credentials)
   DATABASE_URL: template('postgresql://{user}:{pass}@{host}:{port}/{db}', {
-    user: 'admin',
-    pass: 'secret',
-    host: dns('postgres'),
+    user: env('DB_USER', 'admin'),
+    pass: env('DB_PASSWORD'),
+    host: env('DB_HOST', 'external-db.example.com'),
     port: '5432',
     db: 'myapp'
   }),
-  // -> 'postgresql://admin:secret@my-project-postgres.prod.svc.cluster.local:5432/myapp'
+  // -> 'postgresql://admin:secret@external-db.example.com:5432/myapp'
   
   // API endpoint
   API_ENDPOINT: template('https://{domain}/api/v{version}', {
@@ -492,7 +385,7 @@ export default defineConfig({
   
   apps: {
     api: {
-      ingress: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
       
       env: ({
         // Metadata
@@ -502,7 +395,6 @@ export default defineConfig({
         cluster,
         
         // Generators
-        dns,
         label,
         resource,
         
@@ -530,21 +422,22 @@ export default defineConfig({
         NODE_ENV: production ? 'production' : 'development',
         DEBUG: production ? 'false' : 'true',
         
-        // Service URLs
-        REDIS_URL: url('redis', 'cluster'),
-        POSTGRES_URL: url('postgres', 'cluster'),
+        // ✅ In your app code, use runtime config:
+        // import config from './tsops.config'
+        // const REDIS_URL = config.url('redis', 'service')
+        // const POSTGRES_URL = config.url('postgres', 'service')
         
         // Secrets
         JWT_SECRET: secret('app-secrets', 'JWT_SECRET'),
         
-        // Template
-        DATABASE_URL: template('postgresql://{host}:{port}/myapp', {
-          host: dns('postgres'),
+        // Template for external database URL
+        DATABASE_URL: template('postgresql://{user}@{host}:{port}/myapp', {
+          user: env('DB_USER', 'admin'),
+          host: dbHost,  // external database host from namespace variables
           port: '5432'
         }),
         
         // Namespace variables
-        DB_HOST: dbHost,
         WORKER_COUNT: String(replicas * 2),
         
         // Labels & Resources

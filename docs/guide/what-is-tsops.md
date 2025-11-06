@@ -1,10 +1,10 @@
 # What is tsops?
 
-**tsops** is a TypeScript-first toolkit for planning, building, and deploying applications to Kubernetes. It replaces YAML configurations with type-safe TypeScript code, giving you the power of a programming language while maintaining the simplicity of declarative configuration.
+**tsops** is a TypeScript-first toolkit for planning, building, and deploying containerized applications. It replaces YAML configurations with type-safe TypeScript code, giving you the power of a programming language while maintaining the simplicity of declarative configuration.
 
 ## The Problem
 
-Deploying to Kubernetes traditionally involves:
+Deploying containerized applications traditionally involves:
 
 - ❌ Writing repetitive YAML files
 - ❌ Copying and pasting configurations
@@ -18,7 +18,7 @@ Deploying to Kubernetes traditionally involves:
 tsops provides:
 
 - ✅ **Type-safe configuration** - Catch errors at compile time
-- ✅ **Context helpers** - dns(), url(), secret()
+- ✅ **Context helpers** - secret(), configMap(), env()
 - ✅ **Single source of truth** - Define once, use everywhere
 - ✅ **Secret validation** - Automatic checks before deployment
 - ✅ **Built-in Docker** - Build and push images
@@ -32,16 +32,13 @@ import { defineConfig } from 'tsops'
 
 export default defineConfig({
   project: 'my-app',
-  
-  namespaces: {
-    prod: { domain: 'example.com' }
-  },
+  domain: { prod: 'example.com' },
   
   apps: {
     api: {
-      ingress: ({ domain }) => `api.${domain}`,
-      env: ({ url }) => ({
-        DB_URL: url('postgres', 'cluster')
+      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
+      env: () => ({
+        // ✅ In your app: config.url('postgres', 'service')
       })
     }
   }
@@ -56,7 +53,7 @@ $ pnpm tsops deploy --namespace production
 That's it! tsops:
 1. Resolves your configuration
 2. Builds Docker images (if needed)
-3. Generates Kubernetes manifests
+3. Generates deployment manifests
 4. Applies them to your cluster
 
 ## Key Features
@@ -71,14 +68,13 @@ Built-in helpers for common patterns:
 
 ```typescript
 {
-  url('postgres', 'cluster')
-  // → 'http://postgres.production.svc.cluster.local:5432'
-  
-  dns('postgres', 'cluster')
-  // → 'postgres.production.svc.cluster.local'
+  // ✅ Use runtime config in your app code:
+  import config from './tsops.config'
+  const POSTGRES_URL = config.url('postgres', 'service')
+  // → 'http://postgres' or 'http://my-app-postgres.production.svc.cluster.local'
   
   // Use namespace variables for domain
-  ingress: ({ domain }) => `api.${domain}`
+  ingress: ({ domain }) => ({ domain: `api.${domain}` })
   // → 'api.example.com'
   
   secret('api-secrets')

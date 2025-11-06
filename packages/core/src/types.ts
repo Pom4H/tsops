@@ -567,6 +567,19 @@ export interface AppIngressOptions {
   certificate?: boolean | AppCertificateOptions
 }
 
+/**
+ * Ingress definition object with domain and optional protocol.
+ * Protocol is auto-detected based on domain if not specified:
+ * - Local domains (*.localtest.me, localhost, *.local) → http
+ * - Production domains → https
+ */
+export interface IngressDefinitionObject {
+  /** Domain name for the ingress */
+  domain: string
+  /** Protocol to use (http or https). Defaults to https for production domains, http for local development */
+  protocol?: 'http' | 'https'
+}
+
 export type AppIngressDefinition<
   TNamespaceVars extends NamespaceDefinition,
   TProject extends string = string,
@@ -575,12 +588,10 @@ export type AppIngressDefinition<
   TConfigMaps = undefined,
   TApps = undefined
 > =
-  | string
-  | boolean
-  | AppIngressOptions
+  | IngressDefinitionObject
   | ((
       ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
-    ) => string | boolean | AppIngressOptions)
+    ) => IngressDefinitionObject)
 
 export type AppDeploySelection<TNamespaceName extends string> =
   | 'all'
