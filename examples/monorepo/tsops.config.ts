@@ -41,15 +41,15 @@ const config = defineConfig({
           NODE_VERSION: '24'
         }
       },
-      env: ({ url, secret }) => ({
+      env: ({ secret }) => ({
         PORT: '4000',
-        FRONTEND_URL: url('frontend', 'cluster'),
         API_TOKEN: secret('monorepo-backend-env', 'API_TOKEN2')
+        // ✅ For service discovery, use runtime config: config.url('frontend', 'service')
       }),
       ports: [
         { name: 'http', port: 4000, targetPort: 4000 }
       ],
-      ingress: ({ domain }) => `api.${domain}`
+      ingress: ({ domain }) => ({ domain: `api.${domain}` })
     },
     frontend: {
       build: {
@@ -63,15 +63,15 @@ const config = defineConfig({
           NODE_VERSION: '24'
         }
       },
-      env: ({ url }) => ({
+      env: () => ({
         PORT: '3000',
-        NEXT_PUBLIC_WS_URL: 'wss://monorepo.localtest.me/ws',
-        NEXT_PUBLIC_API_BASE_URL: url('backend', 'cluster')
+        NEXT_PUBLIC_WS_URL: 'wss://monorepo.localtest.me/ws'
+        // ✅ For API calls, use DNS: fetch('http://backend/api/data')
       }),
       ports: [
         { name: 'http', port: 80, targetPort: 3000 }
       ],
-      ingress: ({ domain }) => `web.${domain}`
+      ingress: ({ domain }) => ({ domain: `web.${domain}` })
     }
   }
 })

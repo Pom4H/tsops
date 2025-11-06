@@ -1,6 +1,6 @@
 # Quick Start
 
-Deploy your first app to Kubernetes in 5 minutes.
+Deploy your first containerized app in 5 minutes.
 
 ## 1. Install
 
@@ -45,7 +45,7 @@ export default defineConfig({
         context: './web',
         dockerfile: './web/Dockerfile'
       },
-      ingress: ({ domain }) => `www.${domain}`,
+      network: ({ domain }) => `www.${domain}`,
       ports: [{ name: 'http', port: 80, targetPort: 3000 }],
       env: ({ production }) => ({ 
         NODE_ENV: production ? 'production' : 'development' 
@@ -104,7 +104,7 @@ kubectl get pods -n prod
 
 ## That's It! 🎉
 
-Your app is now running in Kubernetes!
+Your app is now running in the cluster!
 
 ## Next Steps
 

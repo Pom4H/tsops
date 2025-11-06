@@ -24,9 +24,9 @@ const config = defineConfig({
         context: 'examples/fullstack/backend',
         dockerfile: 'examples/fullstack/backend/Dockerfile'
       },
-      env: ({ url }) => ({
-        PORT: '8080',
-        FRONTEND_URL: url('frontend', 'cluster')
+      env: () => ({
+        PORT: '8080'
+        // ✅ For service discovery, use runtime config: config.url('frontend', 'service')
       }),
       ports: [
         { name: 'http', port: 8080, targetPort: 8080 }
@@ -38,14 +38,14 @@ const config = defineConfig({
         context: 'examples/fullstack/frontend',
         dockerfile: 'examples/fullstack/frontend/Dockerfile'
       },
-      env: ({ url }) => ({
-        PORT: '3000',
-        NEXT_PUBLIC_API_BASE_URL: url('backend', 'cluster')
+      env: () => ({
+        PORT: '3000'
+        // ✅ For API calls, use DNS: fetch('http://backend/api/data')
       }),
       ports: [
         { name: 'http', port: 80, targetPort: 3000 }
       ],
-      ingress: 'fullstack2.localtest.me'
+      ingress: { domain: 'fullstack2.localtest.me' }
     }
   }
 })

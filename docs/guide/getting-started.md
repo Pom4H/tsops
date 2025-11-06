@@ -71,15 +71,13 @@ export default defineConfig({
         dockerfile: './api/Dockerfile'
       },
       
-      ingress: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
       
       ports: [{ name: 'http', port: 80, targetPort: 8080 }],
       
-      env: ({ url, template, production }) => ({
-        NODE_ENV: production ? 'production' : 'development',
-        DB_URL: template('postgresql://{host}/mydb', {
-          host: url('postgres', 'cluster')
-        })
+      env: ({ production }) => ({
+        NODE_ENV: production ? 'production' : 'development'
+        // ✅ In your app: config.url('postgres', 'service')
       })
     }
   }
@@ -148,7 +146,7 @@ pnpm tsops build
 
 ### Step 3: Deploy
 
-Deploy to Kubernetes:
+Deploy applications:
 
 ```bash
 pnpm tsops deploy --namespace production

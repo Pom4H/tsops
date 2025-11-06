@@ -4,7 +4,7 @@ title: Full-Stack Example
 
 ## Full-Stack Example
 
-This example deploys a simple frontend (Next.js) and backend (Hono) with Kubernetes Services and Ingress.
+This example deploys a simple frontend (Next.js) and backend (Hono) with internal networking and ingress routing.
 
 - Project files live in `examples/fullstack/`
 - Config is defined in `examples/fullstack/tsops.config.ts`
@@ -19,7 +19,7 @@ pnpm tsops plan --config examples/fullstack/tsops.config.ts
 ### Config Highlights
 
 - frontend exposes HTTP on port 80 (container 3000)
-- backend exposes HTTP on port 8080 and is reachable from frontend via dns
+- backend exposes HTTP on port 8080 and is reachable from frontend via `config.url('backend', 'service')`
 - uses `ingress` to set external host for the frontend
 
 

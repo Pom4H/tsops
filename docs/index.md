@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: "tsops"
-  text: "TypeScript-first Kubernetes toolkit"
-  tagline: Deploy to Kubernetes with confidence using type-safe configuration
+  text: "TypeScript-first deployment toolkit"
+  tagline: Deploy containerized applications with confidence using type-safe configuration
   image:
     src: /logo.svg
     alt: tsops logo
@@ -72,26 +72,26 @@ export default defineConfig({
   
   apps: {
     web: {
-      ingress: ({ domain }) => domain,
+      ingress: ({ domain }) => ({ domain }),
       build: {
         type: 'dockerfile',
         context: './web',
         dockerfile: './web/Dockerfile'
       },
-      env: ({ production, dns }) => ({
-        NODE_ENV: production ? 'production' : 'development',
-        OTEL_EXPORTER_OTLP_ENDPOINT: dns('otelCollector')
+      env: ({ production }) => ({
+        NODE_ENV: production ? 'production' : 'development'
+        // ✅ In your app: config.url('otelCollector', 'service')
       })
     },
     api: {
-      ingress: ({ domain }) => `api.${domain}`,
+      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
       build: {
         type: 'dockerfile',
         context: './api',
         dockerfile: './api/Dockerfile'
       },
-      env: ({ dns }) => ({
-        OTEL_EXPORTER_OTLP_ENDPOINT: dns('otelCollector')
+      env: () => ({
+        // ✅ In your app: config.url('otelCollector', 'service')
       })
     },
     otelCollector: {
@@ -106,18 +106,23 @@ export default defineConfig({
 
 ## Use in your app (runtime)
 
-Import your `tsops.config.ts` in any service to access resolved endpoints and env at runtime.
+Import your `tsops.config.ts` to access resolved endpoints and configuration at runtime.
 
 ```ts
-// frontend/app/page.ts (or any service file)
+// Example: Using config in your app
 import config from './tsops.config'
 
-// Automatically respects TSOPS_NAMESPACE (dev/prod)
-const backendBase = config.url('api', 'ingress')
+// ✅ Public ingress URL (external traffic)
+const publicApiUrl = config.url('api', 'ingress')
 // e.g. https://api.dev.example.com
 
+// ✅ Service-to-service communication (internal)
+const backendUrl = config.url('api', 'service')  // http://api
+// or full DNS:
+const backendUrl = config.url('api', 'cluster')  // http://api.prod.svc.cluster.local
+
 export default async function Page() {
-  const res = await fetch(`${backendBase}/api/message`, { cache: 'no-store' })
+  const res = await fetch(`${backendUrl}/api/message`, { cache: 'no-store' })
   const data = res.ok ? await res.json() : { message: `HTTP ${res.status}` }
   return (
     <main>
@@ -134,7 +139,7 @@ export default async function Page() {
   <div class="why-card">
     <div class="why-icon">🎯</div>
     <div class="why-title">TypeScript-First</div>
-    <div class="why-desc">Author Kubernetes strategy in TypeScript with full IntelliSense, literal inference, and compile-time guarantees.</div>
+    <div class="why-desc">Author deployment strategy in TypeScript with full IntelliSense, literal inference, and compile-time guarantees.</div>
   </div>
   <div class="why-card">
     <div class="why-icon">📋</div>
@@ -144,7 +149,7 @@ export default async function Page() {
   <div class="why-card">
     <div class="why-icon">✨</div>
     <div class="why-title">Smart Helpers</div>
-    <div class="why-desc">Access helpers like <code>dns()</code>, <code>secret()</code>, and <code>template()</code> directly inside app definitions.</div>
+    <div class="why-desc">Access helpers like <code>secret()</code>, <code>configMap()</code>, and namespace variables directly inside app definitions.</div>
   </div>
   <div class="why-card">
     <div class="why-icon">🔒</div>
@@ -154,7 +159,7 @@ export default async function Page() {
   <div class="why-card">
     <div class="why-icon">🌐</div>
     <div class="why-title">Auto Networking</div>
-    <div class="why-desc">Generate ingress, Traefik routes, and TLS certificates by returning a domain from <code>ingress</code> definitions.</div>
+    <div class="why-desc">Generate ingress and TLS certificates with automatic protocol detection (http for local, https for production).</div>
   </div>
   <div class="why-card">
     <div class="why-icon">🔁</div>
@@ -168,8 +173,8 @@ export default async function Page() {
   </div>
   <div class="why-card">
     <div class="why-icon">🧹</div>
-    <div class="why-title">Drift-Free Clusters</div>
-    <div class="why-desc">Automated orphan detection and cleanup keep Kubernetes in sync with your declared configuration.</div>
+    <div class="why-title">Drift-Free Deployments</div>
+    <div class="why-desc">Automated orphan detection and cleanup keep your cluster in sync with your declared configuration.</div>
   </div>
 </div>
 
@@ -179,7 +184,7 @@ export default async function Page() {
 > 
 > — *Production User*
 
-> "The context helpers are a game-changer. dns() alone saved us hours of configuration work."
+> "The secret validation and type-safe configuration saved us hours of debugging."
 > 
 > — *DevOps Engineer*
 

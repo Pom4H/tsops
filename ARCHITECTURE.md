@@ -54,9 +54,9 @@ The monorepo is managed with **pnpm workspaces + Turborepo** (`turbo.json`). Glo
 `createConfigResolver(config, { env })` composes specialised resolvers. Each resolver is a pure abstraction so the rest of the system stays declarative.
 
 - **ProjectResolver** — naming helpers (`${project}-${app}`), service names.
-- **NamespaceResolver** — namespace iteration/filtering, helper context creation (exposes `dns`, `label`, `resource`, `secret`, `configMap`, `env`, `template`, namespace vars, cluster metadata).
+- **NamespaceResolver** — namespace iteration/filtering, helper context creation (exposes `label`, `resource`, `secret`, `configMap`, `env`, `template`, namespace vars, cluster metadata).
 - **ImagesResolver** — builds deterministic image refs. Supports strategies: `'git-sha' | 'git-tag' | 'timestamp' | string | { kind: string; … }`. The Node bundle layers in `GitEnvironmentProvider(ProcessEnvironmentProvider)` so Git metadata is available by default.
-- **AppsResolver** — resolves app definitions per namespace: build info, env (with Secret/ConfigMap refs), secrets/configMaps data, network configuration. Delegates to `network-normalizers.ts` to materialise ingress/Traefik/cert manifests and to `images` resolver for defaults.
+- **AppsResolver** — resolves app definitions per namespace: build info, env (with Secret/ConfigMap refs), secrets/configMaps data, ingress configuration. Ingress accepts only object format `{ domain: string, protocol?: 'http' | 'https' }` or function returning it. Delegates to `config/ingress.ts` to materialise ingress manifests with automatic protocol detection (http for local domains like `*.localtest.me`, `localhost`, `*.local`; https for production) and to `images` resolver for defaults.
 
 `defineConfig` (in `config/definer.ts`) reuses the same resolver stack lazily to provide runtime helpers (`env`, `dns`, `url`). Runtime resolution respects `TSOPS_NAMESPACE` or defaults to the first namespace.
 
@@ -117,12 +117,18 @@ Individual builders live under `packages/k8/src/builders/` and are side-effect f
 
 ### Runtime helpers
 1. Application code `import config from './tsops.config.js'` (compiled to ESM).
-2. `config.env('api', 'NODE_ENV')` triggers lazy runtime config creation for the current namespace, reusing resolvers to evaluate env/secrets/configMaps/ingress.
-3. Helpers cache until `TSOPS_NAMESPACE` changes.
+2. Runtime helpers for service discovery:
+   - `config.url('api', 'service')` — short DNS (http://api)
+   - `config.url('api', 'cluster')` — full cluster DNS (http://api.prod.svc.cluster.local)
+   - `config.url('api', 'ingress')` — public URL (https://api.example.com)
+   - `config.env('api', 'NODE_ENV')` — environment variables
+3. Triggers lazy runtime config creation for the current namespace, reusing resolvers to evaluate env/secrets/configMaps/ingress.
+4. Helpers cache until `TSOPS_NAMESPACE` changes.
+5. **Important**: Use runtime helpers (`config.url()`) for service-to-service communication, not ENV variables.
 
 ## 8. Versioning & Release Notes
 
-- Source of truth: `CHANGELOG.md` (Keep a Changelog format). Latest release `tsops` 1.2.0 / `@tsops/core` 0.3.0 (2025‑10‑06) introduced `planWithChanges`, secret docs refresh, runtime helper tests.
+- Source of truth: `CHANGELOG.md` (Keep a Changelog format). Latest release `tsops` 1.5.0 / `@tsops/core` 0.6.0 introduced simplified ingress definition (single object format), protocol auto-detection, comprehensive service discovery documentation with `config.url()` patterns, and platform-agnostic documentation.
 - Release process uses Changesets: run `pnpm changeset`, `pnpm changeset:version`, `pnpm release:publish` (builds all packages, publishes with `--no-git-checks`).
 - Workspace protocol is `workspace:*`; ensure internal versions remain compatible before publishing.
 
@@ -132,6 +138,9 @@ Individual builders live under `packages/k8/src/builders/` and are side-effect f
 - **Pure data transformations** in resolvers/manifest builders (no IO).
 - **Diff-first UX**: plan before deploy, detect drifts, clean orphans.
 - **Runtime reuse of config**: same TypeScript definition powers deployment and app runtime env.
+- **Type-safe configuration**: single, unified formats (e.g., ingress as object only) for better type safety and maintainability.
+- **Service Discovery pattern**: use runtime helpers (`config.url()`) in application code, not ENV variables for internal services.
+- **Platform-agnostic abstractions**: documentation and APIs prepared for multi-platform support beyond Kubernetes.
 - **LLM-friendly layout**: short files, clear naming, rich documentation in `docs/` with consistent stories.
 
 ## 10. Useful Links
