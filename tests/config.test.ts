@@ -54,6 +54,14 @@ const cfg = defineConfig({
       // envFrom: entire configMap
       env: ({ configMap }) => configMap('namespace-flags'),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+    },
+    admin: {
+      // Explicit protocol override: force http for production domain
+      ingress: ({ domain }) => ({ 
+        domain: `admin.${domain}`,
+        protocol: 'http'
+      }),
+      ports: [{ name: 'http', port: 80, targetPort: 9000 }]
     }
   }
 })
@@ -150,6 +158,20 @@ describe('defineConfig runtime API', () => {
       expect(cfg.url('api', 'cluster')).toBe('http://api.prod.svc.cluster.local')
       expect(cfg.url('api', 'service')).toBe('http://api')
       expect(cfg.url('api', 'ingress')).toBe('https://api.example.com')
+    })
+  })
+
+  it('respects explicit protocol in ingress', () => {
+    withNamespace('prod', () => {
+      // admin app has explicit protocol: 'http' even for production domain
+      expect(cfg.dns('admin', 'ingress')).toBe('admin.example.com')
+      expect(cfg.url('admin', 'ingress')).toBe('http://admin.example.com')
+    })
+
+    withNamespace('dev', () => {
+      // admin app still uses http in dev (explicit protocol overrides auto-detection)
+      expect(cfg.dns('admin', 'ingress')).toBe('admin.dev.example.com')
+      expect(cfg.url('admin', 'ingress')).toBe('http://admin.dev.example.com')
     })
   })
 })
