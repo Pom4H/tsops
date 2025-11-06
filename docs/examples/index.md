@@ -25,7 +25,7 @@ export default defineConfig({
         dockerfile: './web/Dockerfile'
       },
       
-      network: ({ domain }) => `www.${domain}`,
+      ingress: ({ domain }) => ({ domain: `www.${domain}` }),
       
       env: ({ production }) => ({
         NODE_ENV: production ? 'production' : 'development',

@@ -74,7 +74,7 @@ Built-in helpers for common patterns:
   // → 'http://postgres' or 'http://my-app-postgres.production.svc.cluster.local'
   
   // Use namespace variables for domain
-  network: ({ domain }) => `api.${domain}`
+  ingress: ({ domain }) => ({ domain: `api.${domain}` })
   // → 'api.example.com'
   
   secret('api-secrets')
