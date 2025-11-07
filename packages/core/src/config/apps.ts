@@ -259,14 +259,18 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     const serviceName = project.serviceName(appName)
     const resolved = typeof ingressDef === 'function' ? ingressDef(context) : ingressDef
 
+    // Check if resolved is valid (function might return undefined/null)
+    if (!resolved || !resolved.domain) {
+      return { network: undefined, host: undefined }
+    }
+
     // Auto-detect protocol if not specified
     const protocol =
       resolved.protocol ||
-      (resolved.domain.includes('localtest.me') ||
       resolved.domain.includes('localhost') ||
       resolved.domain.includes('.local')
         ? 'http'
-        : 'https')
+        : 'https'
 
     const result = createAutoHTTPS(resolved.domain, serviceName, {
       issuer: context.env('CERT_ISSUER', 'letsencrypt-prod'),

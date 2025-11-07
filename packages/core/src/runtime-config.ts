@@ -50,7 +50,13 @@ export function createRuntimeHelpers<
       case 'service':
         return app
       case 'ingress':
-        return externalHosts[app] || app
+        if (!externalHosts[app]) {
+          throw new Error(
+            `Cannot get ingress DNS for app "${app}": no ingress configuration found. ` +
+            `Either add an ingress definition to the app or use 'service' or 'cluster' type instead.`
+          )
+        }
+        return externalHosts[app]
       default:
         return `${app}.${namespace}.svc.cluster.local`
     }
