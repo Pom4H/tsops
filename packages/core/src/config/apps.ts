@@ -267,11 +267,10 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     // Auto-detect protocol if not specified
     const protocol =
       resolved.protocol ||
-      (resolved.domain.includes('localtest.me') ||
       resolved.domain.includes('localhost') ||
       resolved.domain.includes('.local')
         ? 'http'
-        : 'https')
+        : 'https'
 
     const result = createAutoHTTPS(resolved.domain, serviceName, {
       issuer: context.env('CERT_ISSUER', 'letsencrypt-prod'),
