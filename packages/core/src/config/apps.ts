@@ -162,13 +162,13 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
 
   /**
    * Determines if an app should be deployed to a namespace.
-   *
+   * 
    * Rules:
    * - undefined or 'all': deploy to all namespaces
    * - Array: deploy only to listed namespaces
    * - Filter object with include: deploy only to included namespaces (minus excluded)
    * - Filter object with exclude: deploy to all except excluded namespaces
-   *
+   * 
    * @example
    * shouldDeploy({ deploy: 'all' }, 'prod') // => true
    * shouldDeploy({ deploy: ['prod', 'stage'] }, 'prod') // => true
@@ -177,7 +177,7 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
   function shouldDeploy(app: ResolverApp<TConfig>, namespace: string): boolean {
     const deploy = app.deploy
     if (!deploy || deploy === 'all') return true
-
+    
     type TNamespaceName = Extract<keyof TConfig['namespaces'], string>
     if (Array.isArray(deploy)) {
       return (deploy as readonly TNamespaceName[]).includes(namespace as TNamespaceName)
@@ -188,7 +188,7 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
       if (include.length > 0) {
         return (
           (include as readonly TNamespaceName[]).includes(namespace as TNamespaceName) &&
-          !(exclude as readonly TNamespaceName[]).includes(namespace as TNamespaceName)
+               !(exclude as readonly TNamespaceName[]).includes(namespace as TNamespaceName)
         )
       }
       if (exclude.length > 0) {
@@ -232,7 +232,7 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
   /**
    * Resolves network configuration for an app in a specific namespace.
    * Handles ingress, ingressRoute, and certificate settings.
-   *
+   * 
    * @param appName - The application name
    * @param app - The application definition
    * @param namespace - Target namespace
@@ -273,7 +273,7 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
         : 'https'
 
     const result = createAutoHTTPS(resolved.domain, serviceName, {
-      issuer: context.env('CERT_ISSUER', 'letsencrypt-prod'),
+          issuer: context.env('CERT_ISSUER', 'letsencrypt-prod'),
       className: context.env('INGRESS_CLASS', 'traefik'),
       protocol
     })

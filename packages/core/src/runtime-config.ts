@@ -10,21 +10,21 @@ export function createRuntimeHelpers<
 >(config: TConfig, namespace: Extract<keyof TConfig['namespaces'], string>) {
   const resolver = createConfigResolver(config)
   const namespaceVars = config.namespaces[namespace] as ExtractNamespaceVarsFromConfig<TConfig>
-
+  
   // Collect all external hosts with protocol and port information
   const externalHosts: Record<string, string> = {}
   const externalProtocols: Record<string, 'http' | 'https'> = {}
   const externalPorts: Record<string, number> = {}
   const appsConfig: Record<string, any> = {}
-
+  
   const appEntries = resolver.apps.select()
   for (const [appName, app] of appEntries) {
+    // Store app config for all apps (needed for port() helper)
+    appsConfig[appName] = app
+
     if (!resolver.apps.shouldDeploy(app, namespace as string)) {
       continue
     }
-
-    // Store app config
-    appsConfig[appName] = app
 
     // Create temporary context to resolve ingress
     const tempContext = resolver.namespaces.createHostContext(namespace as string, { appName })
@@ -46,7 +46,7 @@ export function createRuntimeHelpers<
       }
     }
   }
-
+  
   /**
    * Generate DNS name for different types of resources
    */
@@ -66,7 +66,7 @@ export function createRuntimeHelpers<
         return `${app}.${namespace}.svc.cluster.local`
     }
   }
-
+  
   /**
    * Generate complete URL for different types of resources
    */
@@ -84,6 +84,55 @@ export function createRuntimeHelpers<
     // Build the complete URL
     return `${protocol}://${hostname}${port}`
   }
+  
+  /**
+   * Get the port number for an app.
+   * Returns the actual port the application should listen on (targetPort).
+   * For local development, this returns the unique port per service.
+   * For production, this typically returns the standard container port.
+   */
+  const port = (app: Extract<keyof TConfig['apps'], string>): number => {
+    const appConfig = appsConfig[app]
+    if (!appConfig) {
+      throw new Error(
+        `Cannot get port for app "${app}": app not found in configuration.`
+      )
+    }
+
+    // Resolve ports (can be static or function)
+    const tempContext = resolver.namespaces.createHostContext(namespace as string, { appName: app })
+    const resolvedPorts = typeof appConfig.ports === 'function' 
+      ? appConfig.ports(tempContext)
+      : appConfig.ports
+
+    if (!resolvedPorts || resolvedPorts.length === 0) {
+      throw new Error(
+        `Cannot get port for app "${app}": no ports configuration found. ` +
+        `Add a ports definition to the app configuration.`
+      )
+    }
+
+    const firstPort = resolvedPorts[0]
+    
+    // If port is a string like "80:3000", extract targetPort (3000)
+    if (typeof firstPort.port === 'string') {
+      const parts = firstPort.port.split(':')
+      if (parts.length === 2) {
+        return parseInt(parts[1], 10)
+      }
+      return parseInt(firstPort.port, 10)
+    }
+    
+    // If targetPort is explicitly defined, use it
+    if (firstPort.targetPort !== undefined) {
+      return typeof firstPort.targetPort === 'string' 
+        ? parseInt(firstPort.targetPort, 10)
+        : firstPort.targetPort
+    }
+    
+    // Otherwise, use port (which equals targetPort)
+    return firstPort.port
+  }
 
   /**
    * Get environment variable for an app.
@@ -93,10 +142,11 @@ export function createRuntimeHelpers<
   const env = (_appName: Extract<keyof TConfig['apps'], string>, key: string): string => {
     return getEnvironmentVariable(key) ?? ''
   }
-
+  
   return {
     dns,
     url,
+    port,
     env
   }
 }

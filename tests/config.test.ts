@@ -67,6 +67,10 @@ const cfg = defineConfig({
       // App without ingress (internal service only)
       ports: [{ name: 'http', port: 80, targetPort: 5000 }]
     },
+    'no-ports-app': {
+      // App without ports (for testing port() error handling)
+      env: () => ({ TEST: 'value' })
+    },
     conditional: {
       // Conditional ingress that might return undefined
       ingress: ({ domain }) => {
@@ -260,6 +264,31 @@ describe('defineConfig runtime API', () => {
       // dynamic-ports uses different port in production
       expect(cfg.dns('dynamic-ports', 'ingress')).toBe('dynamic.example.com')
       expect(cfg.url('dynamic-ports', 'ingress')).toBe('https://dynamic.example.com')
+    })
+  })
+
+  it('exposes port helper to get application port', () => {
+    withNamespace('dev', () => {
+      // dynamic-ports has targetPort 4000 in dev
+      expect(cfg.port('dynamic-ports')).toBe(4000)
+      
+      // api has targetPort 8080
+      expect(cfg.port('api')).toBe(8080)
+      
+      // web has targetPort 3000
+      expect(cfg.port('web')).toBe(3000)
+    })
+
+    withNamespace('prod', () => {
+      // dynamic-ports has targetPort 3000 in prod
+      expect(cfg.port('dynamic-ports')).toBe(3000)
+    })
+  })
+
+  it('throws error when getting port for app without ports config', () => {
+    withNamespace('prod', () => {
+      // no-ports-app has no ports configuration
+      expect(() => cfg.port('no-ports-app')).toThrow('no ports configuration found')
     })
   })
 })
