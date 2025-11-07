@@ -56,6 +56,12 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         const image = app.image || this.resolver.images.buildRef(appName)
         const { network, host } = this.resolver.apps.resolveNetwork(appName, app, context)
 
+        // Resolve dynamic parameters (can be static values or functions)
+        const resolveParam = <T>(param: any): T | undefined => {
+          if (param === undefined) return undefined
+          return typeof param === 'function' ? param(context) : param
+        }
+
         entries.push({
           namespace,
           app: appName,
@@ -65,11 +71,11 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           secrets,
           configMaps,
           network,
-          podAnnotations: app.podAnnotations,
-          volumes: app.volumes,
-          volumeMounts: app.volumeMounts,
-          args: app.args,
-          ports: app.ports
+          podAnnotations: resolveParam(app.podAnnotations),
+          volumes: resolveParam(app.volumes),
+          volumeMounts: resolveParam(app.volumeMounts),
+          args: resolveParam(app.args),
+          ports: resolveParam(app.ports)
         })
       }
     }

@@ -657,6 +657,24 @@ export interface ServicePort {
   protocol?: 'TCP' | 'UDP'
 }
 
+/**
+ * App parameter that can be static or resolved dynamically via function.
+ * Provides access to namespace context for conditional configuration.
+ */
+export type AppParameter<
+  T,
+  TNamespaceVars extends NamespaceDefinition,
+  TProject extends string = string,
+  TNamespaceName extends string = string,
+  TSecrets = undefined,
+  TConfigMaps = undefined,
+  TApps = undefined
+> =
+  | T
+  | ((
+      ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+    ) => T)
+
 export type AppDefinition<
   TNamespaceVars extends NamespaceDefinition,
   TProject extends string = string,
@@ -668,11 +686,27 @@ export type AppDefinition<
   image?: string
   build?: BuildDefinition
   env?: AppEnv<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
-  podAnnotations?: Record<string, string>
-  volumes?: Volume[]
-  volumeMounts?: VolumeMount[]
-  args?: string[]
-  ports?: ServicePort[]
+  podAnnotations?:
+    | Record<string, string>
+    | ((
+        ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+      ) => Record<string, string>)
+  volumes?:
+    | Volume[]
+    | ((ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>) => Volume[])
+  volumeMounts?:
+    | VolumeMount[]
+    | ((
+        ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+      ) => VolumeMount[])
+  args?:
+    | string[]
+    | ((ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>) => string[])
+  ports?:
+    | ServicePort[]
+    | ((
+        ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+      ) => ServicePort[])
   deploy?: AppDeploySelection<TNamespaceName> | undefined
   ingress?: AppIngressDefinition<
     TNamespaceVars,

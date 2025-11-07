@@ -82,6 +82,18 @@ const cfg = defineConfig({
         port: domain === 'dev.example.com' ? 3001 : undefined
       }),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+    },
+    'dynamic-ports': {
+      // Service with dynamic ports based on namespace
+      ingress: ({ domain, namespace }) => ({ 
+        domain: `dynamic.${domain}`,
+        port: namespace === 'dev' ? 4000 : undefined
+      }),
+      ports: ({ namespace }) => [{ 
+        name: 'http', 
+        port: 80, 
+        targetPort: namespace === 'dev' ? 4000 : 3000
+      }]
     }
   }
 })
@@ -234,6 +246,20 @@ describe('defineConfig runtime API', () => {
       // local-service has no port in production (undefined)
       expect(cfg.dns('local-service', 'ingress')).toBe('example.com')
       expect(cfg.url('local-service', 'ingress')).toBe('https://example.com')
+    })
+  })
+
+  it('supports dynamic ports via functions', () => {
+    withNamespace('dev', () => {
+      // dynamic-ports uses function to set different targetPorts per namespace
+      expect(cfg.dns('dynamic-ports', 'ingress')).toBe('dynamic.dev.example.com')
+      expect(cfg.url('dynamic-ports', 'ingress')).toBe('https://dynamic.dev.example.com:4000')
+    })
+
+    withNamespace('prod', () => {
+      // dynamic-ports uses different port in production
+      expect(cfg.dns('dynamic-ports', 'ingress')).toBe('dynamic.example.com')
+      expect(cfg.url('dynamic-ports', 'ingress')).toBe('https://dynamic.example.com')
     })
   })
 })
