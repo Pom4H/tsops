@@ -1,5 +1,232 @@
 # @tsops/core
 
+## 0.8.0
+
+### Minor Changes
+
+- [#24](https://github.com/Pom4H/tsops/pull/24) [`3807ec3`](https://github.com/Pom4H/tsops/commit/3807ec3b930809233eee232297cd78a7de65191e) Thanks [@Pom4H](https://github.com/Pom4H)! - ## Features
+
+  ### Unified Dynamic Parameters for All App Configuration Fields
+
+  All app configuration parameters now support both static values and dynamic functions with access to namespace context. This provides a consistent, unified approach across the entire configuration API.
+
+  **Supported Parameters:**
+
+  - `ports` - Service ports configuration
+  - `args` - Container arguments
+  - `volumes` - Volume definitions
+  - `volumeMounts` - Volume mount configurations
+  - `podAnnotations` - Pod annotations
+
+  **Before (only static):**
+
+  ```typescript
+  apps: {
+    'my-app': {
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }],  // Always 3000
+      args: ['--mode=prod'],                                   // Always prod mode
+    }
+  }
+  ```
+
+  **After (static or dynamic):**
+
+  ```typescript
+  apps: {
+    'worken-front': {
+      // Dynamic ports: different targetPort per namespace
+      ports: ({ namespace }) => [{
+        name: 'http',
+        port: 80,
+        targetPort: namespace === 'dev' ? 3000 : 3000
+      }],
+
+      // Dynamic args: enable debug in dev
+      args: ({ production }) =>
+        production ? ['--mode=prod'] : ['--mode=dev', '--debug'],
+
+      // Dynamic volumes: region-specific storage
+      volumes: ({ region }) =>
+        region === 'us' ? usVolumes : euVolumes,
+
+      // Dynamic annotations: namespace-specific labels
+      podAnnotations: ({ namespace }) => ({
+        'environment': namespace,
+        'monitored': namespace === 'prod' ? 'true' : 'false'
+      })
+    },
+
+    'worken-api': {
+      ports: ({ namespace }) => [{
+        name: 'http',
+        port: 80,
+        targetPort: namespace === 'dev' ? 3001 : 3000  // Different ports locally!
+      }]
+    }
+  }
+  ```
+
+  **Context Available:**
+  All parameters get full access to namespace context:
+
+  - `namespace` - Current namespace name ('dev', 'prod', 'stage')
+  - `domain` - Namespace domain
+  - `region` - Namespace region
+  - `production` - Boolean flag (true for production namespace)
+  - `project` - Project name
+  - Plus all custom namespace variables
+
+  **Use Cases:**
+
+  1. **Local Development Ports**: Run multiple services on localhost with different ports
+
+  ```typescript
+  ports: ({ domain }) => [
+    {
+      name: "http",
+      port: 80,
+      targetPort: domain === "localhost" ? 3001 : 3000,
+    },
+  ];
+  ```
+
+  2. **Environment-Specific Arguments**: Different config per environment
+
+  ```typescript
+  args: ({ namespace }) =>
+    namespace === "dev"
+      ? ["--log-level=debug", "--hot-reload"]
+      : ["--log-level=info"];
+  ```
+
+  3. **Region-Specific Volumes**: Different storage configurations
+
+  ```typescript
+  volumes: ({ region }) => [
+    {
+      name: "data",
+      persistentVolumeClaim: {
+        claimName: `data-${region}`,
+      },
+    },
+  ];
+  ```
+
+  4. **Monitoring Labels**: Conditional annotations
+
+  ```typescript
+  podAnnotations: ({ production }) => ({
+    "prometheus.io/scrape": production ? "true" : "false",
+    "datadog.com/tags": production ? "env:prod" : "env:dev",
+  });
+  ```
+
+  **Technical Details:**
+
+  - Full type safety with TypeScript
+  - Context typed based on your namespace definition
+  - Autocomplete for all context properties
+  - No performance overhead (resolved once during planning)
+
+  This feature completes the unified approach to configuration, where every parameter can be either static (for simplicity) or dynamic (for flexibility), using the same pattern throughout the entire API.
+
+- [#24](https://github.com/Pom4H/tsops/pull/24) [`5e9f244`](https://github.com/Pom4H/tsops/commit/5e9f2441ab4ace09c271ad13fe97e9fc991f0630) Thanks [@Pom4H](https://github.com/Pom4H)! - ## Features
+
+  ### Added `port()` Runtime Helper
+
+  New `port()` helper provides a single source of truth for application ports. Applications can now query their own port configuration at runtime, enabling dynamic port assignment based on namespace.
+
+  **Problem:**
+  Previously, port configuration lived in tsops config, but applications had no way to know what port they should listen on. This led to hardcoded ports in application code or ENV variable duplication.
+
+  **Solution:**
+  The `port()` helper extracts the targetPort from the ports configuration, with full support for:
+
+  - Static port values
+  - Dynamic port functions (namespace-aware)
+  - String format parsing (`"80:3000"` → `3000`)
+  - Proper error handling
+
+  **Usage:**
+
+  ```typescript
+  // In your application code:
+  import config from "./tsops.config";
+
+  const PORT = config.port("worken-api");
+  app.listen(PORT);
+
+  console.log(`Server listening on port ${PORT}`);
+  // Dev: "Server listening on port 3001"
+  // Prod: "Server listening on port 80"
+  ```
+
+  **Configuration:**
+
+  ```typescript
+  // tsops.config.ts
+  export default defineConfig({
+    // ...
+    apps: {
+      "worken-front": {
+        ports: ({ domain }) => [
+          {
+            name: "http",
+            port: 80,
+            targetPort: domain === "localhost" ? 3000 : 3000,
+          },
+        ],
+      },
+      "worken-api": {
+        ports: ({ domain }) => [
+          {
+            name: "http",
+            port: 80,
+            targetPort: domain === "localhost" ? 3001 : 3000, // Different port locally!
+          },
+        ],
+      },
+      "openai-api": {
+        ports: ({ domain }) => [
+          {
+            name: "http",
+            port: 80,
+            targetPort: domain === "localhost" ? 3002 : 3000,
+          },
+        ],
+      },
+    },
+  });
+  ```
+
+  **Benefits:**
+
+  1. **Single Source of Truth**: Port configuration lives only in tsops config
+  2. **Type-Safe**: Full TypeScript support with autocomplete
+  3. **Namespace-Aware**: Automatically respects `TSOPS_NAMESPACE` environment variable
+  4. **Dynamic**: Supports conditional logic via functions
+  5. **Error Handling**: Clear error messages if ports not configured
+
+  **Local Development:**
+  Perfect for running multiple services on different ports:
+
+  - `worken-front`: http://localhost:3000
+  - `worken-api`: http://localhost:3001
+  - `openai-api`: http://localhost:3002
+
+  **Production:**
+  All services can use standard container ports (80, 3000, etc.) without conflicts.
+
+  **String Format Support:**
+  Also supports the `"service:container"` string format:
+
+  ```typescript
+  ports: [{ name: "http", port: "80:3000" }];
+  config.port("app"); // → 3000
+  ```
+
+  This feature completes the runtime helpers trinity: `dns()`, `url()`, and `port()` - everything your application needs to know about its deployment environment.
+
 ## 0.7.0
 
 ### Minor Changes
