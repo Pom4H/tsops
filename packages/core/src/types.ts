@@ -578,6 +578,8 @@ export interface IngressDefinitionObject {
   domain: string
   /** Protocol to use (http or https). Defaults to https for production domains, http for local development */
   protocol?: 'http' | 'https'
+  /** Port to use (for local development with multiple services on localhost) */
+  port?: number
 }
 
 export type AppIngressDefinition<

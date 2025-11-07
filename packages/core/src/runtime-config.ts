@@ -11,9 +11,10 @@ export function createRuntimeHelpers<
   const resolver = createConfigResolver(config)
   const namespaceVars = config.namespaces[namespace] as ExtractNamespaceVarsFromConfig<TConfig>
 
-  // Collect all external hosts with protocol information
+  // Collect all external hosts with protocol and port information
   const externalHosts: Record<string, string> = {}
   const externalProtocols: Record<string, 'http' | 'https'> = {}
+  const externalPorts: Record<string, number> = {}
   const appsConfig: Record<string, any> = {}
 
   const appEntries = resolver.apps.select()
@@ -28,8 +29,8 @@ export function createRuntimeHelpers<
     // Create temporary context to resolve ingress
     const tempContext = resolver.namespaces.createHostContext(namespace as string, { appName })
 
-    // Resolve ingress to get external host and protocol
-    const { host, protocol } = resolver.apps.resolveNetwork(
+    // Resolve ingress to get external host, protocol, and port
+    const { host, protocol, port } = resolver.apps.resolveNetwork(
       appName,
       app,
       tempContext
@@ -39,6 +40,10 @@ export function createRuntimeHelpers<
       externalHosts[appName] = host
       // Store protocol, default to http if not specified
       externalProtocols[appName] = protocol || 'http'
+      // Store port if specified (for local development)
+      if (port) {
+        externalPorts[appName] = port
+      }
     }
   }
 
@@ -73,8 +78,11 @@ export function createRuntimeHelpers<
     // For cluster/service types, default to http (internal communication)
     const protocol = type === 'ingress' ? (externalProtocols[app] || 'http') : 'http'
 
+    // Add port if specified (for ingress type with explicit port, e.g., localhost:3000)
+    const port = type === 'ingress' && externalPorts[app] ? `:${externalPorts[app]}` : ''
+
     // Build the complete URL
-    return `${protocol}://${hostname}`
+    return `${protocol}://${hostname}${port}`
   }
 
   /**

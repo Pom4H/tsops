@@ -74,6 +74,14 @@ const cfg = defineConfig({
         return domain.includes('example.com') ? { domain: `conditional.${domain}` } : undefined as any
       },
       ports: [{ name: 'http', port: 80, targetPort: 6000 }]
+    },
+    'local-service': {
+      // Service with explicit port for local development
+      ingress: ({ domain }) => ({ 
+        domain,
+        port: domain === 'dev.example.com' ? 3001 : undefined
+      }),
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }]
     }
   }
 })
@@ -208,6 +216,24 @@ describe('defineConfig runtime API', () => {
       // ingress should work because domain includes 'example.com'
       expect(cfg.dns('conditional', 'ingress')).toBe('conditional.example.com')
       expect(cfg.url('conditional', 'ingress')).toBe('https://conditional.example.com')
+    })
+  })
+
+  it('respects explicit port in ingress for local development', () => {
+    withNamespace('dev', () => {
+      // local-service has explicit port 3001 for dev environment
+      expect(cfg.dns('local-service', 'ingress')).toBe('dev.example.com')
+      expect(cfg.url('local-service', 'ingress')).toBe('https://dev.example.com:3001')
+      
+      // cluster and service types should not have ports
+      expect(cfg.url('local-service', 'cluster')).toBe('http://local-service.dev.svc.cluster.local')
+      expect(cfg.url('local-service', 'service')).toBe('http://local-service')
+    })
+
+    withNamespace('prod', () => {
+      // local-service has no port in production (undefined)
+      expect(cfg.dns('local-service', 'ingress')).toBe('example.com')
+      expect(cfg.url('local-service', 'ingress')).toBe('https://example.com')
     })
   })
 })

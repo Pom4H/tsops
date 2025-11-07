@@ -72,7 +72,7 @@ export interface AppsResolver<TConfig extends TsOpsConfig<any, any, any, any, an
   ): Record<string, Record<string, string>>
   /**
    * Resolves network configuration from ingress definition.
-   * Returns ingress config, domain host, and protocol (http/https).
+   * Returns ingress config, domain host, protocol (http/https), and optional port.
    */
   resolveNetwork(
     appName: string,
@@ -85,7 +85,7 @@ export interface AppsResolver<TConfig extends TsOpsConfig<any, any, any, any, an
       TConfig['configMaps'],
       TConfig['apps']
     >
-  ): { network: ResolvedNetworkConfig | undefined; host: string | undefined; protocol?: 'http' | 'https' }
+  ): { network: ResolvedNetworkConfig | undefined; host: string | undefined; protocol?: 'http' | 'https'; port?: number }
 }
 
 export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any, any>>(
@@ -250,7 +250,7 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
       TConfig['secrets'],
       TConfig['configMaps']
     >
-  ): { network: ResolvedNetworkConfig | undefined; host: string | undefined; protocol?: 'http' | 'https' } {
+  ): { network: ResolvedNetworkConfig | undefined; host: string | undefined; protocol?: 'http' | 'https'; port?: number } {
     const ingressDef = app.ingress
     if (!ingressDef) {
       return { network: undefined, host: undefined }
@@ -281,7 +281,8 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     return {
       network: { ingress: result.ingress },
       host: resolved.domain,
-      protocol: result.protocol
+      protocol: result.protocol,
+      port: resolved.port
     }
   }
 
