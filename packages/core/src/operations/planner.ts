@@ -57,9 +57,47 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         const { network, host } = this.resolver.apps.resolveNetwork(appName, app, context)
 
         // Resolve dynamic parameters (can be static values or functions)
-        const resolveParam = <T>(param: any): T | undefined => {
+        const resolveParam = <T>(param: T | ((ctx: typeof context) => T) | undefined): T | undefined => {
           if (param === undefined) return undefined
-          return typeof param === 'function' ? param(context) : param
+          return typeof param === 'function' ? (param as (ctx: typeof context) => T)(context) : param
+        }
+
+        // Resolve and normalize ports (parse string format "80:3000" → { port: 80, targetPort: 3000 })
+        type PortInput = { name: string; port: number | string; targetPort?: number | string; protocol?: 'TCP' | 'UDP' }
+        type PortOutput = { name: string; port: number; targetPort: number | string; protocol?: 'TCP' | 'UDP' }
+        
+        const resolvePorts = (
+          param: PortInput[] | ((ctx: typeof context) => PortInput[]) | undefined
+        ): PortOutput[] | undefined => {
+          const resolved = resolveParam<PortInput[]>(param)
+          if (!resolved || !Array.isArray(resolved)) return undefined
+
+          return resolved.map(portDef => {
+            // If port is string like "80:3000", parse it
+            if (typeof portDef.port === 'string') {
+              const parts = portDef.port.split(':')
+              if (parts.length === 2) {
+                return {
+                  ...portDef,
+                  port: parseInt(parts[0], 10),
+                  targetPort: portDef.targetPort ?? parseInt(parts[1], 10)
+                }
+              }
+              // Single number as string
+              const parsed = parseInt(portDef.port, 10)
+              return {
+                ...portDef,
+                port: parsed,
+                targetPort: portDef.targetPort ?? parsed
+              }
+            }
+            // If port is number but no targetPort, set targetPort = port
+            return {
+              ...portDef,
+              port: portDef.port,
+              targetPort: portDef.targetPort ?? portDef.port
+            }
+          })
         }
 
         entries.push({
@@ -71,11 +109,11 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           secrets,
           configMaps,
           network,
-          podAnnotations: resolveParam(app.podAnnotations),
-          volumes: resolveParam(app.volumes),
-          volumeMounts: resolveParam(app.volumeMounts),
-          args: resolveParam(app.args),
-          ports: resolveParam(app.ports)
+          podAnnotations: resolveParam(app.podAnnotations as Parameters<typeof resolveParam>[0]) as Record<string, string> | undefined,
+          volumes: resolveParam(app.volumes as Parameters<typeof resolveParam>[0]) as PlanEntry['volumes'],
+          volumeMounts: resolveParam(app.volumeMounts as Parameters<typeof resolveParam>[0]) as PlanEntry['volumeMounts'],
+          args: resolveParam(app.args as Parameters<typeof resolveParam>[0]) as string[] | undefined,
+          ports: resolvePorts(app.ports as PortInput[] | ((ctx: typeof context) => PortInput[]) | undefined)
         })
       }
     }

@@ -98,6 +98,13 @@ const cfg = defineConfig({
         port: 80, 
         targetPort: namespace === 'dev' ? 4000 : 3000
       }]
+    },
+    'string-port-format': {
+      // Service using string port format "service:container"
+      ports: ({ namespace }) => [{ 
+        name: 'http', 
+        port: namespace === 'dev' ? '8080:3000' : 80
+      }]
     }
   }
 })
@@ -289,6 +296,18 @@ describe('defineConfig runtime API', () => {
     withNamespace('prod', () => {
       // no-ports-app has no ports configuration
       expect(() => cfg.port('no-ports-app')).toThrow('no ports configuration found')
+    })
+  })
+
+  it('supports string port format "service:container"', () => {
+    withNamespace('dev', () => {
+      // string-port-format uses "8080:3000" format
+      expect(cfg.port('string-port-format')).toBe(3000)
+    })
+
+    withNamespace('prod', () => {
+      // string-port-format uses simple number in prod
+      expect(cfg.port('string-port-format')).toBe(80)
     })
   })
 })

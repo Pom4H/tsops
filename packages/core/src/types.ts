@@ -652,7 +652,8 @@ export interface Volume {
 
 export interface ServicePort {
   name: string
-  port: number
+  /** Service port. Can be a number or string like "80:3000" (service:container) */
+  port: number | string
   targetPort?: number | string
   protocol?: 'TCP' | 'UDP'
 }
