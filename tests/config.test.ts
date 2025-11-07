@@ -67,6 +67,10 @@ const cfg = defineConfig({
       // App without ingress (internal service only)
       ports: [{ name: 'http', port: 80, targetPort: 5000 }]
     },
+    'no-ports-app': {
+      // App without ports (for testing port() error handling)
+      env: () => ({ TEST: 'value' })
+    },
     conditional: {
       // Conditional ingress that might return undefined
       ingress: ({ domain }) => {
@@ -82,6 +86,25 @@ const cfg = defineConfig({
         port: domain === 'dev.example.com' ? 3001 : undefined
       }),
       ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+    },
+    'dynamic-ports': {
+      // Service with dynamic ports based on namespace
+      ingress: ({ domain, namespace }) => ({ 
+        domain: `dynamic.${domain}`,
+        port: namespace === 'dev' ? 4000 : undefined
+      }),
+      ports: ({ namespace }) => [{ 
+        name: 'http', 
+        port: 80, 
+        targetPort: namespace === 'dev' ? 4000 : 3000
+      }]
+    },
+    'string-port-format': {
+      // Service using string port format "service:container"
+      ports: ({ namespace }) => [{ 
+        name: 'http', 
+        port: namespace === 'dev' ? '8080:3000' : 80
+      }]
     }
   }
 })
@@ -234,6 +257,57 @@ describe('defineConfig runtime API', () => {
       // local-service has no port in production (undefined)
       expect(cfg.dns('local-service', 'ingress')).toBe('example.com')
       expect(cfg.url('local-service', 'ingress')).toBe('https://example.com')
+    })
+  })
+
+  it('supports dynamic ports via functions', () => {
+    withNamespace('dev', () => {
+      // dynamic-ports uses function to set different targetPorts per namespace
+      expect(cfg.dns('dynamic-ports', 'ingress')).toBe('dynamic.dev.example.com')
+      expect(cfg.url('dynamic-ports', 'ingress')).toBe('https://dynamic.dev.example.com:4000')
+    })
+
+    withNamespace('prod', () => {
+      // dynamic-ports uses different port in production
+      expect(cfg.dns('dynamic-ports', 'ingress')).toBe('dynamic.example.com')
+      expect(cfg.url('dynamic-ports', 'ingress')).toBe('https://dynamic.example.com')
+    })
+  })
+
+  it('exposes port helper to get application port', () => {
+    withNamespace('dev', () => {
+      // dynamic-ports has targetPort 4000 in dev
+      expect(cfg.port('dynamic-ports')).toBe(4000)
+      
+      // api has targetPort 8080
+      expect(cfg.port('api')).toBe(8080)
+      
+      // web has targetPort 3000
+      expect(cfg.port('web')).toBe(3000)
+    })
+
+    withNamespace('prod', () => {
+      // dynamic-ports has targetPort 3000 in prod
+      expect(cfg.port('dynamic-ports')).toBe(3000)
+    })
+  })
+
+  it('throws error when getting port for app without ports config', () => {
+    withNamespace('prod', () => {
+      // no-ports-app has no ports configuration
+      expect(() => cfg.port('no-ports-app')).toThrow('no ports configuration found')
+    })
+  })
+
+  it('supports string port format "service:container"', () => {
+    withNamespace('dev', () => {
+      // string-port-format uses "8080:3000" format
+      expect(cfg.port('string-port-format')).toBe(3000)
+    })
+
+    withNamespace('prod', () => {
+      // string-port-format uses simple number in prod
+      expect(cfg.port('string-port-format')).toBe(80)
     })
   })
 })

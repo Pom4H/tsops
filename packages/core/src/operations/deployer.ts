@@ -139,15 +139,12 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
       })
 
       // 4a. Collect all app manifests
-      const manifestList = (
-        [
-          manifests.deployment,
-          manifests.service,
-          manifests.ingress,
-          manifests.ingressRoute,
-          manifests.certificate
-        ] as const
-      ).filter((manifest): manifest is SupportedManifest => Boolean(manifest))
+      const manifestList: SupportedManifest[] = []
+      if (manifests.deployment) manifestList.push(manifests.deployment)
+      if (manifests.service) manifestList.push(manifests.service)
+      if (manifests.ingress) manifestList.push(manifests.ingress)
+      if (manifests.ingressRoute) manifestList.push(manifests.ingressRoute)
+      if (manifests.certificate) manifestList.push(manifests.certificate)
 
       // 4b. Apply all app resources atomically
       if (manifestList.length > 0) {
