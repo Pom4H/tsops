@@ -259,6 +259,11 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     const serviceName = project.serviceName(appName)
     const resolved = typeof ingressDef === 'function' ? ingressDef(context) : ingressDef
 
+    // Check if resolved is valid (function might return undefined/null)
+    if (!resolved || !resolved.domain) {
+      return { network: undefined, host: undefined }
+    }
+
     // Auto-detect protocol if not specified
     const protocol =
       resolved.protocol ||

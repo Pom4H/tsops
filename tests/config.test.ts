@@ -62,6 +62,18 @@ const cfg = defineConfig({
         protocol: 'http'
       }),
       ports: [{ name: 'http', port: 80, targetPort: 9000 }]
+    },
+    worker: {
+      // App without ingress (internal service only)
+      ports: [{ name: 'http', port: 80, targetPort: 5000 }]
+    },
+    conditional: {
+      // Conditional ingress that might return undefined
+      ingress: ({ domain }) => {
+        // Simulate conditional logic that might return undefined
+        return domain.includes('example.com') ? { domain: `conditional.${domain}` } : undefined as any
+      },
+      ports: [{ name: 'http', port: 80, targetPort: 6000 }]
     }
   }
 })
@@ -172,6 +184,30 @@ describe('defineConfig runtime API', () => {
       // admin app still uses http in dev (explicit protocol overrides auto-detection)
       expect(cfg.dns('admin', 'ingress')).toBe('admin.dev.example.com')
       expect(cfg.url('admin', 'ingress')).toBe('http://admin.dev.example.com')
+    })
+  })
+
+  it('handles apps without ingress gracefully', () => {
+    withNamespace('prod', () => {
+      // worker has no ingress, should throw when trying to access ingress DNS/URL
+      expect(() => cfg.dns('worker', 'ingress')).toThrow()
+      expect(() => cfg.url('worker', 'ingress')).toThrow()
+      
+      // but cluster and service DNS should work fine
+      expect(cfg.dns('worker', 'cluster')).toBe('worker.prod.svc.cluster.local')
+      expect(cfg.dns('worker', 'service')).toBe('worker')
+      expect(cfg.url('worker', 'service')).toBe('http://worker')
+    })
+  })
+
+  it('handles conditional ingress that returns undefined', () => {
+    withNamespace('prod', () => {
+      // conditional app returns ingress object for example.com domain
+      expect(cfg.dns('conditional', 'cluster')).toBe('conditional.prod.svc.cluster.local')
+      expect(cfg.dns('conditional', 'service')).toBe('conditional')
+      // ingress should work because domain includes 'example.com'
+      expect(cfg.dns('conditional', 'ingress')).toBe('conditional.example.com')
+      expect(cfg.url('conditional', 'ingress')).toBe('https://conditional.example.com')
     })
   })
 })
