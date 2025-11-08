@@ -123,8 +123,14 @@ export function createRuntimeHelpers<
     app: Extract<keyof TConfig["apps"], string>,
     type: DNSType
   ): string => {
+    // In local mode, all types use localhost
+    if (isLocalDevelopment()) {
+      return "localhost";
+    }
+
+    // Production mode
     if (type === "service") {
-      return isLocalDevelopment() ? "localhost" : app;
+      return app;
     }
 
     // type === "ingress"
@@ -134,7 +140,8 @@ export function createRuntimeHelpers<
           `Add an ingress definition to the app or use 'service' type instead.`
       );
     }
-    return isLocalDevelopment() ? "localhost" : externalHosts[app];
+
+    return externalHosts[app];
   };
 
   /**
@@ -147,7 +154,8 @@ export function createRuntimeHelpers<
     type: DNSType
   ): string => {
     const hostname = dns(app, type);
-    const protocol = type === "ingress" ? externalProtocols[app] || "http" : "http";
+    const protocol =
+      type === "ingress" ? externalProtocols[app] || "http" : "http";
 
     // Add port only when needed
     const portNumber =
