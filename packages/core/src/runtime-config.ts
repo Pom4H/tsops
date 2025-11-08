@@ -48,11 +48,63 @@ export function createRuntimeHelpers<
   }
   
   /**
+   * Get the target port for an app (internal helper)
+   * Returns undefined if ports are not configured
+   */
+  const getAppTargetPort = (app: Extract<keyof TConfig['apps'], string>): number | undefined => {
+    const appConfig = appsConfig[app]
+    if (!appConfig) return undefined
+
+    // Resolve ports (can be static or function)
+    const tempContext = resolver.namespaces.createHostContext(namespace as string, { appName: app })
+    const resolvedPorts = typeof appConfig.ports === 'function' 
+      ? appConfig.ports(tempContext)
+      : appConfig.ports
+
+    if (!resolvedPorts || resolvedPorts.length === 0) return undefined
+
+    const firstPort = resolvedPorts[0]
+    
+    // If port is a string like "80:3000", extract targetPort (3000)
+    if (typeof firstPort.port === 'string') {
+      const parts = firstPort.port.split(':')
+      if (parts.length === 2) {
+        return parseInt(parts[1], 10)
+      }
+      return parseInt(firstPort.port, 10)
+    }
+    
+    // If targetPort is explicitly defined, use it
+    if (firstPort.targetPort !== undefined) {
+      return typeof firstPort.targetPort === 'string' 
+        ? parseInt(firstPort.targetPort, 10)
+        : firstPort.targetPort
+    }
+    
+    // Otherwise, use port (which equals targetPort)
+    return firstPort.port
+  }
+
+  /**
+   * Check if we're in local development mode (explicit local flag in namespace)
+   */
+  const isLocalDevelopment = (_app?: Extract<keyof TConfig['apps'], string>): boolean => {
+    // Check explicit local flag in namespace configuration
+    const namespaceConfig = config.namespaces[namespace as Extract<keyof TConfig['namespaces'], string>]
+    return namespaceConfig?.local === true
+  }
+
+  /**
    * Generate DNS name for different types of resources
    */
   const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType): string => {
     switch (type) {
       case 'service':
+        // For local development (localhost domain), use localhost instead of service name
+        // This allows service-to-service communication in local dev environment
+        if (isLocalDevelopment(app)) {
+          return 'localhost'
+        }
         return app
       case 'ingress':
         if (!externalHosts[app]) {
@@ -78,8 +130,18 @@ export function createRuntimeHelpers<
     // For cluster/service types, default to http (internal communication)
     const protocol = type === 'ingress' ? (externalProtocols[app] || 'http') : 'http'
 
-    // Add port if specified (for ingress type with explicit port, e.g., localhost:3000)
-    const port = type === 'ingress' && externalPorts[app] ? `:${externalPorts[app]}` : ''
+    // Add port if specified
+    let port = ''
+    if (type === 'ingress' && externalPorts[app]) {
+      // Ingress with explicit port (e.g., localhost:3000)
+      port = `:${externalPorts[app]}`
+    } else if (type === 'service' && hostname === 'localhost') {
+      // Service type in local development - use app's targetPort
+      const targetPort = getAppTargetPort(app)
+      if (targetPort) {
+        port = `:${targetPort}`
+      }
+    }
 
     // Build the complete URL
     return `${protocol}://${hostname}${port}`
@@ -92,46 +154,16 @@ export function createRuntimeHelpers<
    * For production, this typically returns the standard container port.
    */
   const port = (app: Extract<keyof TConfig['apps'], string>): number => {
-    const appConfig = appsConfig[app]
-    if (!appConfig) {
-      throw new Error(
-        `Cannot get port for app "${app}": app not found in configuration.`
-      )
-    }
-
-    // Resolve ports (can be static or function)
-    const tempContext = resolver.namespaces.createHostContext(namespace as string, { appName: app })
-    const resolvedPorts = typeof appConfig.ports === 'function' 
-      ? appConfig.ports(tempContext)
-      : appConfig.ports
-
-    if (!resolvedPorts || resolvedPorts.length === 0) {
+    const targetPort = getAppTargetPort(app)
+    
+    if (targetPort === undefined) {
       throw new Error(
         `Cannot get port for app "${app}": no ports configuration found. ` +
         `Add a ports definition to the app configuration.`
       )
     }
 
-    const firstPort = resolvedPorts[0]
-    
-    // If port is a string like "80:3000", extract targetPort (3000)
-    if (typeof firstPort.port === 'string') {
-      const parts = firstPort.port.split(':')
-      if (parts.length === 2) {
-        return parseInt(parts[1], 10)
-      }
-      return parseInt(firstPort.port, 10)
-    }
-    
-    // If targetPort is explicitly defined, use it
-    if (firstPort.targetPort !== undefined) {
-      return typeof firstPort.targetPort === 'string' 
-        ? parseInt(firstPort.targetPort, 10)
-        : firstPort.targetPort
-    }
-    
-    // Otherwise, use port (which equals targetPort)
-    return firstPort.port
+    return targetPort
   }
 
   /**

@@ -5,6 +5,77 @@
 
 ## Features
 
+### 🎯 Explicit Local Development Mode
+
+Added explicit `local: boolean` flag to namespace configuration for clearer local development semantics.
+
+**Problem:**
+Previously, local mode was implicitly detected by checking if domain contains `localhost`. This was unclear and error-prone.
+
+**Solution:**
+Explicit `local` flag in namespace configuration:
+
+```typescript
+export default defineConfig({
+  namespaces: {
+    dev: { 
+      local: true,  // 🎯 Explicit local mode!
+      domain: 'dev.example.com',
+      replicas: 1
+    },
+    prod: { 
+      local: false,  // or omit (defaults to false)
+      domain: 'example.com',
+      replicas: 3
+    }
+  }
+})
+```
+
+**What happens in local mode (`local: true`):**
+- ✅ `config.url('app', 'service')` → `http://localhost:3001` (not `http://app-name`)
+- ✅ `config.dns('app', 'service')` → `localhost` (not `app-name`)
+- ✅ Service-to-service calls work without Kubernetes DNS
+- ✅ Each service gets unique port via `targetPort` configuration
+
+**Example:**
+
+```typescript
+// Dev namespace with local: true
+export default defineConfig({
+  namespaces: {
+    dev: { local: true, domain: 'localhost' }
+  },
+  apps: {
+    api: {
+      ports: [{ name: 'http', port: '80:3001' }],
+      env: ({ url }) => ({
+        DATABASE_URL: url('database', 'service')  // http://localhost:5432
+      })
+    },
+    database: {
+      ports: [{ name: 'tcp', port: '5432:5432' }]
+    }
+  }
+})
+```
+
+In dev (`local: true`):
+- `config.url('api', 'service')` → `http://localhost:3001` ✅
+- `config.url('database', 'service')` → `http://localhost:5432` ✅
+
+In prod (`local: false`):
+- `config.url('api', 'service')` → `http://api` ✅
+- `config.url('database', 'service')` → `http://database` ✅
+
+**Benefits:**
+1. **Explicit & Clear**: No magic domain detection
+2. **Type-Safe**: Part of namespace definition
+3. **Works with Any Domain**: Not tied to "localhost" string
+4. **Correct DNS Resolution**: Service URLs work in local dev without K8s
+
+---
+
 ### Added `port()` Runtime Helper
 
 New `port()` helper provides a single source of truth for application ports. Applications can now query their own port configuration at runtime, enabling dynamic port assignment based on namespace.
