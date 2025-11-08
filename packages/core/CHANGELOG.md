@@ -1,5 +1,15 @@
 # @tsops/core
 
+## 0.9.0
+
+### Minor Changes
+
+- [#24](https://github.com/Pom4H/tsops/pull/24) [`5e9f244`](https://github.com/Pom4H/tsops/commit/5e9f2441ab4ace09c271ad13fe97e9fc991f0630) Thanks [@Pom4H](https://github.com/Pom4H)! - ## Features
+
+  ### 🎯 Explicit Local Development Mode
+
+  Added explicit `local: boolean` flag to namespace configuration for clearer local development semantics.
+
 ## 0.8.0
 
 ### Minor Changes
