@@ -199,7 +199,8 @@ describe('defineConfig runtime API', () => {
       expect(cfg.dns('api', 'ingress')).toBe('api.example.com')
       
       // test url helper - protocol automatically resolved from ingress config
-      expect(cfg.url('api', 'service')).toBe('http://api')
+      // service URLs always include targetPort (api has targetPort: 8080)
+      expect(cfg.url('api', 'service')).toBe('http://api:8080')
       expect(cfg.url('api', 'ingress')).toBe('https://api.example.com')
     })
   })
@@ -225,9 +226,9 @@ describe('defineConfig runtime API', () => {
       expect(() => cfg.dns('worker', 'ingress')).toThrow()
       expect(() => cfg.url('worker', 'ingress')).toThrow()
       
-      // but service DNS should work fine
+      // but service DNS should work fine (worker has targetPort: 5000)
       expect(cfg.dns('worker', 'service')).toBe('worker')
-      expect(cfg.url('worker', 'service')).toBe('http://worker')
+      expect(cfg.url('worker', 'service')).toBe('http://worker:5000')
     })
   })
 
@@ -253,13 +254,13 @@ describe('defineConfig runtime API', () => {
     })
 
     withNamespace('prod', () => {
-      // local-service has no port in production (undefined)
+      // local-service has no explicit port in ingress for production
       expect(cfg.dns('local-service', 'ingress')).toBe('example.com')
       expect(cfg.url('local-service', 'ingress')).toBe('https://example.com')
       
-      // In production (local: false), service URLs use standard service name
+      // In production, service URLs always include targetPort (local-service has targetPort: 3000)
       expect(cfg.dns('local-service', 'service')).toBe('local-service')
-      expect(cfg.url('local-service', 'service')).toBe('http://local-service')
+      expect(cfg.url('local-service', 'service')).toBe('http://local-service:3000')
     })
   })
 
@@ -327,13 +328,13 @@ describe('defineConfig runtime API', () => {
     })
 
     withNamespace('prod', () => {
-      // In production (non-localhost domain), service URLs use standard service name
+      // In production, service URLs use service name with targetPort
       expect(cfg.dns('local-service', 'service')).toBe('local-service')
-      expect(cfg.url('local-service', 'service')).toBe('http://local-service')
+      expect(cfg.url('local-service', 'service')).toBe('http://local-service:3000')
       
       // dynamic-ports has targetPort 3000 in prod
       expect(cfg.dns('dynamic-ports', 'service')).toBe('dynamic-ports')
-      expect(cfg.url('dynamic-ports', 'service')).toBe('http://dynamic-ports')
+      expect(cfg.url('dynamic-ports', 'service')).toBe('http://dynamic-ports:3000')
     })
   })
 })

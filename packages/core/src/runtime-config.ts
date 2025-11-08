@@ -146,8 +146,8 @@ export function createRuntimeHelpers<
 
   /**
    * Generate complete URL for different types of resources.
-   * In local mode, both service and ingress URLs use localhost with appropriate ports.
-   * In production, service uses k8s DNS without port, ingress uses configured domain.
+   * Service URLs always include targetPort (for k8s service routing).
+   * Ingress URLs include port only if explicitly configured (e.g., localhost:3001).
    */
   const url = (
     app: Extract<keyof TConfig["apps"], string>,
@@ -157,13 +157,11 @@ export function createRuntimeHelpers<
     const protocol =
       type === "ingress" ? externalProtocols[app] || "http" : "http";
 
-    // Add port only when needed
+    // Determine port based on type
     const portNumber =
       type === "ingress"
-        ? externalPorts[app] // Explicit port from ingress config
-        : type === "service" && isLocalDevelopment()
-        ? getAppTargetPort(app) // Service port in local mode
-        : undefined;
+        ? externalPorts[app] // Explicit port from ingress config (optional)
+        : getAppTargetPort(app); // Service always uses targetPort (required)
 
     const port = portNumber ? `:${portNumber}` : "";
     return `${protocol}://${hostname}${port}`;
