@@ -158,13 +158,15 @@ describe('defineConfig runtime API', () => {
       expect(cfg.dns('api', 'cluster')).toBe('api.dev.svc.cluster.local')
       // In local mode (local: true), service DNS uses localhost
       expect(cfg.dns('api', 'service')).toBe('localhost')
-      expect(cfg.dns('api', 'ingress')).toBe('api.dev.example.com')
+      // In local mode (local: true), ingress DNS also uses localhost (no subdomains)
+      expect(cfg.dns('api', 'ingress')).toBe('localhost')
       
       // test url helper - protocol automatically resolved from ingress config
       expect(cfg.url('api', 'cluster')).toBe('http://api.dev.svc.cluster.local')
       // In local mode (local: true), service URLs use localhost:targetPort
       expect(cfg.url('api', 'service')).toBe('http://localhost:8080')
-      expect(cfg.url('api', 'ingress')).toBe('https://api.dev.example.com')
+      // In local mode (local: true), ingress URLs use localhost:explicitPort
+      expect(cfg.url('api', 'ingress')).toBe('https://localhost')
 
       // test env helper returns values from process.env
       withEnv(
@@ -214,9 +216,10 @@ describe('defineConfig runtime API', () => {
     })
 
     withNamespace('dev', () => {
-      // admin app still uses http in dev (explicit protocol overrides auto-detection)
-      expect(cfg.dns('admin', 'ingress')).toBe('admin.dev.example.com')
-      expect(cfg.url('admin', 'ingress')).toBe('http://admin.dev.example.com')
+      // In local mode, ingress uses localhost
+      // admin app still uses http protocol (explicit protocol overrides auto-detection)
+      expect(cfg.dns('admin', 'ingress')).toBe('localhost')
+      expect(cfg.url('admin', 'ingress')).toBe('http://localhost')
     })
   })
 
@@ -246,9 +249,9 @@ describe('defineConfig runtime API', () => {
 
   it('respects explicit port in ingress for local development', () => {
     withNamespace('dev', () => {
-      // local-service has explicit port 3001 for ingress in dev environment
-      expect(cfg.dns('local-service', 'ingress')).toBe('dev.example.com')
-      expect(cfg.url('local-service', 'ingress')).toBe('https://dev.example.com:3001')
+      // In local mode (local: true), ingress DNS also uses localhost (no subdomains)
+      expect(cfg.dns('local-service', 'ingress')).toBe('localhost')
+      expect(cfg.url('local-service', 'ingress')).toBe('https://localhost:3001')
       
       // In local mode (local: true), service URLs use localhost:port
       expect(cfg.dns('local-service', 'service')).toBe('localhost')
@@ -271,9 +274,9 @@ describe('defineConfig runtime API', () => {
 
   it('supports dynamic ports via functions', () => {
     withNamespace('dev', () => {
-      // dynamic-ports uses function to set different targetPorts per namespace
-      expect(cfg.dns('dynamic-ports', 'ingress')).toBe('dynamic.dev.example.com')
-      expect(cfg.url('dynamic-ports', 'ingress')).toBe('https://dynamic.dev.example.com:4000')
+      // In local mode (local: true), ingress uses localhost instead of configured domain
+      expect(cfg.dns('dynamic-ports', 'ingress')).toBe('localhost')
+      expect(cfg.url('dynamic-ports', 'ingress')).toBe('https://localhost:4000')
     })
 
     withNamespace('prod', () => {
