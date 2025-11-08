@@ -1,5 +1,347 @@
 # @tsops/core
 
+## 0.8.0
+
+### Minor Changes
+
+- [#24](https://github.com/Pom4H/tsops/pull/24) [`3807ec3`](https://github.com/Pom4H/tsops/commit/3807ec3b930809233eee232297cd78a7de65191e) Thanks [@Pom4H](https://github.com/Pom4H)! - ## Features
+
+  ### Unified Dynamic Parameters for All App Configuration Fields
+
+  All app configuration parameters now support both static values and dynamic functions with access to namespace context. This provides a consistent, unified approach across the entire configuration API.
+
+  **Supported Parameters:**
+
+  - `ports` - Service ports configuration
+  - `args` - Container arguments
+  - `volumes` - Volume definitions
+  - `volumeMounts` - Volume mount configurations
+  - `podAnnotations` - Pod annotations
+
+  **Before (only static):**
+
+  ```typescript
+  apps: {
+    'my-app': {
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }],  // Always 3000
+      args: ['--mode=prod'],                                   // Always prod mode
+    }
+  }
+  ```
+
+  **After (static or dynamic):**
+
+  ```typescript
+  apps: {
+    'worken-front': {
+      // Dynamic ports: different targetPort per namespace
+      ports: ({ namespace }) => [{
+        name: 'http',
+        port: 80,
+        targetPort: namespace === 'dev' ? 3000 : 3000
+      }],
+
+      // Dynamic args: enable debug in dev
+      args: ({ production }) =>
+        production ? ['--mode=prod'] : ['--mode=dev', '--debug'],
+
+      // Dynamic volumes: region-specific storage
+      volumes: ({ region }) =>
+        region === 'us' ? usVolumes : euVolumes,
+
+      // Dynamic annotations: namespace-specific labels
+      podAnnotations: ({ namespace }) => ({
+        'environment': namespace,
+        'monitored': namespace === 'prod' ? 'true' : 'false'
+      })
+    },
+
+    'worken-api': {
+      ports: ({ namespace }) => [{
+        name: 'http',
+        port: 80,
+        targetPort: namespace === 'dev' ? 3001 : 3000  // Different ports locally!
+      }]
+    }
+  }
+  ```
+
+  **Context Available:**
+  All parameters get full access to namespace context:
+
+  - `namespace` - Current namespace name ('dev', 'prod', 'stage')
+  - `domain` - Namespace domain
+  - `region` - Namespace region
+  - `production` - Boolean flag (true for production namespace)
+  - `project` - Project name
+  - Plus all custom namespace variables
+
+  **Use Cases:**
+
+  1. **Local Development Ports**: Run multiple services on localhost with different ports
+
+  ```typescript
+  ports: ({ domain }) => [
+    {
+      name: "http",
+      port: 80,
+      targetPort: domain === "localhost" ? 3001 : 3000,
+    },
+  ];
+  ```
+
+  2. **Environment-Specific Arguments**: Different config per environment
+
+  ```typescript
+  args: ({ namespace }) =>
+    namespace === "dev"
+      ? ["--log-level=debug", "--hot-reload"]
+      : ["--log-level=info"];
+  ```
+
+  3. **Region-Specific Volumes**: Different storage configurations
+
+  ```typescript
+  volumes: ({ region }) => [
+    {
+      name: "data",
+      persistentVolumeClaim: {
+        claimName: `data-${region}`,
+      },
+    },
+  ];
+  ```
+
+  4. **Monitoring Labels**: Conditional annotations
+
+  ```typescript
+  podAnnotations: ({ production }) => ({
+    "prometheus.io/scrape": production ? "true" : "false",
+    "datadog.com/tags": production ? "env:prod" : "env:dev",
+  });
+  ```
+
+  **Technical Details:**
+
+  - Full type safety with TypeScript
+  - Context typed based on your namespace definition
+  - Autocomplete for all context properties
+  - No performance overhead (resolved once during planning)
+
+  This feature completes the unified approach to configuration, where every parameter can be either static (for simplicity) or dynamic (for flexibility), using the same pattern throughout the entire API.
+
+- [#24](https://github.com/Pom4H/tsops/pull/24) [`5e9f244`](https://github.com/Pom4H/tsops/commit/5e9f2441ab4ace09c271ad13fe97e9fc991f0630) Thanks [@Pom4H](https://github.com/Pom4H)! - ## Features
+
+  ### Added `port()` Runtime Helper
+
+  New `port()` helper provides a single source of truth for application ports. Applications can now query their own port configuration at runtime, enabling dynamic port assignment based on namespace.
+
+  **Problem:**
+  Previously, port configuration lived in tsops config, but applications had no way to know what port they should listen on. This led to hardcoded ports in application code or ENV variable duplication.
+
+  **Solution:**
+  The `port()` helper extracts the targetPort from the ports configuration, with full support for:
+
+  - Static port values
+  - Dynamic port functions (namespace-aware)
+  - String format parsing (`"80:3000"` → `3000`)
+  - Proper error handling
+
+  **Usage:**
+
+  ```typescript
+  // In your application code:
+  import config from "./tsops.config";
+
+  const PORT = config.port("worken-api");
+  app.listen(PORT);
+
+  console.log(`Server listening on port ${PORT}`);
+  // Dev: "Server listening on port 3001"
+  // Prod: "Server listening on port 80"
+  ```
+
+  **Configuration:**
+
+  ```typescript
+  // tsops.config.ts
+  export default defineConfig({
+    // ...
+    apps: {
+      "worken-front": {
+        ports: ({ domain }) => [
+          {
+            name: "http",
+            port: 80,
+            targetPort: domain === "localhost" ? 3000 : 3000,
+          },
+        ],
+      },
+      "worken-api": {
+        ports: ({ domain }) => [
+          {
+            name: "http",
+            port: 80,
+            targetPort: domain === "localhost" ? 3001 : 3000, // Different port locally!
+          },
+        ],
+      },
+      "openai-api": {
+        ports: ({ domain }) => [
+          {
+            name: "http",
+            port: 80,
+            targetPort: domain === "localhost" ? 3002 : 3000,
+          },
+        ],
+      },
+    },
+  });
+  ```
+
+  **Benefits:**
+
+  1. **Single Source of Truth**: Port configuration lives only in tsops config
+  2. **Type-Safe**: Full TypeScript support with autocomplete
+  3. **Namespace-Aware**: Automatically respects `TSOPS_NAMESPACE` environment variable
+  4. **Dynamic**: Supports conditional logic via functions
+  5. **Error Handling**: Clear error messages if ports not configured
+
+  **Local Development:**
+  Perfect for running multiple services on different ports:
+
+  - `worken-front`: http://localhost:3000
+  - `worken-api`: http://localhost:3001
+  - `openai-api`: http://localhost:3002
+
+  **Production:**
+  All services can use standard container ports (80, 3000, etc.) without conflicts.
+
+  **String Format Support:**
+  Also supports the `"service:container"` string format:
+
+  ```typescript
+  ports: [{ name: "http", port: "80:3000" }];
+  config.port("app"); // → 3000
+  ```
+
+  This feature completes the runtime helpers trinity: `dns()`, `url()`, and `port()` - everything your application needs to know about its deployment environment.
+
+## 0.7.0
+
+### Minor Changes
+
+- [#22](https://github.com/Pom4H/tsops/pull/22) [`fa30ffc`](https://github.com/Pom4H/tsops/commit/fa30ffcd05880a1744a6bd6cdd9b12712da654af) Thanks [@Pom4H](https://github.com/Pom4H)! - ## Features
+
+  ### Added port support in ingress for local development
+
+  Added optional `port` field to ingress definition, enabling multiple services to run on different ports during local development on the same domain (e.g., localhost).
+
+  **Use Case:**
+  When developing locally, you often need to run multiple services on `localhost` with different ports:
+
+  - `worken-front`: http://localhost:3000
+  - `worken-api`: http://localhost:3001
+  - `openai-api`: http://localhost:3002
+
+  **Example:**
+
+  ```typescript
+  apps: {
+    'worken-front': {
+      ingress: ({ domain }) => ({
+        domain,
+        port: domain === 'localhost' ? 3000 : undefined
+      }),
+      // ... rest of config
+    },
+    'worken-api': {
+      ingress: ({ domain }) => ({
+        domain: `api.${domain}`,
+        port: domain === 'localhost' ? 3001 : undefined
+      }),
+      // ... rest of config
+    }
+  }
+  ```
+
+  **Result:**
+
+  ```typescript
+  // In dev (domain: localhost):
+  config.url("worken-front", "ingress"); // → http://localhost:3000
+  config.url("worken-api", "ingress"); // → http://localhost:3001
+
+  // In production (domain: worken.ru):
+  config.url("worken-front", "ingress"); // → https://worken.ru
+  config.url("worken-api", "ingress"); // → https://api.worken.ru
+  ```
+
+  **Technical Details:**
+
+  - Port is only added to `ingress` type URLs
+  - `cluster` and `service` types remain unaffected (no ports)
+  - Port is optional and omitted when `undefined`
+  - Works seamlessly with protocol auto-detection
+
+  **Changes:**
+
+  - Added `port?: number` to `IngressDefinitionObject`
+  - Updated `resolveNetwork` to extract and return port from ingress
+  - Updated runtime `url()` helper to append port when present
+  - Added comprehensive test coverage
+
+  This feature makes local development workflows much smoother when running multiple services simultaneously!
+
+## 0.6.1
+
+### Patch Changes
+
+- [#20](https://github.com/Pom4H/tsops/pull/20) [`3143e09`](https://github.com/Pom4H/tsops/commit/3143e092ffce4c10466f0b14e592a5ecfe0f5b25) Thanks [@Pom4H](https://github.com/Pom4H)! - ## Bug Fixes
+
+  ### Fixed TypeError when ingress function returns undefined
+
+  Fixed a critical bug where `resolveNetwork` would crash with `TypeError: Cannot read properties of undefined (reading 'includes')` when:
+
+  - An app's `ingress` function returned `undefined` or `null`
+  - Runtime config was imported in any application (causing iteration over all apps including those without ingress)
+
+  **Before:**
+
+  ```typescript
+  // This would crash the entire config import!
+  apps: {
+    mastra: {
+      ports: [...] // No ingress
+    }
+  }
+  ```
+
+  **After:**
+
+  ```typescript
+  // Now safely handles apps without ingress
+  apps: {
+    mastra: {
+      ports: [...] // No ingress - works fine!
+    }
+  }
+  ```
+
+  **Changes:**
+
+  - Added validation in `resolveNetwork` to check if `resolved` object exists before accessing properties
+  - Added proper error handling in `dns()` helper when requesting ingress DNS for apps without ingress configuration
+  - Returns clear error message: `Cannot get ingress DNS for app "X": no ingress configuration found`
+
+  **Tests:**
+
+  - Added test cases for apps without ingress
+  - Added test cases for conditional ingress that might return undefined
+  - All 6 tests passing
+
+  This fix is critical for production usage where config contains both public-facing apps (with ingress) and internal services (without ingress).
+
 ## 0.6.0
 
 ### Minor Changes

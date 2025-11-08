@@ -1,5 +1,26 @@
 # @tsops/node
 
+## 0.2.7
+
+### Patch Changes
+
+- Updated dependencies [[`3807ec3`](https://github.com/Pom4H/tsops/commit/3807ec3b930809233eee232297cd78a7de65191e), [`5e9f244`](https://github.com/Pom4H/tsops/commit/5e9f2441ab4ace09c271ad13fe97e9fc991f0630)]:
+  - @tsops/core@0.8.0
+
+## 0.2.6
+
+### Patch Changes
+
+- Updated dependencies [[`fa30ffc`](https://github.com/Pom4H/tsops/commit/fa30ffcd05880a1744a6bd6cdd9b12712da654af)]:
+  - @tsops/core@0.7.0
+
+## 0.2.5
+
+### Patch Changes
+
+- Updated dependencies [[`3143e09`](https://github.com/Pom4H/tsops/commit/3143e092ffce4c10466f0b14e592a5ecfe0f5b25)]:
+  - @tsops/core@0.6.1
+
 ## 0.2.4
 
 ### Patch Changes
