@@ -42,7 +42,7 @@ const cfg = defineConfig({
         SHARED_KEY: secret('shared-secrets', 'SHARED_KEY'),
         LOG_LEVEL: configMap('app-settings', 'LOG_LEVEL'),
         NAMESPACE: configMap('namespace-flags', 'NAMESPACE'),
-        ENDPOINT: url('api', 'cluster'),
+        ENDPOINT: url('api', 'service'),
         PROJECT: project,
         HOST: `api.${domain}`
       }),
@@ -155,14 +155,12 @@ describe('defineConfig runtime API', () => {
   it('resolves runtime for dev', () => {
     withNamespace('dev', () => {
       // test dns helper
-      expect(cfg.dns('api', 'cluster')).toBe('api.dev.svc.cluster.local')
       // In local mode (local: true), service DNS uses localhost
       expect(cfg.dns('api', 'service')).toBe('localhost')
       // In local mode (local: true), ingress DNS also uses localhost (no subdomains)
       expect(cfg.dns('api', 'ingress')).toBe('localhost')
       
       // test url helper - protocol automatically resolved from ingress config
-      expect(cfg.url('api', 'cluster')).toBe('http://api.dev.svc.cluster.local')
       // In local mode (local: true), service URLs use localhost:targetPort
       expect(cfg.url('api', 'service')).toBe('http://localhost:8080')
       // In local mode (local: true), ingress URLs use localhost:explicitPort
@@ -197,12 +195,10 @@ describe('defineConfig runtime API', () => {
   it('resolves runtime for prod', () => {
     withNamespace('prod', () => {
       // test dns helper
-      expect(cfg.dns('api', 'cluster')).toBe('api.prod.svc.cluster.local')
       expect(cfg.dns('api', 'service')).toBe('api')
       expect(cfg.dns('api', 'ingress')).toBe('api.example.com')
       
       // test url helper - protocol automatically resolved from ingress config
-      expect(cfg.url('api', 'cluster')).toBe('http://api.prod.svc.cluster.local')
       expect(cfg.url('api', 'service')).toBe('http://api')
       expect(cfg.url('api', 'ingress')).toBe('https://api.example.com')
     })
@@ -229,8 +225,7 @@ describe('defineConfig runtime API', () => {
       expect(() => cfg.dns('worker', 'ingress')).toThrow()
       expect(() => cfg.url('worker', 'ingress')).toThrow()
       
-      // but cluster and service DNS should work fine
-      expect(cfg.dns('worker', 'cluster')).toBe('worker.prod.svc.cluster.local')
+      // but service DNS should work fine
       expect(cfg.dns('worker', 'service')).toBe('worker')
       expect(cfg.url('worker', 'service')).toBe('http://worker')
     })
@@ -239,7 +234,6 @@ describe('defineConfig runtime API', () => {
   it('handles conditional ingress that returns undefined', () => {
     withNamespace('prod', () => {
       // conditional app returns ingress object for example.com domain
-      expect(cfg.dns('conditional', 'cluster')).toBe('conditional.prod.svc.cluster.local')
       expect(cfg.dns('conditional', 'service')).toBe('conditional')
       // ingress should work because domain includes 'example.com'
       expect(cfg.dns('conditional', 'ingress')).toBe('conditional.example.com')
@@ -249,16 +243,13 @@ describe('defineConfig runtime API', () => {
 
   it('respects explicit port in ingress for local development', () => {
     withNamespace('dev', () => {
-      // In local mode (local: true), ingress DNS also uses localhost (no subdomains)
+      // In local mode (local: true), ingress DNS uses localhost (no subdomains)
       expect(cfg.dns('local-service', 'ingress')).toBe('localhost')
       expect(cfg.url('local-service', 'ingress')).toBe('https://localhost:3001')
       
       // In local mode (local: true), service URLs use localhost:port
       expect(cfg.dns('local-service', 'service')).toBe('localhost')
       expect(cfg.url('local-service', 'service')).toBe('http://localhost:3000')
-      
-      // cluster type still uses k8s DNS
-      expect(cfg.url('local-service', 'cluster')).toBe('http://local-service.dev.svc.cluster.local')
     })
 
     withNamespace('prod', () => {
@@ -266,7 +257,7 @@ describe('defineConfig runtime API', () => {
       expect(cfg.dns('local-service', 'ingress')).toBe('example.com')
       expect(cfg.url('local-service', 'ingress')).toBe('https://example.com')
       
-      // In production (local: false), service URLs use standard k8s service name
+      // In production (local: false), service URLs use standard service name
       expect(cfg.dns('local-service', 'service')).toBe('local-service')
       expect(cfg.url('local-service', 'service')).toBe('http://local-service')
     })

@@ -38,38 +38,36 @@ export interface TsOpsConfigWithRuntime<
    * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
    * 
    * @param appName - Application name
-   * @param type - DNS type: 'cluster', 'service', or 'ingress'
+   * @param type - DNS type: 'service' or 'ingress'
    * @returns DNS name
    * 
    * @example
    * ```ts
    * import config from './tsops.config'
-   * const clusterDns = config.dns('frontend', 'cluster')
    * const serviceDns = config.dns('api', 'service')
    * const ingressDns = config.dns('api', 'ingress')
    * ```
    */
-  dns(appName: Extract<keyof TApps, string>, type: 'cluster' | 'service' | 'ingress'): string
+  dns(appName: Extract<keyof TApps, string>, type: 'service' | 'ingress'): string
   
   /**
    * Generate complete URL for different types of resources with automatic port resolution.
    * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
    * 
    * @param appName - Application name
-   * @param type - URL type: 'cluster', 'service', or 'ingress'
+   * @param type - URL type: 'service' or 'ingress'
    * @returns Complete URL with protocol and port
    * 
    * @example
    * ```ts
    * import config from './tsops.config'
-   * const clusterUrl = config.url('frontend', 'cluster')
    * const serviceUrl = config.url('api', 'service')
    * const ingressUrl = config.url('api', 'ingress')
    * ```
    */
   url(
     appName: Extract<keyof TApps, string>,
-    type: 'cluster' | 'service' | 'ingress'
+    type: 'service' | 'ingress'
   ): string
   
   /**
@@ -161,14 +159,14 @@ export function defineConfig<
       return helpers.env(appName, key)
     },
     
-    dns(appName: AppName, type: 'cluster' | 'service' | 'ingress'): string {
+    dns(appName: AppName, type: 'service' | 'ingress'): string {
       const helpers = getHelpers()
       return helpers.dns(appName, type)
     },
     
     url(
       appName: AppName,
-      type: 'cluster' | 'service' | 'ingress'
+      type: 'service' | 'ingress'
     ): string {
       const helpers = getHelpers()
       return helpers.url(appName, type)

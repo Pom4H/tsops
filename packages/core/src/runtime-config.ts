@@ -116,28 +116,25 @@ export function createRuntimeHelpers<
 
   /**
    * Generate DNS name for different types of resources.
-   * In local mode, service and ingress use localhost; cluster always uses k8s DNS.
+   * In local mode, both service and ingress use localhost.
+   * In production, service uses app name, ingress uses configured domain.
    */
   const dns = (
     app: Extract<keyof TConfig["apps"], string>,
     type: DNSType
   ): string => {
-    switch (type) {
-      case "service":
-        return isLocalDevelopment() ? "localhost" : app;
-
-      case "ingress":
-        if (!externalHosts[app]) {
-          throw new Error(
-            `Cannot get ingress DNS for app "${app}": no ingress configuration found. ` +
-              `Either add an ingress definition to the app or use 'service' or 'cluster' type instead.`
-          );
-        }
-        return isLocalDevelopment() ? "localhost" : externalHosts[app];
-
-      default: // cluster
-        return `${app}.${namespace}.svc.cluster.local`;
+    if (type === "service") {
+      return isLocalDevelopment() ? "localhost" : app;
     }
+
+    // type === "ingress"
+    if (!externalHosts[app]) {
+      throw new Error(
+        `Cannot get ingress DNS for app "${app}": no ingress configuration found. ` +
+          `Add an ingress definition to the app or use 'service' type instead.`
+      );
+    }
+    return isLocalDevelopment() ? "localhost" : externalHosts[app];
   };
 
   /**

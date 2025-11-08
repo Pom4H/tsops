@@ -245,7 +245,7 @@ export interface ClusterMetadata {
 /**
  * DNS type for dns helper function
  */
-export type DNSType = 'cluster' | 'service' | 'ingress'
+export type DNSType = 'service' | 'ingress'
 
 /**
  * Options for dns helper function
