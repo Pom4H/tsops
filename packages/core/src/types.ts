@@ -21,8 +21,17 @@ export type TagStrategy =
 /**
  * Namespace definition - can contain any custom variables.
  * All namespaces in config must have the same shape (consistent structure).
+ * 
+ * @property local - Optional flag indicating this is a local development environment.
+ *                   When true, service URLs will use localhost:port for inter-service communication.
  */
-export type NamespaceDefinition = Record<string, unknown>
+export type NamespaceDefinition = {
+  /**
+   * Flag indicating local development mode.
+   * When true, service-to-service URLs use localhost:port instead of k8s DNS.
+   */
+  local?: boolean
+} & Record<string, unknown>
 
 /**
  * Reserved context keys that cannot be used as namespace variables.
@@ -30,7 +39,8 @@ export type NamespaceDefinition = Record<string, unknown>
  */
 type ReservedContextKeys = 
   | 'project' 
-  | 'namespace' 
+  | 'namespace'
+  | 'local'
   | 'dns' 
   | 'url'
   | 'serviceName'
@@ -235,7 +245,7 @@ export interface ClusterMetadata {
 /**
  * DNS type for dns helper function
  */
-export type DNSType = 'cluster' | 'service' | 'ingress'
+export type DNSType = 'service' | 'ingress'
 
 /**
  * Options for dns helper function
