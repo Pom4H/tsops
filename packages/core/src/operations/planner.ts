@@ -1,4 +1,10 @@
 import type { ConfigResolver } from '../config/resolver.js'
+import {
+  buildGraph,
+  topoSort,
+  validateDependencies,
+  type DependencyGraph
+} from '../dependencies/graph.js'
 import { normalizePorts } from '../network/ports.js'
 import type { DockerfileBuild, ServicePort, TsOpsConfig } from '../types.js'
 import {
@@ -57,13 +63,31 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
   async plan(options: { namespace?: string; app?: string } = {}): Promise<PlanResult> {
     const namespaces = this.resolver.namespaces.select(options.namespace)
     const apps = this.resolver.apps.select(options.app)
+    const allAppsForDeps = this.resolver.apps.select()
+    const knownAppNames = new Set(allAppsForDeps.map(([name]) => name))
     const entries: PlanEntry[] = []
 
     const sensitiveEnvConfig = this.config?.validation?.sensitiveEnv
     const findings: SensitiveEnvFinding[] = []
     const scannedBuilds = new Set<string>()
+    const dependencies: Record<string, { graph: DependencyGraph; order: string[] }> = {}
+    let hasAnyDeps = false
 
     for (const namespace of namespaces) {
+      const namespaceStart = entries.length
+      const namespaceApps: Array<{ name: string; needs: readonly string[] }> = []
+
+      // Dependency validation must reason about the full set of apps that
+      // deploy to this namespace — not just the subset selected by
+      // `options.app`. Otherwise `plan({ app: 'api' })` would misreport a
+      // valid dependency on a sibling app as `not-deployed-here`.
+      const fullNsApps = allAppsForDeps
+        .filter(([, a]) => this.resolver.apps.shouldDeploy(a, namespace))
+        .map(([name, a]) => ({
+          name,
+          needs: ((a.needs as readonly string[] | undefined) ?? []) as readonly string[]
+        }))
+
       for (const [appName, app] of apps) {
         if (!this.resolver.apps.shouldDeploy(app, namespace)) continue
 
@@ -97,6 +121,10 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           }))
         }
 
+        const needs = (app.needs as readonly string[] | undefined) ?? []
+        if (needs.length > 0) hasAnyDeps = true
+        namespaceApps.push({ name: appName, needs })
+
         const entry: PlanEntry = {
           namespace,
           app: appName,
@@ -104,6 +132,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           image,
           env: resolvedEnv.env,
           envFrom: resolvedEnv.envFrom,
+          needs: needs.length > 0 ? needs : undefined,
           secrets,
           configMaps,
           network,
@@ -130,10 +159,49 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           }
         }
       }
+
+      // Validate against the full deployed set so sibling deps don't false-trip
+      // when `options.app` narrows the plan.
+      const deployedInNs = new Set(fullNsApps.map((a) => a.name))
+      const hasNsDeps = fullNsApps.some((a) => a.needs.length > 0)
+      if (hasNsDeps) {
+        const errors = validateDependencies(
+          fullNsApps,
+          knownAppNames,
+          deployedInNs,
+          namespace
+        )
+        if (errors.length > 0) {
+          const summary = errors.map((e) => `  - ${e.message}`).join('\n')
+          throw new Error(
+            `Invalid app dependencies in namespace "${namespace}":\n${summary}`
+          )
+        }
+
+        // Topo-sort the full graph, then reorder only the entries that made
+        // it into this plan, preserving their relative dependency order.
+        const fullOrder = topoSort(fullNsApps)
+        const selectedSet = new Set(namespaceApps.map((a) => a.name))
+        const order = fullOrder.filter((n) => selectedSet.has(n))
+        const entriesByApp = new Map(
+          entries.slice(namespaceStart).map((e) => [e.app, e])
+        )
+        for (let i = 0; i < order.length; i++) {
+          entries[namespaceStart + i] = entriesByApp.get(order[i])!
+        }
+        dependencies[namespace] = {
+          graph: buildGraph(fullNsApps),
+          order: fullOrder
+        }
+      }
     }
 
     enforceMode(findings, sensitiveEnvConfig)
 
-    return { entries, warnings: findings }
+    return {
+      entries,
+      warnings: findings,
+      dependencies: hasAnyDeps ? dependencies : undefined
+    }
   }
 }
