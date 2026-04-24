@@ -1,5 +1,15 @@
 # @tsops/node
 
+## 1.9.0
+
+### Patch Changes
+
+- Updated dependencies [[`f3d77f7`](https://github.com/Pom4H/tsops/commit/f3d77f7d39738b3ebbdecb99ec564d1acd2bd5bd), [`403319f`](https://github.com/Pom4H/tsops/commit/403319fb69715bdb6a6e7b77870bde18e6f93d77), [`416dace`](https://github.com/Pom4H/tsops/commit/416dacecd5143699ac32e79fb936b9375e8353fe), [`855c825`](https://github.com/Pom4H/tsops/commit/855c825a7fd190c790766f3cc3d98164cdfa99f1), [`6245db0`](https://github.com/Pom4H/tsops/commit/6245db0c0b7c07240c49fa11a30a2129f1960634)]:
+  - @tsops/core@1.9.0
+
+> Historical note: releases `1.0.0` through `1.8.0` are not yet backfilled in this changelog.
+> The entries below are retained from the earlier `0.2.x` release history so consumers can still
+> trace older changes until the missing `1.x` entries are added.
 ## 0.2.8
 
 ### Patch Changes
