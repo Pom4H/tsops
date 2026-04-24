@@ -147,6 +147,7 @@ export function defineConfig<
     apps: config.apps,
     secrets: config.secrets,
     configMaps: config.configMaps,
+    validation: config.validation,
     
     env(appName: AppName, key: string): string {
       const helpers = getHelpers()
