@@ -7,20 +7,16 @@ export function buildDeployment(
   baseLabels: Record<string, string>
 ): DeploymentManifest {
   const metadata = createMetadata(ctx.serviceName, ctx.namespace, baseLabels)
-  // Support two env shapes:
-  // - Record<string, EnvValue>: individual envs and keyRefs
-  // - SecretRef/ConfigMapRef: envFrom for entire secret/configMap
-  const isObject = ctx.env && typeof ctx.env === 'object'
-  const isSecretRef = isObject && (ctx.env as any).__type === 'SecretRef'
-  const isConfigMapRef = isObject && (ctx.env as any).__type === 'ConfigMapRef'
 
-  const envFrom = isSecretRef
-    ? [{ secretRef: { name: (ctx.env as any).secretName } }]
-    : isConfigMapRef
-      ? [{ configMapRef: { name: (ctx.env as any).configMapName } }]
-      : undefined
+  const envVars = createEnvVars(ctx.env as Record<string, any>)
 
-  const envVars = !envFrom ? createEnvVars(ctx.env) : []
+  // One envFrom entry per secret/configMap reference. Order is preserved so
+  // later entries override earlier keys, matching k8s semantics.
+  const envFrom = (ctx.envFrom ?? []).map((ref) =>
+    ref.__type === 'SecretRef'
+      ? { secretRef: { name: ref.secretName } }
+      : { configMapRef: { name: ref.configMapName } }
+  )
 
   // Use custom ports if provided, otherwise use PORT env var or default to 80
   const containerPorts =
@@ -32,7 +28,10 @@ export function buildDeployment(
         }))
       : [
           {
-            containerPort: ctx.env.PORT ? parseInt(ctx.env.PORT, 10) : DEFAULT_HTTP_PORT,
+            containerPort:
+              typeof ctx.env.PORT === 'string'
+                ? parseInt(ctx.env.PORT, 10)
+                : DEFAULT_HTTP_PORT,
             name: 'http',
             protocol: 'TCP' as const
           }
@@ -44,7 +43,7 @@ export function buildDeployment(
     imagePullPolicy: 'IfNotPresent',
     ports: containerPorts,
     env: envVars,
-    ...(envFrom && { envFrom }),
+    ...(envFrom.length > 0 && { envFrom }),
     resources: {},
     ...(ctx.volumeMounts && { volumeMounts: ctx.volumeMounts }),
     ...(ctx.args && { args: ctx.args })
