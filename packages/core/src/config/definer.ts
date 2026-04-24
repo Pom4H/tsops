@@ -1,6 +1,12 @@
 import { getEnvironmentVariable } from '../environment-provider.js'
 import { createRuntimeHelpers } from '../runtime-config.js'
-import type { ClusterDefinition, ImagesConfig, NamespaceDefinition, TsOpsConfig } from '../types.js'
+import type {
+  ClusterDefinition,
+  DNSType,
+  ImagesConfig,
+  NamespaceDefinition,
+  TsOpsConfig
+} from '../types.js'
 
 /**
  * Extended config object with runtime helper methods.
@@ -48,44 +54,32 @@ export interface TsOpsConfigWithRuntime<
    * const ingressDns = config.dns('api', 'ingress')
    * ```
    */
-  dns(appName: Extract<keyof TApps, string>, type: 'service' | 'ingress'): string
-  
+  dns(appName: Extract<keyof TApps, string>, type: DNSType): string
+
   /**
-   * Generate complete URL for different types of resources with automatic port resolution.
-   * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
-   * 
-   * @param appName - Application name
-   * @param type - URL type: 'service' or 'ingress'
-   * @returns Complete URL with protocol and port
-   * 
-   * @example
-   * ```ts
-   * import config from './tsops.config'
-   * const serviceUrl = config.url('api', 'service')
-   * const ingressUrl = config.url('api', 'ingress')
-   * ```
+   * Generate complete URL for different types of resources.
+   * See {@link AppContextCoreHelpers.url} for semantics.
    */
   url(
     appName: Extract<keyof TApps, string>,
-    type: 'service' | 'ingress'
+    type: DNSType,
+    options?: { protocol?: 'http' | 'https'; port?: string }
   ): string
-  
+
   /**
-   * Get the port number that an app should listen on.
-   * Returns the targetPort (actual container port) from the ports configuration.
-   * Automatically uses current namespace from TSOPS_NAMESPACE env variable.
-   * 
-   * @param appName - Application name
-   * @returns Port number the application should listen on
-   * 
-   * @example
-   * ```ts
-   * import config from './tsops.config'
-   * const PORT = config.port('api')
-   * app.listen(PORT) // → 3001 (dev) or 80 (prod)
-   * ```
+   * Numeric container port the app listens on. Alias for {@link listenPort}.
+   * Equal to `targetPort` when numeric; falls back to `servicePort` otherwise.
    */
-  port(appName: Extract<keyof TApps, string>): number
+  port(appName: Extract<keyof TApps, string>, portName?: string): number
+
+  /** Port the k8s Service exposes (what other services dial). */
+  servicePort(appName: Extract<keyof TApps, string>, portName?: string): number
+
+  /** Numeric container port (what the process should listen on). */
+  targetPort(appName: Extract<keyof TApps, string>, portName?: string): number
+
+  /** Alias for {@link targetPort}. */
+  listenPort(appName: Extract<keyof TApps, string>, portName?: string): number
 }
 
 /**
@@ -159,22 +153,34 @@ export function defineConfig<
       return helpers.env(appName, key)
     },
     
-    dns(appName: AppName, type: 'service' | 'ingress'): string {
+    dns(appName: AppName, type: DNSType): string {
       const helpers = getHelpers()
       return helpers.dns(appName, type)
     },
-    
+
     url(
       appName: AppName,
-      type: 'service' | 'ingress'
+      type: DNSType,
+      options?: { protocol?: 'http' | 'https'; port?: string }
     ): string {
       const helpers = getHelpers()
-      return helpers.url(appName, type)
+      return helpers.url(appName, type, options)
     },
-    
-    port(appName: AppName): number {
-      const helpers = getHelpers()
-      return helpers.port(appName)
+
+    port(appName: AppName, portName?: string): number {
+      return getHelpers().targetPort(appName, portName)
+    },
+
+    servicePort(appName: AppName, portName?: string): number {
+      return getHelpers().servicePort(appName, portName)
+    },
+
+    targetPort(appName: AppName, portName?: string): number {
+      return getHelpers().targetPort(appName, portName)
+    },
+
+    listenPort(appName: AppName, portName?: string): number {
+      return getHelpers().listenPort(appName, portName)
     }
   }
 }

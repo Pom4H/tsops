@@ -1,207 +1,195 @@
-import { createConfigResolver } from "./config/resolver.js";
-import { getEnvironmentVariable } from "./environment-provider.js";
+import { createConfigResolver } from './config/resolver.js'
+import { getEnvironmentVariable } from './environment-provider.js'
+import { type NormalizedPort, normalizePorts, pickPort } from './network/ports.js'
 import type {
   DNSType,
   ExtractNamespaceVarsFromConfig,
-  TsOpsConfig,
-} from "./types.js";
+  NamespaceRuntime,
+  TsOpsConfig
+} from './types.js'
+
+const DEFAULT_HTTP_PORT = 80
+const DEFAULT_HTTPS_PORT = 443
+const CLUSTER_DOMAIN = 'cluster.local'
 
 /**
- * Creates runtime helper functions for a specific namespace
+ * Creates runtime helper functions for a specific namespace.
+ *
+ * The helpers returned here match {@link AppContextCoreHelpers} semantics: the
+ * `service`/`cluster`/`ingress` URL forms are resolved using the namespace's
+ * {@link NamespaceRuntime}, and port selection distinguishes
+ * `servicePort` / `targetPort` / `localPort` consistently.
  */
 export function createRuntimeHelpers<
   TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
->(config: TConfig, namespace: Extract<keyof TConfig["namespaces"], string>) {
-  const resolver = createConfigResolver(config);
+>(config: TConfig, namespace: Extract<keyof TConfig['namespaces'], string>) {
+  const resolver = createConfigResolver(config)
   const namespaceVars = config.namespaces[
     namespace
-  ] as ExtractNamespaceVarsFromConfig<TConfig>;
+  ] as ExtractNamespaceVarsFromConfig<TConfig>
+  const runtime = resolveRuntime(namespaceVars)
 
-  // Collect all external hosts with protocol and port information
-  const externalHosts: Record<string, string> = {};
-  const externalProtocols: Record<string, "http" | "https"> = {};
-  const externalPorts: Record<string, number> = {};
-  const appsConfig: Record<string, any> = {};
+  type AppName = Extract<keyof TConfig['apps'], string>
 
-  const appEntries = resolver.apps.select();
+  const externalHosts: Record<string, string> = {}
+  const externalProtocols: Record<string, 'http' | 'https'> = {}
+  const externalPorts: Record<string, number> = {}
+  const appsConfig: Record<string, any> = {}
+  const portsCache: Record<string, NormalizedPort[]> = {}
+
+  const appEntries = resolver.apps.select()
   for (const [appName, app] of appEntries) {
-    // Store app config for all apps (needed for port() helper)
-    appsConfig[appName] = app;
+    appsConfig[appName] = app
 
-    if (!resolver.apps.shouldDeploy(app, namespace as string)) {
-      continue;
-    }
+    if (!resolver.apps.shouldDeploy(app, namespace as string)) continue
 
-    // Create temporary context to resolve ingress
-    const tempContext = resolver.namespaces.createHostContext(
-      namespace as string,
-      { appName }
-    );
+    const tempContext = resolver.namespaces.createHostContext(namespace as string, {
+      appName
+    })
 
-    // Resolve ingress to get external host, protocol, and port
-    const { host, protocol, port } = resolver.apps.resolveNetwork(
-      appName,
-      app,
-      tempContext
-    );
+    const { host, protocol, port } = resolver.apps.resolveNetwork(appName, app, tempContext)
 
     if (host) {
-      externalHosts[appName] = host;
-      // Store protocol, default to http if not specified
-      externalProtocols[appName] = protocol || "http";
-      // Store port if specified (for local development)
-      if (port) {
-        externalPorts[appName] = port;
-      }
+      externalHosts[appName] = host
+      externalProtocols[appName] = protocol ?? 'http'
+      if (port) externalPorts[appName] = port
     }
   }
 
-  /**
-   * Get the target port for an app (internal helper)
-   * Returns undefined if ports are not configured
-   */
-  const getAppTargetPort = (
-    app: Extract<keyof TConfig["apps"], string>
-  ): number | undefined => {
-    const appConfig = appsConfig[app];
-    if (!appConfig) return undefined;
+  function getPorts(app: AppName): NormalizedPort[] {
+    const cached = portsCache[app]
+    if (cached) return cached
 
-    // Resolve ports (can be static or function)
-    const tempContext = resolver.namespaces.createHostContext(
-      namespace as string,
-      { appName: app }
-    );
-    const resolvedPorts =
-      typeof appConfig.ports === "function"
-        ? appConfig.ports(tempContext)
-        : appConfig.ports;
-
-    if (!resolvedPorts || resolvedPorts.length === 0) return undefined;
-
-    const firstPort = resolvedPorts[0];
-
-    // If port is a string like "80:3000", extract targetPort (3000)
-    if (typeof firstPort.port === "string") {
-      const parts = firstPort.port.split(":");
-      if (parts.length === 2) {
-        return parseInt(parts[1], 10);
-      }
-      return parseInt(firstPort.port, 10);
+    const appConfig = appsConfig[app]
+    if (!appConfig) {
+      portsCache[app] = []
+      return portsCache[app]
     }
 
-    // If targetPort is explicitly defined, use it
-    if (firstPort.targetPort !== undefined) {
-      return typeof firstPort.targetPort === "string"
-        ? parseInt(firstPort.targetPort, 10)
-        : firstPort.targetPort;
-    }
+    const ctx = resolver.namespaces.createHostContext(namespace as string, { appName: app })
+    const raw = typeof appConfig.ports === 'function' ? appConfig.ports(ctx) : appConfig.ports
+    const normalized = normalizePorts(raw)
+    portsCache[app] = normalized
+    return normalized
+  }
 
-    // Otherwise, use port (which equals targetPort)
-    return firstPort.port;
-  };
-
-  /**
-   * Check if we're in local development mode (explicit local flag in namespace)
-   */
-  const isLocalDevelopment = (
-    _app?: Extract<keyof TConfig["apps"], string>
-  ): boolean => {
-    // Check explicit local flag in namespace configuration
-    const namespaceConfig =
-      config.namespaces[
-        namespace as Extract<keyof TConfig["namespaces"], string>
-      ];
-    return namespaceConfig?.local === true;
-  };
-
-  /**
-   * Generate DNS name for different types of resources.
-   * In local mode, both service and ingress use localhost.
-   * In production, service uses app name, ingress uses configured domain.
-   */
-  const dns = (
-    app: Extract<keyof TConfig["apps"], string>,
-    type: DNSType
-  ): string => {
-    // In local mode, all types use localhost
-    if (isLocalDevelopment()) {
-      return "localhost";
-    }
-
-    // Production mode
-    if (type === "service") {
-      return app;
-    }
-
-    // type === "ingress"
-    if (!externalHosts[app]) {
+  function requirePort(app: AppName, portName?: string): NormalizedPort {
+    const ports = getPorts(app)
+    const selected = pickPort(ports, portName)
+    if (!selected) {
+      const suffix = portName ? ` named "${portName}"` : ''
       throw new Error(
-        `Cannot get ingress DNS for app "${app}": no ingress configuration found. ` +
-          `Add an ingress definition to the app or use 'service' type instead.`
-      );
+        `Cannot resolve port${suffix} for app "${app}": no ports configuration found. ` +
+          `Add a ports definition to the app configuration.`
+      )
     }
+    return selected
+  }
 
-    return externalHosts[app];
-  };
+  const servicePort = (app: AppName, portName?: string): number =>
+    requirePort(app, portName).servicePort
+
+  const targetPort = (app: AppName, portName?: string): number =>
+    requirePort(app, portName).containerPort
+
+  const listenPort = targetPort
+
+  const port = (app: AppName): number => targetPort(app)
 
   /**
-   * Generate complete URL for different types of resources.
-   * Service URLs always include targetPort (for k8s service routing).
-   * Ingress URLs include port only if explicitly configured (e.g., localhost:3001).
+   * Generate DNS name. Runtime-aware for `service`/`cluster`, always external
+   * for `ingress`.
+   */
+  const dns = (app: AppName, type: DNSType): string => {
+    if (type === 'ingress') {
+      // Validate ingress is configured; the host value may still be rewritten
+      // to localhost for a local-runtime namespace below.
+      if (!externalHosts[app]) {
+        throw new Error(
+          `Cannot get ingress DNS for app "${app}": no ingress configuration found. ` +
+            `Add an ingress definition to the app or use 'service' type instead.`
+        )
+      }
+      return runtime === 'local' ? 'localhost' : externalHosts[app]
+    }
+
+    if (runtime === 'local') return 'localhost'
+
+    // docker uses the service name just like kubernetes at the hostname level;
+    // the port is what differs and that happens in url().
+    if (type === 'cluster' && runtime === 'kubernetes') {
+      return `${app}.${namespace}.svc.${CLUSTER_DOMAIN}`
+    }
+
+    return app
+  }
+
+  /**
+   * Generate complete URL. See {@link AppContextCoreHelpers.url} for semantics.
    */
   const url = (
-    app: Extract<keyof TConfig["apps"], string>,
-    type: DNSType
+    app: AppName,
+    type: DNSType,
+    options: { protocol?: 'http' | 'https'; port?: string } = {}
   ): string => {
-    const hostname = dns(app, type);
-    const protocol =
-      type === "ingress" ? externalProtocols[app] || "http" : "http";
+    const hostname = dns(app, type)
 
-    // Determine port based on type
-    const portNumber =
-      type === "ingress"
-        ? externalPorts[app] // Explicit port from ingress config (optional)
-        : getAppTargetPort(app); // Service always uses targetPort (required)
-
-    const port = portNumber ? `:${portNumber}` : "";
-    return `${protocol}://${hostname}${port}`;
-  };
-
-  /**
-   * Get the port number for an app.
-   * Returns the actual port the application should listen on (targetPort).
-   * For local development, this returns the unique port per service.
-   * For production, this typically returns the standard container port.
-   */
-  const port = (app: Extract<keyof TConfig["apps"], string>): number => {
-    const targetPort = getAppTargetPort(app);
-
-    if (targetPort === undefined) {
-      throw new Error(
-        `Cannot get port for app "${app}": no ports configuration found. ` +
-          `Add a ports definition to the app configuration.`
-      );
+    if (type === 'ingress') {
+      const protocol = options.protocol ?? externalProtocols[app] ?? 'http'
+      const explicit = externalPorts[app]
+      const portStr = explicit ? `:${explicit}` : ''
+      return `${protocol}://${hostname}${portStr}`
     }
 
-    return targetPort;
-  };
+    const protocol = options.protocol ?? 'http'
+    const selected = pickPort(getPorts(app), options.port)
+    const portNumber = selectPortForRuntime(selected, runtime)
+    const portStr = portNumber !== undefined && !isDefaultPort(portNumber, protocol)
+      ? `:${portNumber}`
+      : ''
+    return `${protocol}://${hostname}${portStr}`
+  }
 
-  /**
-   * Get environment variable for an app.
-   * Implementation reads directly from process.env via global provider.
-   * The appName argument is accepted for API consistency but not used here.
-   */
-  const env = (
-    _appName: Extract<keyof TConfig["apps"], string>,
-    key: string
-  ): string => {
-    return getEnvironmentVariable(key) ?? "";
-  };
+  const env = (_appName: AppName, key: string): string => {
+    return getEnvironmentVariable(key) ?? ''
+  }
 
   return {
     dns,
     url,
     port,
-    env,
-  };
+    servicePort,
+    targetPort,
+    listenPort,
+    env
+  }
+}
+
+function resolveRuntime(namespaceVars: { runtime?: NamespaceRuntime; local?: boolean } | undefined): NamespaceRuntime {
+  if (namespaceVars?.runtime) return namespaceVars.runtime
+  if (namespaceVars?.local === true) return 'local'
+  return 'kubernetes'
+}
+
+function selectPortForRuntime(
+  selected: NormalizedPort | undefined,
+  runtime: NamespaceRuntime
+): number | undefined {
+  if (!selected) return undefined
+  switch (runtime) {
+    case 'local':
+      return selected.localPort ?? selected.containerPort
+    case 'docker':
+      return selected.containerPort
+    case 'kubernetes':
+    default:
+      return selected.servicePort
+  }
+}
+
+function isDefaultPort(port: number, protocol: 'http' | 'https'): boolean {
+  return (
+    (protocol === 'http' && port === DEFAULT_HTTP_PORT) ||
+    (protocol === 'https' && port === DEFAULT_HTTPS_PORT)
+  )
 }

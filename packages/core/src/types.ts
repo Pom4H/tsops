@@ -19,33 +19,51 @@ export type TagStrategy =
   | (string & Record<never, never>)
 
 /**
+ * Runtime environment for a namespace. Controls how service-to-service URLs
+ * are resolved by the runtime helpers:
+ *
+ * - `kubernetes` (default): other services are reachable by Service name and
+ *   `servicePort` (e.g. `http://api`).
+ * - `docker`: services share a docker network; reached by container name and
+ *   `targetPort` (e.g. `http://api:3000`).
+ * - `local`: everything runs on localhost; `localPort` is used when set,
+ *   otherwise `targetPort`.
+ */
+export type NamespaceRuntime = 'kubernetes' | 'docker' | 'local'
+
+/**
  * Namespace definition - can contain any custom variables.
  * All namespaces in config must have the same shape (consistent structure).
- * 
- * @property local - Optional flag indicating this is a local development environment.
- *                   When true, service URLs will use localhost:port for inter-service communication.
+ *
+ * @property runtime - Runtime environment for this namespace. Defaults to
+ *                     `kubernetes`. `local: true` is a shorthand for
+ *                     `runtime: 'local'` kept for backward compatibility.
  */
 export type NamespaceDefinition = {
   /**
-   * Flag indicating local development mode.
-   * When true, service-to-service URLs use localhost:port instead of k8s DNS.
+   * @deprecated Use `runtime: 'local'` instead. Kept for backward compatibility.
    */
   local?: boolean
+  runtime?: NamespaceRuntime
 } & Record<string, unknown>
 
 /**
  * Reserved context keys that cannot be used as namespace variables.
  * These are built-in helper functions and metadata.
  */
-type ReservedContextKeys = 
-  | 'project' 
+type ReservedContextKeys =
+  | 'project'
   | 'namespace'
   | 'local'
-  | 'dns' 
+  | 'runtime'
+  | 'dns'
   | 'url'
   | 'serviceName'
+  | 'servicePort'
+  | 'targetPort'
+  | 'listenPort'
   | 'secret'
-  | 'configMap' 
+  | 'configMap'
   | 'secretKey'
   | 'configMapKey'
   | 'service'
@@ -243,9 +261,22 @@ export interface ClusterMetadata {
 }
 
 /**
- * DNS type for dns helper function
+ * DNS type for dns helper function.
+ *
+ * Hostname forms are runtime-aware: for `kubernetes` namespaces tsops returns
+ * k8s-native names; for `docker` and `local` runtimes the same request maps to
+ * whatever is reachable (service name on a docker network, `localhost`, etc.).
+ *
+ * - `service`  — short Service name (e.g. `api`). In `local` runtime this
+ *                collapses to `localhost`.
+ * - `cluster`  — fully-qualified Service DNS on `kubernetes`
+ *                (`<svc>.<ns>.svc.cluster.local`). On `docker` it falls back
+ *                to the service name; on `local`, to `localhost`.
+ * - `ingress`  — external hostname from the ingress definition. `local` runtime
+ *                also rewrites this to `localhost` so dev servers on the
+ *                machine are reachable at the same URL used in production code.
  */
-export type DNSType = 'service' | 'ingress'
+export type DNSType = 'service' | 'cluster' | 'ingress'
 
 /**
  * Options for dns helper function
@@ -330,31 +361,48 @@ export interface AppContextCoreHelpers<
   dns: (app: TAppNames, type: DNSType) => string
 
   /**
-   * Generate complete URL for different types of resources with automatic port resolution
-   * @param app - Application name (type-safe from config.apps)
-   * @param type - URL type: 'cluster' for internal cluster URL, 'service' for service URL, 'ingress' for external URL
-   * @param options - Optional URL options
-   * @returns Complete URL with protocol and port
+   * Generate complete URL for different types of resources.
+   *
+   * Port selection follows the DNS type:
+   *  - `service` / `cluster` → k8s Service port (`servicePort`); default ports
+   *    (80 for http, 443 for https) are omitted.
+   *  - `ingress` → no port unless one is set on the ingress definition.
+   *
+   * Namespaces with `runtime: 'docker'` rewrite `service`/`cluster` URLs to
+   * `http://<app>:<targetPort>` to match docker networking.
+   * Namespaces with `runtime: 'local'` (or legacy `local: true`) rewrite them
+   * to `http://localhost:<localPort ?? targetPort>`.
+   *
    * @example
-   * // Cluster internal URL (uses first port from app.ports)
-   * url('api', 'cluster') // -> 'http://api.my-namespace.svc.cluster.local:3000'
-   * 
-   * // Service URL (uses first port from app.ports)
-   * url('api', 'service') // -> 'http://api:3000'
-   * 
-   * // External URL (uses ingress configuration, HTTPS without port by default)
-   * url('api', 'ingress') // -> 'https://api.example.com' (if ingress configured)
-   * 
-   * // With custom protocol
-   * url('api', 'cluster', { protocol: 'https' }) // -> 'https://api.my-namespace.svc.cluster.local:3000'
-   * 
-   * // Usage in env:
-   * env: ({ url }) => ({
-   *   BACKEND_URL: url('backend', 'ingress'),
-   *   API_URL: url('api', 'cluster')
-   * })
+   * url('api', 'service')                      // -> 'http://api'
+   * url('api', 'cluster')                      // -> 'http://api.prod.svc.cluster.local'
+   * url('api', 'ingress')                      // -> 'https://api.example.com'
+   * url('api', 'service', { port: 'metrics' }) // -> 'http://api:9090'
    */
-  url: (app: TAppNames, type: DNSType, options?: { protocol?: 'http' | 'https' }) => string
+  url: (
+    app: TAppNames,
+    type: DNSType,
+    options?: { protocol?: 'http' | 'https'; port?: string }
+  ) => string
+
+  /**
+   * Port the k8s Service exposes (defaults to the primary port).
+   * This is what other services dial.
+   */
+  servicePort: (app: TAppNames, portName?: string) => number
+
+  /**
+   * Numeric container port the app listens on. Equal to `targetPort` when that
+   * is a number; falls back to `servicePort` when `targetPort` is a named port.
+   * Alias: {@link listenPort}.
+   */
+  targetPort: (app: TAppNames, portName?: string) => number
+
+  /**
+   * Alias for {@link targetPort}. The number a process should pass to
+   * `server.listen(...)`.
+   */
+  listenPort: (app: TAppNames, portName?: string) => number
 
   /**
    * Generate Kubernetes label selector
@@ -664,7 +712,13 @@ export interface ServicePort {
   name: string
   /** Service port. Can be a number or string like "80:3000" (service:container) */
   port: number | string
+  /** Pod/container port the Service forwards to. Named ports (string) are allowed. */
   targetPort?: number | string
+  /**
+   * Port to use on localhost when the namespace's runtime is `local`.
+   * Lets several services coexist on localhost with distinct ports.
+   */
+  localPort?: number
   protocol?: 'TCP' | 'UDP'
 }
 

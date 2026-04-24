@@ -33,8 +33,14 @@ export interface PlanEntry {
   args?: string[]
   ports?: Array<{
     name: string
+    /** k8s Service port (what other services dial). */
     port: number
-    targetPort?: number | string
+    /** Pod port the Service forwards to (named or numeric). */
+    targetPort: number | string
+    /** Numeric container port for the Deployment manifest. */
+    containerPort: number
+    /** Optional port for `runtime: 'local'` namespaces. */
+    localPort?: number
     protocol?: 'TCP' | 'UDP'
   }>
 }

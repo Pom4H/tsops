@@ -1,5 +1,6 @@
 import type { ConfigResolver } from '../config/resolver.js'
-import type { TsOpsConfig } from '../types.js'
+import { normalizePorts } from '../network/ports.js'
+import type { ServicePort, TsOpsConfig } from '../types.js'
 import type { PlanEntry, PlanResult } from './types.js'
 
 /**
@@ -62,42 +63,20 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           return typeof param === 'function' ? (param as (ctx: typeof context) => T)(context) : param
         }
 
-        // Resolve and normalize ports (parse string format "80:3000" → { port: 80, targetPort: 3000 })
-        type PortInput = { name: string; port: number | string; targetPort?: number | string; protocol?: 'TCP' | 'UDP' }
-        type PortOutput = { name: string; port: number; targetPort: number | string; protocol?: 'TCP' | 'UDP' }
-        
         const resolvePorts = (
-          param: PortInput[] | ((ctx: typeof context) => PortInput[]) | undefined
-        ): PortOutput[] | undefined => {
-          const resolved = resolveParam<PortInput[]>(param)
-          if (!resolved || !Array.isArray(resolved)) return undefined
-
-          return resolved.map(portDef => {
-            // If port is string like "80:3000", parse it
-            if (typeof portDef.port === 'string') {
-              const parts = portDef.port.split(':')
-              if (parts.length === 2) {
-                return {
-                  ...portDef,
-                  port: parseInt(parts[0], 10),
-                  targetPort: portDef.targetPort ?? parseInt(parts[1], 10)
-                }
-              }
-              // Single number as string
-              const parsed = parseInt(portDef.port, 10)
-              return {
-                ...portDef,
-                port: parsed,
-                targetPort: portDef.targetPort ?? parsed
-              }
-            }
-            // If port is number but no targetPort, set targetPort = port
-            return {
-              ...portDef,
-              port: portDef.port,
-              targetPort: portDef.targetPort ?? portDef.port
-            }
-          })
+          param: ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined
+        ): PlanEntry['ports'] => {
+          const resolved = resolveParam<ServicePort[]>(param)
+          const normalized = normalizePorts(resolved)
+          if (normalized.length === 0) return undefined
+          return normalized.map((p) => ({
+            name: p.name,
+            port: p.servicePort,
+            targetPort: p.targetPort,
+            containerPort: p.containerPort,
+            protocol: p.protocol,
+            localPort: p.localPort
+          }))
         }
 
         entries.push({
@@ -113,7 +92,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           volumes: resolveParam(app.volumes as Parameters<typeof resolveParam>[0]) as PlanEntry['volumes'],
           volumeMounts: resolveParam(app.volumeMounts as Parameters<typeof resolveParam>[0]) as PlanEntry['volumeMounts'],
           args: resolveParam(app.args as Parameters<typeof resolveParam>[0]) as string[] | undefined,
-          ports: resolvePorts(app.ports as PortInput[] | ((ctx: typeof context) => PortInput[]) | undefined)
+          ports: resolvePorts(app.ports as ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined)
         })
       }
     }
