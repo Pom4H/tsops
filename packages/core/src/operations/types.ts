@@ -11,8 +11,8 @@ export interface PlanEntry {
   app: string
   host?: string
   image: string
-  env: Record<string, EnvValue> | SecretRef | ConfigMapRef
-  envFrom?: EnvFromSource[]
+  env: Record<string, EnvValue>
+  envFrom: Array<SecretRef | ConfigMapRef>
   secrets: Record<string, Record<string, string>>
   configMaps: Record<string, Record<string, string>>
   network?: ResolvedNetworkConfig

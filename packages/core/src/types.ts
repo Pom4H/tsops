@@ -559,7 +559,26 @@ export type AppEnvResolver<
   TApps = undefined
 > = (
   ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
-) => Record<string, EnvValue> | SecretRef | ConfigMapRef
+) => AppEnvSource<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+
+/**
+ * A single env source: a plain record of env vars, an entire secret / configMap
+ * reference used as `envFrom`, or a function resolving to one of the above.
+ * `AppEnv` is either one source or an array of sources merged left-to-right
+ * (later entries override earlier keys).
+ */
+export type AppEnvSource<
+  TNamespaceVars extends NamespaceDefinition,
+  TProject extends string = string,
+  TNamespaceName extends string = string,
+  TSecrets = undefined,
+  TConfigMaps = undefined,
+  TApps = undefined
+> =
+  | Record<string, EnvValue>
+  | SecretRef
+  | ConfigMapRef
+  | AppEnvResolver<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
 
 export type AppEnv<
   TNamespaceVars extends NamespaceDefinition,
@@ -569,8 +588,25 @@ export type AppEnv<
   TConfigMaps = undefined,
   TApps = undefined
 > =
-  | Record<string, EnvValue>
-  | AppEnvResolver<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+  | AppEnvSource<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+  | readonly AppEnvSource<
+      TNamespaceVars,
+      TProject,
+      TNamespaceName,
+      TSecrets,
+      TConfigMaps,
+      TApps
+    >[]
+
+/**
+ * Fully resolved env for one app in one namespace. `envFrom` mirrors the k8s
+ * concept — each entry pulls an entire Secret or ConfigMap into the container's
+ * environment.
+ */
+export interface ResolvedEnv {
+  env: Record<string, EnvValue>
+  envFrom: Array<SecretRef | ConfigMapRef>
+}
 
 export interface AppIngressOptions {
   className?: string
