@@ -88,7 +88,8 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
     this.resolver = createConfigResolver(config, { env: this.env })
     this.manifestBuilder = new ManifestBuilder(config)
     this.planner = new Planner({
-      resolver: this.resolver
+      resolver: this.resolver,
+      config
     })
     this.builder = new Builder({
       docker: this.docker,

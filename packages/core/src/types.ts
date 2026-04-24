@@ -960,4 +960,31 @@ export type TsOpsConfig<
    * }
    */
   configMaps?: TConfigMaps
+  /**
+   * Optional validation hooks. Currently supports sensitive-env scanning.
+   */
+  validation?: ValidationConfig
+}
+
+export interface ValidationConfig {
+  sensitiveEnv?: SensitiveEnvConfig
+}
+
+/**
+ * Configuration for the sensitive-env validator. See
+ * `validation/sensitive-env.ts` for the rule set and default pattern.
+ */
+export interface SensitiveEnvConfig {
+  /** `off` disables scanning entirely. Default `warn`. */
+  mode?: 'off' | 'warn' | 'error'
+  /** Scan `DockerfileBuild.env` (default: true). Build-time env bakes into layers. */
+  scanBuildEnv?: boolean
+  /** Scan resolved runtime env per namespace (default: true). */
+  scanRuntimeEnv?: boolean
+  /** Regex the key must match to be flagged. Overrides default pattern if given. */
+  pattern?: RegExp
+  /** Keys starting with any of these prefixes are skipped. */
+  allowPrefixes?: string[]
+  /** Exact keys to allow. */
+  allowKeys?: string[]
 }

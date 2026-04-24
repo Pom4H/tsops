@@ -42,6 +42,12 @@ export interface PlanEntry {
 
 export interface PlanResult {
   entries: PlanEntry[]
+  /**
+   * Non-fatal findings (e.g. sensitive-env warnings). Empty when no validation
+   * is configured. When `validation.sensitiveEnv.mode` is `'error'`, the
+   * planner throws instead and this array is unused.
+   */
+  warnings?: import('../validation/sensitive-env.js').SensitiveEnvFinding[]
 }
 
 export interface BuildResult {

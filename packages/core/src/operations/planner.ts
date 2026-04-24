@@ -1,6 +1,12 @@
 import type { ConfigResolver } from '../config/resolver.js'
 import { normalizePorts } from '../network/ports.js'
-import type { ServicePort, TsOpsConfig } from '../types.js'
+import type { DockerfileBuild, ServicePort, TsOpsConfig } from '../types.js'
+import {
+  enforceMode,
+  scanBuildEnv,
+  scanRuntimeEnv,
+  type SensitiveEnvFinding
+} from '../validation/sensitive-env.js'
 import type { PlanEntry, PlanResult } from './types.js'
 
 /**
@@ -8,6 +14,12 @@ import type { PlanEntry, PlanResult } from './types.js'
  */
 interface PlannerDependencies<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
   resolver: ConfigResolver<TConfig>
+  /**
+   * Raw config; used by validation hooks that need access to fields beyond
+   * what the resolver exposes (e.g. `validation.sensitiveEnv`). Optional so
+   * existing call sites keep working.
+   */
+  config?: TConfig
 }
 
 /**
@@ -27,9 +39,11 @@ interface PlannerDependencies<TConfig extends TsOpsConfig<any, any, any, any, an
  */
 export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> {
   private readonly resolver: ConfigResolver<TConfig>
+  private readonly config?: TConfig
 
   constructor(dependencies: PlannerDependencies<TConfig>) {
     this.resolver = dependencies.resolver
+    this.config = dependencies.config
   }
 
   /**
@@ -44,6 +58,10 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
     const namespaces = this.resolver.namespaces.select(options.namespace)
     const apps = this.resolver.apps.select(options.app)
     const entries: PlanEntry[] = []
+
+    const sensitiveEnvConfig = this.config?.validation?.sensitiveEnv
+    const findings: SensitiveEnvFinding[] = []
+    const scannedBuilds = new Set<string>()
 
     for (const namespace of namespaces) {
       for (const [appName, app] of apps) {
@@ -79,7 +97,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           }))
         }
 
-        entries.push({
+        const entry: PlanEntry = {
           namespace,
           app: appName,
           host,
@@ -94,10 +112,28 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           volumeMounts: resolveParam(app.volumeMounts as Parameters<typeof resolveParam>[0]) as PlanEntry['volumeMounts'],
           args: resolveParam(app.args as Parameters<typeof resolveParam>[0]) as string[] | undefined,
           ports: resolvePorts(app.ports as ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined)
-        })
+        }
+        entries.push(entry)
+
+        if (sensitiveEnvConfig) {
+          findings.push(...scanRuntimeEnv(entry, sensitiveEnvConfig))
+          // Build env is namespace-independent — scan each app once.
+          if (!scannedBuilds.has(appName)) {
+            scannedBuilds.add(appName)
+            findings.push(
+              ...scanBuildEnv(
+                appName,
+                app.build as DockerfileBuild | undefined,
+                sensitiveEnvConfig
+              )
+            )
+          }
+        }
       }
     }
 
-    return { entries }
+    enforceMode(findings, sensitiveEnvConfig)
+
+    return { entries, warnings: findings }
   }
 }
