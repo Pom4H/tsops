@@ -818,6 +818,20 @@ export type AppDefinition<
         ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
       ) => ServicePort[])
   deploy?: AppDeploySelection<TNamespaceName> | undefined
+  /**
+   * Other apps this app depends on. Declaring dependencies gives the planner
+   * three things:
+   *
+   * 1. **Validation** — unknown apps, self-references, cycles, and deps that
+   *    are excluded from the current namespace are errors.
+   * 2. **Deploy order** — `plan.entries` comes out topologically sorted per
+   *    namespace; dependencies deploy first.
+   * 3. **Documentation** — the graph is inspectable via `plan.dependencies`.
+   *
+   * This is purely declarative. tsops does not currently wait for readiness
+   * between deploys — it only orders them.
+   */
+  needs?: readonly AppKey<TApps>[]
   ingress?: AppIngressDefinition<
     TNamespaceVars,
     TProject,
