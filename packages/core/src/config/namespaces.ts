@@ -106,10 +106,14 @@ export function createNamespaceResolver<
     const getPorts = (app: string): NormalizedPort[] => {
       const appConfig = appsConfig[app]
       if (!appConfig) return []
-      // During config-time resolution we only support static port arrays.
-      // Function-form ports are resolved later by runtime-config with a full context.
-      const raw = typeof appConfig.ports === 'function' ? undefined : appConfig.ports
-      return normalizePorts(raw)
+      if (typeof appConfig.ports === 'function') {
+        throw new Error(
+          `Cannot resolve ports for app "${app}" from a config-time helper (url/servicePort/targetPort): ` +
+            `"ports" is defined as a function and therefore only available during plan evaluation. ` +
+            `Use a static ports array, or move the caller into an env/ingress function that runs later.`
+        )
+      }
+      return normalizePorts(appConfig.ports)
     }
 
     const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType): string => {

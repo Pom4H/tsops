@@ -263,12 +263,18 @@ export interface ClusterMetadata {
 /**
  * DNS type for dns helper function.
  *
- * - `service`  — short Service name (e.g. `api`). Works within the same k8s
- *                namespace; runtime-aware helpers rewrite it for `docker` /
- *                `local` namespaces.
- * - `cluster`  — fully-qualified Service DNS
- *                (`<svc>.<ns>.svc.cluster.local`). Stable across namespaces.
- * - `ingress`  — external hostname from the ingress definition.
+ * Hostname forms are runtime-aware: for `kubernetes` namespaces tsops returns
+ * k8s-native names; for `docker` and `local` runtimes the same request maps to
+ * whatever is reachable (service name on a docker network, `localhost`, etc.).
+ *
+ * - `service`  — short Service name (e.g. `api`). In `local` runtime this
+ *                collapses to `localhost`.
+ * - `cluster`  — fully-qualified Service DNS on `kubernetes`
+ *                (`<svc>.<ns>.svc.cluster.local`). On `docker` it falls back
+ *                to the service name; on `local`, to `localhost`.
+ * - `ingress`  — external hostname from the ingress definition. `local` runtime
+ *                also rewrites this to `localhost` so dev servers on the
+ *                machine are reachable at the same URL used in production code.
  */
 export type DNSType = 'service' | 'cluster' | 'ingress'
 
