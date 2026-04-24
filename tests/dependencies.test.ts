@@ -150,4 +150,17 @@ describe('planner + needs', () => {
     }).plan()
     expect(plan.dependencies).toBeUndefined()
   })
+
+  it('plan({ app }) validates against full namespace, not just the selected app', async () => {
+    const cfg = makeConfig({
+      api: { needs: ['db'], ports: [{ name: 'http', port: 80, targetPort: 3000 }] },
+      db: { ports: [{ name: 'http', port: 80, targetPort: 5432 }] }
+    })
+    const planner = new Planner({ resolver: createConfigResolver(cfg), config: cfg })
+    // Narrowing to `api` must not misreport db as not-deployed-here.
+    const plan = await planner.plan({ namespace: 'prod', app: 'api' })
+    expect(plan.entries.map((e) => e.app)).toEqual(['api'])
+    // dependencies.order reflects the full namespace graph.
+    expect(plan.dependencies?.prod.order).toEqual(['db', 'api'])
+  })
 })

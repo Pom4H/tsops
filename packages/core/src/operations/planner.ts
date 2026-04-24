@@ -77,6 +77,17 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       const namespaceStart = entries.length
       const namespaceApps: Array<{ name: string; needs: readonly string[] }> = []
 
+      // Dependency validation must reason about the full set of apps that
+      // deploy to this namespace — not just the subset selected by
+      // `options.app`. Otherwise `plan({ app: 'api' })` would misreport a
+      // valid dependency on a sibling app as `not-deployed-here`.
+      const fullNsApps = allAppsForDeps
+        .filter(([, a]) => this.resolver.apps.shouldDeploy(a, namespace))
+        .map(([name, a]) => ({
+          name,
+          needs: ((a.needs as readonly string[] | undefined) ?? []) as readonly string[]
+        }))
+
       for (const [appName, app] of apps) {
         if (!this.resolver.apps.shouldDeploy(app, namespace)) continue
 
@@ -149,12 +160,13 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         }
       }
 
-      // Validate and order the dependency graph within this namespace.
-      const deployedInNs = new Set(namespaceApps.map((a) => a.name))
-      const hasNsDeps = namespaceApps.some((a) => a.needs.length > 0)
+      // Validate against the full deployed set so sibling deps don't false-trip
+      // when `options.app` narrows the plan.
+      const deployedInNs = new Set(fullNsApps.map((a) => a.name))
+      const hasNsDeps = fullNsApps.some((a) => a.needs.length > 0)
       if (hasNsDeps) {
         const errors = validateDependencies(
-          namespaceApps,
+          fullNsApps,
           knownAppNames,
           deployedInNs,
           namespace
@@ -166,14 +178,21 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           )
         }
 
-        const order = topoSort(namespaceApps)
+        // Topo-sort the full graph, then reorder only the entries that made
+        // it into this plan, preserving their relative dependency order.
+        const fullOrder = topoSort(fullNsApps)
+        const selectedSet = new Set(namespaceApps.map((a) => a.name))
+        const order = fullOrder.filter((n) => selectedSet.has(n))
         const entriesByApp = new Map(
           entries.slice(namespaceStart).map((e) => [e.app, e])
         )
         for (let i = 0; i < order.length; i++) {
           entries[namespaceStart + i] = entriesByApp.get(order[i])!
         }
-        dependencies[namespace] = { graph: buildGraph(namespaceApps), order }
+        dependencies[namespace] = {
+          graph: buildGraph(fullNsApps),
+          order: fullOrder
+        }
       }
     }
 
