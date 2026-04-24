@@ -7,7 +7,9 @@ const DEFAULT_PATTERN = /TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY|KEY/i
 /** `NEXT_PUBLIC_*` / `VITE_*` / `PUBLIC_*` are frontend conventions for non-secret public values. */
 const DEFAULT_ALLOW_PREFIXES = ['NEXT_PUBLIC_', 'VITE_', 'PUBLIC_']
 
-export type { SensitiveEnvConfig } from '../types.js'
+// `SensitiveEnvConfig` is declared in types.ts (so ValidationConfig can
+// reference it without importing this module). Don't re-export it from here —
+// `packages/core/src/index.ts` already re-exports types.ts via `export *`.
 
 export interface SensitiveEnvFinding {
   app: string
