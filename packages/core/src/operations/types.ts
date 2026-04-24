@@ -1,11 +1,6 @@
 import type { ResolvedNetworkConfig } from '@tsops/k8'
 import type { ConfigMapRef, EnvValue, SecretRef } from '../types.js'
 
-export interface EnvFromSource {
-  type: 'secret' | 'configMap'
-  name: string
-}
-
 export interface PlanEntry {
   namespace: string
   app: string

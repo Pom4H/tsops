@@ -559,7 +559,16 @@ export type AppEnvResolver<
   TApps = undefined
 > = (
   ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
-) => AppEnvSource<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+) =>
+  | AppEnvSource<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+  | readonly AppEnvSource<
+      TNamespaceVars,
+      TProject,
+      TNamespaceName,
+      TSecrets,
+      TConfigMaps,
+      TApps
+    >[]
 
 /**
  * A single env source: a plain record of env vars, an entire secret / configMap
