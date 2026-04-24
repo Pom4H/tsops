@@ -8,6 +8,8 @@ export interface PlanEntry {
   image: string
   env: Record<string, EnvValue>
   envFrom: Array<SecretRef | ConfigMapRef>
+  /** Other apps this app declared as dependencies (from `app.needs`). */
+  needs?: readonly string[]
   secrets: Record<string, Record<string, string>>
   configMaps: Record<string, Record<string, string>>
   network?: ResolvedNetworkConfig
@@ -48,6 +50,17 @@ export interface PlanResult {
    * planner throws instead and this array is unused.
    */
   warnings?: import('../validation/sensitive-env.js').SensitiveEnvFinding[]
+  /**
+   * Dependency graph per namespace. Present only when at least one app in
+   * that namespace declared `needs`.
+   */
+  dependencies?: Record<
+    string,
+    {
+      graph: import('../dependencies/graph.js').DependencyGraph
+      order: string[]
+    }
+  >
 }
 
 export interface BuildResult {
