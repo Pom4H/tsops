@@ -106,7 +106,14 @@ export interface ManifestBuilderContext {
   serviceName: string
   image: string
   host?: string
-  env: any // Can be Record<string, string> or Record<string, EnvValue> or SecretRef or ConfigMapRef
+  /** Plain env vars. Entries whose values are SecretRef/ConfigMapRef become `valueFrom` on the Container. */
+  env: Record<string, unknown>
+  /** Entire Secret/ConfigMap references to attach as `envFrom`. */
+  envFrom?: Array<{
+    readonly __type: 'SecretRef' | 'ConfigMapRef'
+    readonly secretName?: string
+    readonly configMapName?: string
+  }>
   network?: ResolvedNetworkConfig
   podAnnotations?: Record<string, string>
   volumes?: Array<{

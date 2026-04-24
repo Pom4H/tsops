@@ -8,6 +8,7 @@ import type {
   ConfigMapRef,
   EnvValue,
   ExtractNamespaceVarsFromConfig,
+  ResolvedEnv,
   SecretRef,
   TsOpsConfig
 } from '../types.js'
@@ -45,7 +46,7 @@ export interface AppsResolver<TConfig extends TsOpsConfig<any, any, any, any, an
       TConfig['configMaps'],
       TConfig['apps']
     >
-  ): Record<string, EnvValue> | SecretRef | ConfigMapRef
+  ): ResolvedEnv
   resolveSecrets(
     app: ResolverApp<TConfig>,
     namespace: string,
@@ -217,15 +218,36 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
       TConfig['secrets'],
       TConfig['configMaps']
     >
-  ): Record<string, EnvValue> | SecretRef | ConfigMapRef {
-    const env = app.env
-    if (!env) return {}
+  ): ResolvedEnv {
+    const result: ResolvedEnv = { env: {}, envFrom: [] }
+    collectEnv(app.env, context, result)
+    return result
+  }
 
-    if (typeof env === 'function') {
-      return env(context)
+  function collectEnv(source: unknown, context: unknown, result: ResolvedEnv): void {
+    if (source === undefined || source === null) return
+
+    if (Array.isArray(source)) {
+      for (const item of source) collectEnv(item, context, result)
+      return
     }
 
-    return { ...env }
+    if (isSecretRef(source) || isConfigMapRef(source)) {
+      result.envFrom.push(source)
+      return
+    }
+
+    if (typeof source === 'function') {
+      // Resolver may itself return an array, a ref, or a plain record.
+      collectEnv(source(context), context, result)
+      return
+    }
+
+    if (typeof source === 'object') {
+      for (const [key, value] of Object.entries(source as Record<string, EnvValue>)) {
+        result.env[key] = value
+      }
+    }
   }
 
 
@@ -307,20 +329,14 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
   ): Record<string, Record<string, string>> {
     if (!config.secrets) return {}
 
-    // Determine used secret names from env
-    const envResolved = resolveEnv(app, namespace, context)
+    const resolved = resolveEnv(app, namespace, context)
     const used = new Set<string>()
 
-    if (envResolved && typeof envResolved === 'object' && !Array.isArray(envResolved)) {
-      if (isSecretRef(envResolved)) {
-        used.add(envResolved.secretName)
-      } else if (!isConfigMapRef(envResolved)) {
-        for (const value of Object.values(envResolved)) {
-          if (isSecretRef(value)) {
-            used.add(value.secretName)
-          }
-        }
-      }
+    for (const ref of resolved.envFrom) {
+      if (isSecretRef(ref)) used.add(ref.secretName)
+    }
+    for (const value of Object.values(resolved.env)) {
+      if (isSecretRef(value)) used.add(value.secretName)
     }
 
     const result: Record<string, Record<string, string>> = {}
@@ -328,7 +344,6 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     for (const secretName of used) {
       const def = secrets[secretName as keyof typeof secrets]
       if (!def) continue
-      // Context already includes all namespace variables
       result[secretName] = typeof def === 'function' ? def(context) : { ...def }
     }
     return result
@@ -355,20 +370,14 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
   ): Record<string, Record<string, string>> {
     if (!config.configMaps) return {}
 
-    // Determine used configMap names from env
-    const envResolved = resolveEnv(app, namespace, context)
+    const resolved = resolveEnv(app, namespace, context)
     const used = new Set<string>()
 
-    if (envResolved && typeof envResolved === 'object' && !Array.isArray(envResolved)) {
-      if (isConfigMapRef(envResolved)) {
-        used.add(envResolved.configMapName)
-      } else if (!isSecretRef(envResolved)) {
-        for (const value of Object.values(envResolved)) {
-          if (isConfigMapRef(value)) {
-            used.add(value.configMapName)
-          }
-        }
-      }
+    for (const ref of resolved.envFrom) {
+      if (isConfigMapRef(ref)) used.add(ref.configMapName)
+    }
+    for (const value of Object.values(resolved.env)) {
+      if (isConfigMapRef(value)) used.add(value.configMapName)
     }
 
     const result: Record<string, Record<string, string>> = {}
@@ -376,7 +385,6 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     for (const name of used) {
       const def = configMaps[name as keyof typeof configMaps]
       if (!def) continue
-      // Context already includes all namespace variables
       result[name] = typeof def === 'function' ? def(context) : { ...def }
     }
     return result
@@ -404,3 +412,4 @@ function isDeployFilter<TConfig extends TsOpsConfig<any, any, any, any, any, any
 } {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
 }
+

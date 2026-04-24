@@ -50,7 +50,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         if (!this.resolver.apps.shouldDeploy(app, namespace)) continue
 
         const context = this.resolver.namespaces.createHostContext(namespace, { appName })
-        const env = this.resolver.apps.resolveEnv(app, namespace, context)
+        const resolvedEnv = this.resolver.apps.resolveEnv(app, namespace, context)
         const secrets = this.resolver.apps.resolveSecrets(app, namespace, context)
         const configMaps = this.resolver.apps.resolveConfigMaps(app, namespace, context)
         // Use app.image if provided (for external images), otherwise build from registry
@@ -84,7 +84,8 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           app: appName,
           host,
           image,
-          env,
+          env: resolvedEnv.env,
+          envFrom: resolvedEnv.envFrom,
           secrets,
           configMaps,
           network,
