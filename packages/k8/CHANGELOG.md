@@ -1,5 +1,9 @@
 # @tsops/k8
 
+## 1.8.0
+
+- Initial release prior to introducing this changelog.
+- Detailed release notes for this version were not backfilled here.
 ## 1.9.0
 
 ### Minor Changes
