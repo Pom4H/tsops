@@ -26,7 +26,7 @@ export function buildDeployment(
   const containerPorts =
     ctx.ports && ctx.ports.length > 0
       ? ctx.ports.map((p) => ({
-          containerPort: typeof p.targetPort === 'number' ? p.targetPort : p.port,
+          containerPort: p.containerPort,
           name: p.name,
           protocol: p.protocol || 'TCP'
         }))

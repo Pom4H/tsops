@@ -1,15 +1,21 @@
 import type { EnvironmentProvider } from '../environment-provider.js'
+import { type NormalizedPort, normalizePorts, pickPort } from '../network/ports.js'
 import type {
   AppHostContextWithHelpers,
   ClusterMetadata,
   ConfigMapRef,
   DNSType,
   ExtractNamespaceVarsFromConfig,
+  NamespaceRuntime,
   ResourceKind,
   SecretRef,
   TsOpsConfig
 } from '../types.js'
 import type { ProjectResolver } from './project.js'
+
+const CLUSTER_DOMAIN = 'cluster.local'
+const DEFAULT_HTTP_PORT = 80
+const DEFAULT_HTTPS_PORT = 443
 
 export interface CreateHostContextOptions {
   appName?: string
@@ -95,39 +101,62 @@ export function createNamespaceResolver<
       (configMapName: string, key: string): ConfigMapRef
     }
 
-    // DNS helper with type support
-    const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType): string => {
-      switch (type) {
-        case 'service':
-          // Service name only
-          return app
+    const runtime = resolveRuntime(metadata as { runtime?: NamespaceRuntime; local?: boolean })
 
-        case 'ingress':
-          // External DNS - resolved from ingress configuration
-          return externalHosts[app] || app
-        default:
-          // Cluster internal DNS
-          return `${app}.${namespace}.svc.cluster.local`
-      }
+    const getPorts = (app: string): NormalizedPort[] => {
+      const appConfig = appsConfig[app]
+      if (!appConfig) return []
+      // During config-time resolution we only support static port arrays.
+      // Function-form ports are resolved later by runtime-config with a full context.
+      const raw = typeof appConfig.ports === 'function' ? undefined : appConfig.ports
+      return normalizePorts(raw)
     }
 
-    // URL helper with automatic port resolution
+    const dns = (app: Extract<keyof TConfig['apps'], string>, type: DNSType): string => {
+      if (type === 'ingress') return externalHosts[app] || app
+      if (runtime === 'local') return 'localhost'
+      if (type === 'cluster' && runtime === 'kubernetes') {
+        return `${app}.${namespace}.svc.${CLUSTER_DOMAIN}`
+      }
+      return app
+    }
+
     const url = (
       app: Extract<keyof TConfig['apps'], string>,
       type: DNSType,
-      options?: { protocol?: 'http' | 'https' }
+      options?: { protocol?: 'http' | 'https'; port?: string }
     ): string => {
-      const { protocol = 'http' } = options || {}
-
-      // Get the first port from the app's configuration
-      const appConfig = appsConfig[app]
-      const firstPort = appConfig?.ports?.[0]?.port || 80
-
-      // Get the DNS name
       const hostname = dns(app, type)
 
-      // Build the complete URL
-      return `${protocol}://${hostname}:${firstPort}`
+      if (type === 'ingress') {
+        const protocol = options?.protocol ?? 'http'
+        return `${protocol}://${hostname}`
+      }
+
+      const protocol = options?.protocol ?? 'http'
+      const selected = pickPort(getPorts(app), options?.port)
+      const portNumber = selectPortForRuntime(selected, runtime)
+      const portStr =
+        portNumber !== undefined && !isDefaultPort(portNumber, protocol) ? `:${portNumber}` : ''
+      return `${protocol}://${hostname}${portStr}`
+    }
+
+    const servicePortHelper = (
+      app: Extract<keyof TConfig['apps'], string>,
+      portName?: string
+    ): number => {
+      const selected = pickPort(getPorts(app), portName)
+      if (!selected) throw new Error(`Cannot resolve service port for app "${app}".`)
+      return selected.servicePort
+    }
+
+    const targetPortHelper = (
+      app: Extract<keyof TConfig['apps'], string>,
+      portName?: string
+    ): number => {
+      const selected = pickPort(getPorts(app), portName)
+      if (!selected) throw new Error(`Cannot resolve target port for app "${app}".`)
+      return selected.containerPort
     }
 
     // Label generator
@@ -172,6 +201,9 @@ export function createNamespaceResolver<
       url,
       label,
       resource,
+      servicePort: servicePortHelper,
+      targetPort: targetPortHelper,
+      listenPort: targetPortHelper,
 
       // Secrets & ConfigMaps
       secret,
@@ -196,6 +228,37 @@ export function createNamespaceResolver<
     select,
     createHostContext
   }
+}
+
+function resolveRuntime(
+  namespaceVars: { runtime?: NamespaceRuntime; local?: boolean } | undefined
+): NamespaceRuntime {
+  if (namespaceVars?.runtime) return namespaceVars.runtime
+  if (namespaceVars?.local === true) return 'local'
+  return 'kubernetes'
+}
+
+function selectPortForRuntime(
+  selected: NormalizedPort | undefined,
+  runtime: NamespaceRuntime
+): number | undefined {
+  if (!selected) return undefined
+  switch (runtime) {
+    case 'local':
+      return selected.localPort ?? selected.containerPort
+    case 'docker':
+      return selected.containerPort
+    case 'kubernetes':
+    default:
+      return selected.servicePort
+  }
+}
+
+function isDefaultPort(port: number, protocol: 'http' | 'https'): boolean {
+  return (
+    (protocol === 'http' && port === DEFAULT_HTTP_PORT) ||
+    (protocol === 'https' && port === DEFAULT_HTTPS_PORT)
+  )
 }
 
 /**

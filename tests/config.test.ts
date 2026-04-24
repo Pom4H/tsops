@@ -57,7 +57,7 @@ const cfg = defineConfig({
     },
     admin: {
       // Explicit protocol override: force http for production domain
-      ingress: ({ domain }) => ({ 
+      ingress: ({ domain }) => ({
         domain: `admin.${domain}`,
         protocol: 'http'
       }),
@@ -74,14 +74,15 @@ const cfg = defineConfig({
     conditional: {
       // Conditional ingress that might return undefined
       ingress: ({ domain }) => {
-        // Simulate conditional logic that might return undefined
-        return domain.includes('example.com') ? { domain: `conditional.${domain}` } : undefined as any
+        return domain.includes('example.com')
+          ? { domain: `conditional.${domain}` }
+          : (undefined as any)
       },
       ports: [{ name: 'http', port: 80, targetPort: 6000 }]
     },
     'local-service': {
       // Service with explicit port for local development
-      ingress: ({ domain, namespace }) => ({ 
+      ingress: ({ domain, namespace }) => ({
         domain,
         port: namespace === 'dev' ? 3001 : undefined
       }),
@@ -89,27 +90,41 @@ const cfg = defineConfig({
     },
     'dynamic-ports': {
       // Service with dynamic ports based on namespace
-      ingress: ({ domain, namespace }) => ({ 
+      ingress: ({ domain, namespace }) => ({
         domain: `dynamic.${domain}`,
         port: namespace === 'dev' ? 4000 : undefined
       }),
-      ports: ({ namespace }) => [{ 
-        name: 'http', 
-        port: 80, 
-        targetPort: namespace === 'dev' ? 4000 : 3000
-      }]
+      ports: ({ namespace }) => [
+        {
+          name: 'http',
+          port: 80,
+          targetPort: namespace === 'dev' ? 4000 : 3000
+        }
+      ]
     },
     'string-port-format': {
       // Service using string port format "service:container"
-      ports: ({ namespace }) => [{ 
-        name: 'http', 
-        port: namespace === 'dev' ? '8080:3000' : 80
-      }]
+      ports: ({ namespace }) => [
+        {
+          name: 'http',
+          port: namespace === 'dev' ? '8080:3000' : 80
+        }
+      ]
+    },
+    metrics: {
+      // Multi-port app with named ports
+      ports: [
+        { name: 'http', port: 80, targetPort: 3000 },
+        { name: 'metrics', port: 9090, targetPort: 9090 }
+      ]
+    },
+    'with-local-port': {
+      // Explicit localPort to disambiguate services on localhost
+      ports: [{ name: 'http', port: 80, targetPort: 3000, localPort: 3050 }]
     }
   }
 })
 
-// Helper to force namespace during tests
 function withNamespace<T>(ns: string, fn: () => T): T {
   const prev = process.env.TSOPS_NAMESPACE
   process.env.TSOPS_NAMESPACE = ns
@@ -121,7 +136,6 @@ function withNamespace<T>(ns: string, fn: () => T): T {
   }
 }
 
-// Helper to temporarily set process.env keys
 function withEnv<T>(vars: Record<string, string | undefined>, fn: () => T): T {
   const prev: Record<string, string | undefined> = {}
   for (const [k, v] of Object.entries(vars)) {
@@ -146,27 +160,25 @@ describe('defineConfig runtime API', () => {
     expect(Object.keys(cfg.clusters)).toEqual(['dev', 'prod'])
     expect(cfg.images.registry).toBe('ghcr.io/acme')
 
-    // Methods exist
     expect(typeof cfg.env).toBe('function')
     expect(typeof cfg.dns).toBe('function')
     expect(typeof cfg.url).toBe('function')
+    expect(typeof cfg.servicePort).toBe('function')
+    expect(typeof cfg.targetPort).toBe('function')
+    expect(typeof cfg.listenPort).toBe('function')
   })
 
-  it('resolves runtime for dev', () => {
+  it('resolves runtime for dev (local namespace)', () => {
     withNamespace('dev', () => {
-      // test dns helper
-      // In local mode (local: true), service DNS uses localhost
+      // In local mode (local: true → runtime: 'local'), everything hits localhost.
       expect(cfg.dns('api', 'service')).toBe('localhost')
-      // In local mode (local: true), ingress DNS also uses localhost (no subdomains)
       expect(cfg.dns('api', 'ingress')).toBe('localhost')
-      
-      // test url helper - protocol automatically resolved from ingress config
-      // In local mode (local: true), service URLs use localhost:targetPort
+
+      // Service URL uses localPort ?? containerPort. api has no localPort → 8080.
       expect(cfg.url('api', 'service')).toBe('http://localhost:8080')
-      // In local mode (local: true), ingress URLs use localhost:explicitPort
+      // Ingress URL omits port unless explicit; api has none → https://localhost.
       expect(cfg.url('api', 'ingress')).toBe('https://localhost')
 
-      // test env helper returns values from process.env
       withEnv(
         {
           ENDPOINT: 'http://from-env-endpoint',
@@ -192,15 +204,15 @@ describe('defineConfig runtime API', () => {
     })
   })
 
-  it('resolves runtime for prod', () => {
+  it('resolves runtime for prod (kubernetes namespace)', () => {
     withNamespace('prod', () => {
-      // test dns helper
       expect(cfg.dns('api', 'service')).toBe('api')
+      expect(cfg.dns('api', 'cluster')).toBe('api.prod.svc.cluster.local')
       expect(cfg.dns('api', 'ingress')).toBe('api.example.com')
-      
-      // test url helper - protocol automatically resolved from ingress config
-      // service URLs always include targetPort (api has targetPort: 8080)
-      expect(cfg.url('api', 'service')).toBe('http://api:8080')
+
+      // kubernetes runtime uses servicePort. 80 is default → omitted.
+      expect(cfg.url('api', 'service')).toBe('http://api')
+      expect(cfg.url('api', 'cluster')).toBe('http://api.prod.svc.cluster.local')
       expect(cfg.url('api', 'ingress')).toBe('https://api.example.com')
     })
   })
@@ -213,8 +225,6 @@ describe('defineConfig runtime API', () => {
     })
 
     withNamespace('dev', () => {
-      // In local mode, ingress uses localhost
-      // admin app still uses http protocol (explicit protocol overrides auto-detection)
       expect(cfg.dns('admin', 'ingress')).toBe('localhost')
       expect(cfg.url('admin', 'ingress')).toBe('http://localhost')
     })
@@ -222,21 +232,18 @@ describe('defineConfig runtime API', () => {
 
   it('handles apps without ingress gracefully', () => {
     withNamespace('prod', () => {
-      // worker has no ingress, should throw when trying to access ingress DNS/URL
       expect(() => cfg.dns('worker', 'ingress')).toThrow()
       expect(() => cfg.url('worker', 'ingress')).toThrow()
-      
-      // but service DNS should work fine (worker has targetPort: 5000)
+
+      // worker: servicePort=80 → port omitted in URL.
       expect(cfg.dns('worker', 'service')).toBe('worker')
-      expect(cfg.url('worker', 'service')).toBe('http://worker:5000')
+      expect(cfg.url('worker', 'service')).toBe('http://worker')
     })
   })
 
   it('handles conditional ingress that returns undefined', () => {
     withNamespace('prod', () => {
-      // conditional app returns ingress object for example.com domain
       expect(cfg.dns('conditional', 'service')).toBe('conditional')
-      // ingress should work because domain includes 'example.com'
       expect(cfg.dns('conditional', 'ingress')).toBe('conditional.example.com')
       expect(cfg.url('conditional', 'ingress')).toBe('https://conditional.example.com')
     })
@@ -244,97 +251,109 @@ describe('defineConfig runtime API', () => {
 
   it('respects explicit port in ingress for local development', () => {
     withNamespace('dev', () => {
-      // In local mode (local: true), ingress DNS uses localhost (no subdomains)
       expect(cfg.dns('local-service', 'ingress')).toBe('localhost')
       expect(cfg.url('local-service', 'ingress')).toBe('https://localhost:3001')
-      
-      // In local mode (local: true), service URLs use localhost:port
+
+      // local runtime → localhost:containerPort (no localPort on this app).
       expect(cfg.dns('local-service', 'service')).toBe('localhost')
       expect(cfg.url('local-service', 'service')).toBe('http://localhost:3000')
     })
 
     withNamespace('prod', () => {
-      // local-service has no explicit port in ingress for production
       expect(cfg.dns('local-service', 'ingress')).toBe('example.com')
       expect(cfg.url('local-service', 'ingress')).toBe('https://example.com')
-      
-      // In production, service URLs always include targetPort (local-service has targetPort: 3000)
+
+      // kubernetes runtime → servicePort (80) → port omitted.
       expect(cfg.dns('local-service', 'service')).toBe('local-service')
-      expect(cfg.url('local-service', 'service')).toBe('http://local-service:3000')
+      expect(cfg.url('local-service', 'service')).toBe('http://local-service')
     })
   })
 
   it('supports dynamic ports via functions', () => {
     withNamespace('dev', () => {
-      // In local mode (local: true), ingress uses localhost instead of configured domain
       expect(cfg.dns('dynamic-ports', 'ingress')).toBe('localhost')
       expect(cfg.url('dynamic-ports', 'ingress')).toBe('https://localhost:4000')
     })
 
     withNamespace('prod', () => {
-      // dynamic-ports uses different port in production
       expect(cfg.dns('dynamic-ports', 'ingress')).toBe('dynamic.example.com')
       expect(cfg.url('dynamic-ports', 'ingress')).toBe('https://dynamic.example.com')
     })
   })
 
-  it('exposes port helper to get application port', () => {
+  it('exposes targetPort/listenPort to get the container port', () => {
     withNamespace('dev', () => {
-      // dynamic-ports has targetPort 4000 in dev
       expect(cfg.port('dynamic-ports')).toBe(4000)
-      
-      // api has targetPort 8080
       expect(cfg.port('api')).toBe(8080)
-      
-      // web has targetPort 3000
       expect(cfg.port('web')).toBe(3000)
+
+      expect(cfg.targetPort('api')).toBe(8080)
+      expect(cfg.listenPort('api')).toBe(8080)
+      expect(cfg.servicePort('api')).toBe(80)
     })
 
     withNamespace('prod', () => {
-      // dynamic-ports has targetPort 3000 in prod
       expect(cfg.port('dynamic-ports')).toBe(3000)
     })
   })
 
   it('throws error when getting port for app without ports config', () => {
     withNamespace('prod', () => {
-      // no-ports-app has no ports configuration
       expect(() => cfg.port('no-ports-app')).toThrow('no ports configuration found')
     })
   })
 
   it('supports string port format "service:container"', () => {
     withNamespace('dev', () => {
-      // string-port-format uses "8080:3000" format
+      // "8080:3000" → servicePort=8080, containerPort=3000.
       expect(cfg.port('string-port-format')).toBe(3000)
+      expect(cfg.servicePort('string-port-format')).toBe(8080)
     })
 
     withNamespace('prod', () => {
-      // string-port-format uses simple number in prod
+      // 80 → servicePort=80, containerPort=80.
       expect(cfg.port('string-port-format')).toBe(80)
+      expect(cfg.servicePort('string-port-format')).toBe(80)
     })
   })
 
-  it('service URLs use localhost:port in local development', () => {
+  it('service URLs resolve per namespace runtime', () => {
     withNamespace('dev', () => {
-      // In local dev (localhost domain), service URLs should use localhost:targetPort
-      // This allows service-to-service communication in local development
-      expect(cfg.dns('local-service', 'service')).toBe('localhost')
+      // local runtime → localhost:<containerPort>
       expect(cfg.url('local-service', 'service')).toBe('http://localhost:3000')
-      
-      // dynamic-ports has targetPort 4000 in dev
-      expect(cfg.dns('dynamic-ports', 'service')).toBe('localhost')
       expect(cfg.url('dynamic-ports', 'service')).toBe('http://localhost:4000')
     })
 
     withNamespace('prod', () => {
-      // In production, service URLs use service name with targetPort
-      expect(cfg.dns('local-service', 'service')).toBe('local-service')
-      expect(cfg.url('local-service', 'service')).toBe('http://local-service:3000')
-      
-      // dynamic-ports has targetPort 3000 in prod
-      expect(cfg.dns('dynamic-ports', 'service')).toBe('dynamic-ports')
-      expect(cfg.url('dynamic-ports', 'service')).toBe('http://dynamic-ports:3000')
+      // kubernetes runtime → servicePort. 80 is default for http → omitted.
+      expect(cfg.url('local-service', 'service')).toBe('http://local-service')
+      expect(cfg.url('dynamic-ports', 'service')).toBe('http://dynamic-ports')
+    })
+  })
+
+  it('supports named ports via selector option', () => {
+    withNamespace('prod', () => {
+      expect(cfg.servicePort('metrics')).toBe(80)
+      expect(cfg.servicePort('metrics', 'metrics')).toBe(9090)
+      expect(cfg.targetPort('metrics', 'metrics')).toBe(9090)
+      expect(cfg.url('metrics', 'service', { port: 'metrics' })).toBe('http://metrics:9090')
+      expect(cfg.url('metrics', 'cluster', { port: 'metrics' })).toBe(
+        'http://metrics.prod.svc.cluster.local:9090'
+      )
+    })
+  })
+
+  it('uses localPort when set in local runtime', () => {
+    withNamespace('dev', () => {
+      // with-local-port has localPort=3050 → used on localhost.
+      expect(cfg.url('with-local-port', 'service')).toBe('http://localhost:3050')
+      // targetPort is the container port regardless of runtime.
+      expect(cfg.targetPort('with-local-port')).toBe(3000)
+    })
+
+    withNamespace('prod', () => {
+      // kubernetes runtime ignores localPort.
+      expect(cfg.url('with-local-port', 'service')).toBe('http://with-local-port')
     })
   })
 })

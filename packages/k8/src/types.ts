@@ -126,7 +126,9 @@ export interface ManifestBuilderContext {
   ports?: Array<{
     name: string
     port: number
-    targetPort?: number | string
+    targetPort: number | string
+    containerPort: number
+    localPort?: number
     protocol?: 'TCP' | 'UDP'
   }>
 }

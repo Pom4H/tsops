@@ -13,7 +13,7 @@ export function buildService(
       ? ctx.ports.map((p) => ({
           name: p.name,
           port: p.port,
-          targetPort: p.targetPort || p.name, // Default to named port
+          targetPort: p.targetPort,
           protocol: p.protocol || 'TCP'
         }))
       : [

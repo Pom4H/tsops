@@ -264,13 +264,13 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
       return { network: undefined, host: undefined }
     }
 
-    // Auto-detect protocol if not specified
+    // Auto-detect protocol if not specified. Explicit protocol always wins;
+    // otherwise local-looking domains default to http and everything else https.
     const protocol =
-      resolved.protocol ||
-      resolved.domain.includes('localhost') ||
-      resolved.domain.includes('.local')
+      resolved.protocol ??
+      (resolved.domain.includes('localhost') || resolved.domain.includes('.local')
         ? 'http'
-        : 'https'
+        : 'https')
 
     const result = createAutoHTTPS(resolved.domain, serviceName, {
           issuer: context.env('CERT_ISSUER', 'letsencrypt-prod'),
