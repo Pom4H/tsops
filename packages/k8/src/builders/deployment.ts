@@ -12,17 +12,11 @@ export function buildDeployment(
 
   // One envFrom entry per secret/configMap reference. Order is preserved so
   // later entries override earlier keys, matching k8s semantics.
-  const envFrom = (ctx.envFrom ?? [])
-    .map((ref) => {
-      if (ref.__type === 'SecretRef' && ref.secretName) {
-        return { secretRef: { name: ref.secretName } }
-      }
-      if (ref.__type === 'ConfigMapRef' && ref.configMapName) {
-        return { configMapRef: { name: ref.configMapName } }
-      }
-      return undefined
-    })
-    .filter((v): v is NonNullable<typeof v> => v !== undefined)
+  const envFrom = (ctx.envFrom ?? []).map((ref) =>
+    ref.__type === 'SecretRef'
+      ? { secretRef: { name: ref.secretName } }
+      : { configMapRef: { name: ref.configMapName } }
+  )
 
   // Use custom ports if provided, otherwise use PORT env var or default to 80
   const containerPorts =

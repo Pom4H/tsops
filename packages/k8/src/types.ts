@@ -109,11 +109,10 @@ export interface ManifestBuilderContext {
   /** Plain env vars. Entries whose values are SecretRef/ConfigMapRef become `valueFrom` on the Container. */
   env: Record<string, unknown>
   /** Entire Secret/ConfigMap references to attach as `envFrom`. */
-  envFrom?: Array<{
-    readonly __type: 'SecretRef' | 'ConfigMapRef'
-    readonly secretName?: string
-    readonly configMapName?: string
-  }>
+  envFrom?: Array<
+    | { readonly __type: 'SecretRef'; readonly secretName: string }
+    | { readonly __type: 'ConfigMapRef'; readonly configMapName: string }
+  >
   network?: ResolvedNetworkConfig
   podAnnotations?: Record<string, string>
   volumes?: Array<{
