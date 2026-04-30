@@ -1,9 +1,11 @@
 import type { ManifestBuilder } from '@tsops/k8'
-import { buildConfigMap, buildNamespace, buildSecret } from '@tsops/k8'
+import { buildConfigMap, buildExternalNameService, buildNamespace, buildSecret } from '@tsops/k8'
 import type { ConfigResolver } from '../config/resolver.js'
 import type { Logger } from '../logger.js'
 import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
-import type { TsOpsConfig } from '../types.js'
+import type { OverlayVars, TsOpsConfig } from '../types.js'
+import { runCertbotHook } from './cert-hook.js'
+import { runDatabasePostDestroy, runDatabasePreDeploy } from './db-hook.js'
 import type { Planner } from './planner.js'
 import type {
   AppResourceChanges,
@@ -48,10 +50,25 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    * All manifests within each group are applied atomically using kubectl batch apply.
    * If any manifest fails, the entire group fails and no changes are made.
    */
-  async deploy(options: { namespace?: string; app?: string } = {}): Promise<DeployResult> {
-    const plan = await this.planner.plan(options)
+  async deploy(
+    options: {
+      namespace?: string
+      app?: string
+      vars?: OverlayVars
+      include?: readonly string[]
+      skipCert?: boolean
+      skipDatabase?: boolean
+    } = {}
+  ): Promise<DeployResult> {
+    const plan = await this.planner.plan({
+      namespace: options.namespace,
+      app: options.app,
+      vars: options.vars,
+      include: options.include
+    })
     const entries: DeployResult['entries'] = []
     const createdNamespaces = new Set<string>()
+    const overlayHooksRun = new Set<string>()
 
     for (const entry of plan.entries) {
       const applied: string[] = []
@@ -73,6 +90,61 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
         }
 
         createdNamespaces.add(entry.namespace)
+
+        // 1a. Run overlay-only pre-deploy hooks once per resolved namespace.
+        if (options.namespace && options.vars) {
+          const resolved = this.resolver.namespaces.resolve(options.namespace, options.vars)
+          if (
+            resolved.overlay &&
+            resolved.name === entry.namespace &&
+            !overlayHooksRun.has(entry.namespace)
+          ) {
+            overlayHooksRun.add(entry.namespace)
+            if (!options.skipCert && resolved.definition?.cert) {
+              await runCertbotHook({
+                namespace: resolved.name,
+                domain: resolved.domain ?? '',
+                cert: resolved.definition.cert,
+                kubectl: this.kubectl,
+                logger: this.logger
+              })
+            }
+            if (!options.skipDatabase && resolved.definition?.database) {
+              await runDatabasePreDeploy({
+                namespace: resolved.name,
+                vars: options.vars,
+                database: resolved.definition.database,
+                kubectl: this.kubectl,
+                logger: this.logger
+              })
+            }
+          }
+        }
+      }
+
+      // 1b. Apps not in --include become ExternalName proxies into fallback.
+      if (entry.fallback) {
+        const serviceName = this.resolver.project.serviceName(entry.app)
+        const stub = buildExternalNameService({
+          serviceName,
+          namespace: entry.namespace,
+          fallbackNamespace: entry.fallback.namespace,
+          baseLabels: {
+            'app.kubernetes.io/name': entry.app,
+            'app.kubernetes.io/part-of': this.resolver.project.name,
+            'tsops/app': entry.app,
+            'tsops/managed': 'true'
+          },
+          ports: entry.ports?.map((p) => ({
+            name: p.name,
+            port: p.port,
+            protocol: p.protocol
+          }))
+        })
+        const ref = await this.kubectl.apply(stub, { namespace: entry.namespace })
+        applied.push(ref)
+        entries.push({ ...entry, appliedManifests: applied })
+        continue
       }
 
       // 2. Validate and create secrets (atomically)
@@ -179,6 +251,51 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     }
 
     return { entries, deletedManifests: deletedManifests.length > 0 ? deletedManifests : undefined }
+  }
+
+  /**
+   * Tears down a namespace, including overlay-specific cleanup hooks.
+   *
+   * For overlay namespaces this:
+   * 1. Runs the database `postDestroy` hook (e.g. `DROP SCHEMA ... CASCADE`)
+   *    so per-PR schemas don't leak.
+   * 2. Deletes the resolved namespace, which cascades to all owned objects.
+   *
+   * For static namespaces it just deletes the namespace, which is almost
+   * always a foot-gun — callers should confirm before invoking.
+   */
+  async down(options: {
+    namespace: string
+    vars?: OverlayVars
+    keepDatabase?: boolean
+  }): Promise<{ deleted: string[] }> {
+    const resolved = this.resolver.namespaces.resolve(options.namespace, options.vars)
+    const deleted: string[] = []
+
+    if (
+      resolved.overlay &&
+      !options.keepDatabase &&
+      resolved.definition?.database &&
+      resolved.vars
+    ) {
+      await runDatabasePostDestroy({
+        namespace: resolved.name,
+        vars: resolved.vars,
+        database: resolved.definition.database,
+        kubectl: this.kubectl,
+        logger: this.logger
+      })
+    }
+
+    try {
+      const ref = await this.kubectl.delete('Namespace', resolved.name, resolved.name)
+      deleted.push(ref)
+    } catch (error) {
+      this.logger.warn(`Failed to delete namespace ${resolved.name}`, {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+    return { deleted }
   }
 
   /**

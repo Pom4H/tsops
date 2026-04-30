@@ -7,7 +7,7 @@ import { Deployer } from './operations/deployer.js'
 import { Planner } from './operations/planner.js'
 import type { DockerClient } from './ports/docker.js'
 import type { KubectlClient } from './ports/kubectl.js'
-import type { TsOpsConfig } from './types.js'
+import type { OverlayVars, TsOpsConfig } from './types.js'
 
 /**
  * Options for configuring TsOps behavior.
@@ -120,7 +120,14 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * console.log(plan.entries[0].image) // => 'ghcr.io/org/api:abc123'
    * ```
    */
-  plan(options: { namespace?: string; app?: string } = {}) {
+  plan(
+    options: {
+      namespace?: string
+      app?: string
+      vars?: OverlayVars
+      include?: readonly string[]
+    } = {}
+  ) {
     return this.planner.plan(options)
   }
 
@@ -213,7 +220,32 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * console.log(result.entries[0].appliedManifests) // => ['Deployment/api', 'Service/api', ...]
    * ```
    */
-  deploy(options: { namespace?: string; app?: string } = {}) {
+  deploy(
+    options: {
+      namespace?: string
+      app?: string
+      vars?: OverlayVars
+      include?: readonly string[]
+      skipCert?: boolean
+      skipDatabase?: boolean
+    } = {}
+  ) {
     return this.deployer.deploy(options)
+  }
+
+  /**
+   * Tear down a namespace. For overlay namespaces this also runs the
+   * configured `postDestroy` database hook (typically dropping the
+   * schema-per-overlay) so per-PR state doesn't accumulate.
+   *
+   * Refuses to run on a static namespace without an explicit name match —
+   * static namespace deletion is always a destructive operation that should
+   * happen via `kubectl` after a human reviews it, not via tsops automation.
+   *
+   * @example
+   * await tsops.down({ namespace: 'preview', vars: { pr: '123' } })
+   */
+  down(options: { namespace: string; vars?: OverlayVars; keepDatabase?: boolean }) {
+    return this.deployer.down(options)
   }
 }

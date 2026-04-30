@@ -40,6 +40,16 @@ export interface PlanEntry {
     localPort?: number
     protocol?: 'TCP' | 'UDP'
   }>
+  /**
+   * When set, this entry is a stub that should resolve to a
+   * `Service: ExternalName` pointing at the same app in `namespace`.
+   * Produced when an overlay is deployed with `--include` and this app is not
+   * in the include list. The deployer skips Deployments and emits a Service
+   * + IngressRoute that proxies to the fallback namespace.
+   */
+  fallback?: {
+    namespace: string
+  }
 }
 
 export interface PlanResult {

@@ -32,20 +32,135 @@ export type TagStrategy =
 export type NamespaceRuntime = 'kubernetes' | 'docker' | 'local'
 
 /**
- * Namespace definition - can contain any custom variables.
+ * Static namespace definition - can contain any custom variables.
  * All namespaces in config must have the same shape (consistent structure).
  *
  * @property runtime - Runtime environment for this namespace. Defaults to
  *                     `kubernetes`. `local: true` is a shorthand for
  *                     `runtime: 'local'` kept for backward compatibility.
  */
-export type NamespaceDefinition = {
+export type StaticNamespaceDefinition = {
   /**
    * @deprecated Use `runtime: 'local'` instead. Kept for backward compatibility.
    */
   local?: boolean
   runtime?: NamespaceRuntime
 } & Record<string, unknown>
+
+/**
+ * Runtime variables passed to overlay namespaces via `tsops up --var key=value`.
+ * Always a flat string→string map by the time templates see them.
+ */
+export type OverlayVars = Record<string, string>
+
+/**
+ * Custom job configuration for database lifecycle hooks.
+ * Lets the user supply an arbitrary container + command to run before deploy
+ * (e.g. `prisma migrate deploy` against a freshly created schema) instead of
+ * the built-in 'create-schema' / 'create-and-migrate' templates.
+ */
+export interface CustomJobConfig {
+  image: string
+  command?: string[]
+  args?: string[]
+  env?: Record<string, string>
+  envFrom?: Array<{ secretName?: string; configMapName?: string }>
+}
+
+/**
+ * Per-namespace TLS strategy for overlays.
+ *
+ * - `wildcard-shared` reuses an existing wildcard certificate from the base
+ *   namespace (cheap; nothing to issue).
+ * - `per-namespace` issues a fresh certificate via a certbot DNS-01 Job
+ *   before the rest of the deploy proceeds.
+ */
+export type OverlayCertStrategy =
+  | {
+      mode: 'wildcard-shared'
+      /** Secret in fallback namespace that already holds the cert. */
+      secretName: string
+    }
+  | {
+      mode: 'per-namespace'
+      issuer: {
+        email: string
+        dnsProvider: 'cloudru' | 'cloudflare' | 'route53' | (string & Record<never, never>)
+        credentialsSecret: string
+      }
+      /** Resulting TLS Secret name. Defaults to `<namespace>-wildcard-tls`. */
+      secretName?: string
+    }
+
+/**
+ * Schema-per-overlay PostgreSQL lifecycle.
+ *
+ * - `preDeploy` decides whether tsops just creates the schema or also runs
+ *   migrations against it before bringing apps up.
+ * - `postDestroy` runs on `tsops down` and cleans up so the schema doesn't
+ *   leak between PR previews.
+ */
+export interface OverlayDatabase<TVars extends OverlayVars = OverlayVars> {
+  urlSecret: { name: string; key: string }
+  schema: (vars: TVars) => string
+  preDeploy: 'create-schema' | 'create-and-migrate' | CustomJobConfig
+  postDestroy: 'drop-schema'
+  /**
+   * Extra env injected into all apps in this overlay. Useful to point apps at
+   * the overlay-specific schema by mutating `DATABASE_URL`.
+   */
+  appEnvOverride?: (vars: TVars, baseUrl: string, schema: string) => Record<string, string>
+}
+
+/**
+ * Overlay namespace — a namespace template that inherits from a base static
+ * namespace and is materialised at runtime from `--var` values supplied to
+ * `tsops up`. Used for ephemeral PR preview environments.
+ *
+ * Apps not present in the deploy `--include` list are transparently routed to
+ * the `fallback` namespace via `Service: ExternalName`.
+ */
+export type OverlayNamespaceDefinition<
+  TBase extends string = string,
+  TVars extends OverlayVars = OverlayVars
+> = {
+  /** Base namespace this overlay inherits metadata from. */
+  extends: TBase
+  /** Namespace name template. Must produce a DNS-1123 label. */
+  naming: (vars: TVars) => string
+  /** External domain template for the overlay. */
+  domain: (vars: TVars) => string
+  /** Namespace ExternalName Services point at when an app isn't in --include. */
+  fallback: TBase
+  /** TLS strategy. Defaults to inheriting the base namespace's ingress TLS. */
+  cert?: OverlayCertStrategy
+  /** Optional schema-per-overlay PostgreSQL lifecycle. */
+  database?: OverlayDatabase<TVars>
+  runtime?: NamespaceRuntime
+} & Record<string, unknown>
+
+/**
+ * Namespace definition — either a fully-resolved static namespace or a runtime
+ * overlay template. Most existing configs only use the static form.
+ */
+export type NamespaceDefinition = StaticNamespaceDefinition | OverlayNamespaceDefinition
+
+/**
+ * Type guard: true when the namespace is an overlay template that needs
+ * runtime `--vars` to materialise.
+ */
+export function isOverlayNamespace(
+  ns: NamespaceDefinition | undefined
+): ns is OverlayNamespaceDefinition {
+  return Boolean(
+    ns &&
+      typeof ns === 'object' &&
+      typeof (ns as { extends?: unknown }).extends === 'string' &&
+      typeof (ns as { naming?: unknown }).naming === 'function' &&
+      typeof (ns as { domain?: unknown }).domain === 'function' &&
+      typeof (ns as { fallback?: unknown }).fallback === 'string'
+  )
+}
 
 /**
  * Reserved context keys that cannot be used as namespace variables.
@@ -71,13 +186,11 @@ type ReservedContextKeys =
 /**
  * Validate that namespace variables don't use reserved names
  */
-export type ValidateNamespaceVars<T extends Record<string, unknown>> = Extract<
-  keyof T,
-  ReservedContextKeys
-> extends never
+export type ValidateNamespaceVars<T extends Record<string, unknown>> =
+  Extract<keyof T, ReservedContextKeys> extends never
     ? T
-    : { 
-      __error: 'Namespace variables cannot use reserved context names'
+    : {
+        __error: 'Namespace variables cannot use reserved context names'
         __conflicts: Extract<keyof T, ReservedContextKeys>
       }
 
@@ -117,57 +230,56 @@ export type BuildDefinition = DockerfileBuild | GenericBuild
 /**
  * Extract secret names from secrets map (like DomainKey for domain)
  */
-export type SecretKey<TSecrets> = NonNullable<TSecrets> extends Record<string, unknown>
-  ? Extract<keyof NonNullable<TSecrets>, string>
-  : string
+export type SecretKey<TSecrets> =
+  NonNullable<TSecrets> extends Record<string, unknown>
+    ? Extract<keyof NonNullable<TSecrets>, string>
+    : string
 
 /**
  * Extract configMap names from configMaps map (like DomainKey for domain)
  */
-export type ConfigMapKey<TConfigMaps> = NonNullable<TConfigMaps> extends Record<string, unknown>
-  ? Extract<keyof NonNullable<TConfigMaps>, string>
-  : string
+export type ConfigMapKey<TConfigMaps> =
+  NonNullable<TConfigMaps> extends Record<string, unknown>
+    ? Extract<keyof NonNullable<TConfigMaps>, string>
+    : string
 
 /**
  * Extract app names from apps map
  */
-export type AppKey<TApps> = NonNullable<TApps> extends Record<string, unknown>
-  ? Extract<keyof NonNullable<TApps>, string>
-  : string
+export type AppKey<TApps> =
+  NonNullable<TApps> extends Record<string, unknown>
+    ? Extract<keyof NonNullable<TApps>, string>
+    : string
 
 /**
  * Infer value keys for a given secret name from TSecrets map.
  * Supports both object and function-based secret definitions.
  */
-export type SecretValueKeys<
-  TSecrets,
-  TName extends SecretKey<TSecrets>
-> = NonNullable<TSecrets> extends Record<string, unknown>
-  ? NonNullable<TSecrets>[TName] extends (...args: never[]) => infer R
+export type SecretValueKeys<TSecrets, TName extends SecretKey<TSecrets>> =
+  NonNullable<TSecrets> extends Record<string, unknown>
+    ? NonNullable<TSecrets>[TName] extends (...args: never[]) => infer R
       ? R extends Record<string, string>
         ? Extract<keyof R, string>
         : string
       : NonNullable<TSecrets>[TName] extends Record<string, string>
         ? Extract<keyof NonNullable<TSecrets>[TName], string>
-      : string
-  : string
+        : string
+    : string
 
 /**
  * Infer value keys for a given configMap name from TConfigMaps map.
  * Supports both object and function-based configMap definitions.
  */
-export type ConfigMapValueKeys<
-  TConfigMaps,
-  TName extends ConfigMapKey<TConfigMaps>
-> = NonNullable<TConfigMaps> extends Record<string, unknown>
-  ? NonNullable<TConfigMaps>[TName] extends (...args: never[]) => infer R
+export type ConfigMapValueKeys<TConfigMaps, TName extends ConfigMapKey<TConfigMaps>> =
+  NonNullable<TConfigMaps> extends Record<string, unknown>
+    ? NonNullable<TConfigMaps>[TName] extends (...args: never[]) => infer R
       ? R extends Record<string, string>
         ? Extract<keyof R, string>
         : string
       : NonNullable<TConfigMaps>[TName] extends Record<string, string>
         ? Extract<keyof NonNullable<TConfigMaps>[TName], string>
-      : string
-  : string
+        : string
+    : string
 
 /**
  * Special marker type for secret references in env definitions
@@ -229,24 +341,26 @@ export type EnvValue = string | SecretRef | ConfigMapRef
 /**
  * Extract secret names from app's secrets definition
  */
-export type ExtractSecretNames<T> = T extends Record<string, Record<string, string>>
-  ? Extract<keyof T, string>
-  : T extends (ctx: never) => infer R
-  ? R extends Record<string, Record<string, string>>
-    ? Extract<keyof R, string>
-    : string
-  : string
+export type ExtractSecretNames<T> =
+  T extends Record<string, Record<string, string>>
+    ? Extract<keyof T, string>
+    : T extends (ctx: never) => infer R
+      ? R extends Record<string, Record<string, string>>
+        ? Extract<keyof R, string>
+        : string
+      : string
 
 /**
  * Extract configMap names from app's configMaps definition
  */
-export type ExtractConfigMapNames<T> = T extends Record<string, Record<string, string>>
-  ? Extract<keyof T, string>
-  : T extends (ctx: never) => infer R
-  ? R extends Record<string, Record<string, string>>
-    ? Extract<keyof R, string>
-    : string
-  : string
+export type ExtractConfigMapNames<T> =
+  T extends Record<string, Record<string, string>>
+    ? Extract<keyof T, string>
+    : T extends (ctx: never) => infer R
+      ? R extends Record<string, Record<string, string>>
+        ? Extract<keyof R, string>
+        : string
+      : string
 
 /**
  * Cluster metadata available in context
@@ -321,7 +435,7 @@ export interface AppContextCoreHelpers<
   // ============================================================================
   // METADATA
   // ============================================================================
-  
+
   /** Current project name from config */
   project: TProject
 
@@ -346,13 +460,13 @@ export interface AppContextCoreHelpers<
    * @example
    * // Cluster internal DNS
    * dns('api', 'cluster') // -> 'api.my-namespace.svc.cluster.local'
-   * 
+   *
    * // Service name only
    * dns('api', 'service') // -> 'api'
-   * 
+   *
    * // External DNS (resolved from ingress configuration)
    * dns('api', 'ingress') // -> 'api.example.com' (if ingress configured)
-   * 
+   *
    * // Usage in env:
    * env: ({ dns }) => ({
    *   BACKEND_URL: `https://${dns('backend', 'ingress')}`
@@ -439,7 +553,7 @@ export interface AppContextCoreHelpers<
    * // Reference entire secret (envFrom)
    * env: ({ secret }) => secret('api-secrets')
    * // Generates: envFrom: [{ secretRef: { name: 'api-secrets' } }]
-   * 
+   *
    * // Reference specific key (valueFrom)
    * env: ({ secret }) => ({
    *   JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
@@ -449,7 +563,7 @@ export interface AppContextCoreHelpers<
   secret: {
     (secretName: TSecretNames): SecretRef
     <TName extends SecretKey<TSecrets>>(
-      secretName: TName, 
+      secretName: TName,
       key: SecretValueKeys<TSecrets, TName>
     ): SecretRef
   }
@@ -463,7 +577,7 @@ export interface AppContextCoreHelpers<
    * // Reference entire configMap (envFrom)
    * env: ({ configMap }) => configMap('api-config')
    * // Generates: envFrom: [{ configMapRef: { name: 'api-config' } }]
-   * 
+   *
    * // Reference specific key (valueFrom)
    * env: ({ configMap }) => ({
    *   LOG_LEVEL: configMap('api-config', 'LOG_LEVEL')
@@ -473,7 +587,7 @@ export interface AppContextCoreHelpers<
   configMap: {
     (configMapName: TConfigMapNames): ConfigMapRef
     <TName extends ConfigMapKey<TConfigMaps>>(
-      configMapName: TName, 
+      configMapName: TName,
       key: ConfigMapValueKeys<TConfigMaps, TName>
     ): ConfigMapRef
   }
@@ -531,7 +645,7 @@ export type AppHostContextWithHelpers<
 /**
  * Extended context with helper functions for app configuration.
  * This is what env/secrets/configMaps config functions receive.
- * 
+ *
  * Note: Variables like `dev`, `production`, etc. should be declared in namespace definitions.
  */
 export type AppEnvContext<
@@ -561,14 +675,7 @@ export type AppEnvResolver<
   ctx: AppEnvContext<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
 ) =>
   | AppEnvSource<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
-  | readonly AppEnvSource<
-      TNamespaceVars,
-      TProject,
-      TNamespaceName,
-      TSecrets,
-      TConfigMaps,
-      TApps
-    >[]
+  | readonly AppEnvSource<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>[]
 
 /**
  * A single env source: a plain record of env vars, an entire secret / configMap
@@ -598,14 +705,7 @@ export type AppEnv<
   TApps = undefined
 > =
   | AppEnvSource<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
-  | readonly AppEnvSource<
-      TNamespaceVars,
-      TProject,
-      TNamespaceName,
-      TSecrets,
-      TConfigMaps,
-      TApps
-    >[]
+  | readonly AppEnvSource<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>[]
 
 /**
  * Fully resolved env for one app in one namespace. `envFrom` mirrors the k8s
@@ -782,7 +882,14 @@ export type AppParameter<
 > =
   | T
   | ((
-      ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+      ctx: AppHostContextWithHelpers<
+        TNamespaceVars,
+        TProject,
+        TNamespaceName,
+        TSecrets,
+        TConfigMaps,
+        TApps
+      >
     ) => T)
 
 export type AppDefinition<
@@ -799,23 +906,62 @@ export type AppDefinition<
   podAnnotations?:
     | Record<string, string>
     | ((
-        ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+        ctx: AppHostContextWithHelpers<
+          TNamespaceVars,
+          TProject,
+          TNamespaceName,
+          TSecrets,
+          TConfigMaps,
+          TApps
+        >
       ) => Record<string, string>)
   volumes?:
     | Volume[]
-    | ((ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>) => Volume[])
+    | ((
+        ctx: AppHostContextWithHelpers<
+          TNamespaceVars,
+          TProject,
+          TNamespaceName,
+          TSecrets,
+          TConfigMaps,
+          TApps
+        >
+      ) => Volume[])
   volumeMounts?:
     | VolumeMount[]
     | ((
-        ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+        ctx: AppHostContextWithHelpers<
+          TNamespaceVars,
+          TProject,
+          TNamespaceName,
+          TSecrets,
+          TConfigMaps,
+          TApps
+        >
       ) => VolumeMount[])
   args?:
     | string[]
-    | ((ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>) => string[])
+    | ((
+        ctx: AppHostContextWithHelpers<
+          TNamespaceVars,
+          TProject,
+          TNamespaceName,
+          TSecrets,
+          TConfigMaps,
+          TApps
+        >
+      ) => string[])
   ports?:
     | ServicePort[]
     | ((
-        ctx: AppHostContextWithHelpers<TNamespaceVars, TProject, TNamespaceName, TSecrets, TConfigMaps, TApps>
+        ctx: AppHostContextWithHelpers<
+          TNamespaceVars,
+          TProject,
+          TNamespaceName,
+          TSecrets,
+          TConfigMaps,
+          TApps
+        >
       ) => ServicePort[])
   deploy?: AppDeploySelection<TNamespaceName> | undefined
   /**
@@ -900,7 +1046,7 @@ export type ConfigMapsMap<
  * Extract the shape of namespace variables (all namespaces must have consistent shape).
  * Returns the type of the first namespace's value.
  */
-export type ExtractNamespaceVars<TNamespaces extends Record<string, NamespaceDefinition>> = 
+export type ExtractNamespaceVars<TNamespaces extends Record<string, NamespaceDefinition>> =
   TNamespaces[keyof TNamespaces]
 
 /**
@@ -925,10 +1071,10 @@ export type TsOpsConfig<
    * Namespace definitions with custom variables.
    * All namespaces must have the same shape (consistent structure).
    * Variables defined here are available in app configuration functions.
-   * 
+   *
    * @example
    * namespaces: {
-   *   dev: { 
+   *   dev: {
    *     domain: 'dev.example.com',
    *     replicas: 1,
    *     dbHost: 'dev-db.internal'
@@ -953,7 +1099,7 @@ export type TsOpsConfig<
       TApps
     >
   }
-  /** 
+  /**
    * Secrets collection organized by secret name.
    * @example
    * secrets: {
