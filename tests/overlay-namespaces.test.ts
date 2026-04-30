@@ -185,4 +185,34 @@ describe('overlay namespaces (resolver)', () => {
     expect(ctx.namespace).toBe('pr-5')
     expect(ctx.project).toBe('demo')
   })
+
+  it('createHostContext: --var domain=... cannot override the resolved overlay domain', () => {
+    const cfg = makeCfg()
+    const resolver = createConfigResolver(cfg)
+    const ctx = resolver.namespaces.createHostContext('preview', {
+      vars: { pr: '8', domain: 'evil.example.com' }
+    }) as { domain: string }
+    expect(ctx.domain).toBe('pr-8.stage.example.com')
+  })
+
+  it('resolve() rejects non-string return from domain()', () => {
+    const cfg = defineConfig({
+      ...baseConfig,
+      namespaces: {
+        ...baseConfig.namespaces,
+        bad: {
+          extends: 'ru-stage' as const,
+          naming: ({ pr }: { pr: string }) => `bad-${pr}`,
+          // intentionally returns non-string
+          domain: () => 42 as unknown as string,
+          fallback: 'ru-stage' as const
+        }
+      },
+      apps: { api: { ports: [{ name: 'http', port: 80, targetPort: 3000 }] } }
+    } as any)
+    const resolver = createConfigResolver(cfg)
+    expect(() => resolver.namespaces.resolve('bad', { pr: '1' })).toThrow(
+      /produced an invalid domain/
+    )
+  })
 })

@@ -7,6 +7,7 @@ import type {
   NamespaceRuntime,
   TsOpsConfig
 } from './types.js'
+import { isOverlayNamespace } from './types.js'
 
 const DEFAULT_HTTP_PORT = 80
 const DEFAULT_HTTPS_PORT = 443
@@ -23,6 +24,20 @@ const CLUSTER_DOMAIN = 'cluster.local'
 export function createRuntimeHelpers<
   TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
 >(config: TConfig, namespace: Extract<keyof TConfig['namespaces'], string>) {
+  const rawNamespace = config.namespaces[namespace]
+  if (isOverlayNamespace(rawNamespace as never)) {
+    // Runtime helpers are intended for app code reading
+    // `process.env.TSOPS_NAMESPACE` (which is the resolved overlay name,
+    // e.g. `pr-123` — already a static-shaped namespace from k8s' POV).
+    // Calling this with the overlay *template* key (e.g. `preview`) would
+    // require runtime vars that the helper has no way to obtain, so fail
+    // fast with a clear message instead of throwing somewhere deeper.
+    throw new Error(
+      `createRuntimeHelpers() does not support overlay template namespaces. ` +
+        `"${namespace}" is an overlay; pass the resolved namespace name (e.g. ` +
+        `process.env.TSOPS_NAMESPACE inside a deployed pod) instead.`
+    )
+  }
   const resolver = createConfigResolver(config)
   const namespaceVars = config.namespaces[
     namespace
