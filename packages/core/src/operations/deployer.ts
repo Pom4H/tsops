@@ -115,6 +115,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
             if (!options.skipDatabase && resolved.definition?.database) {
               const dbResult = await runDatabasePreDeploy({
                 namespace: resolved.name,
+                baseNamespace: resolved.base ?? entry.namespace,
                 vars: options.vars,
                 database: resolved.definition.database,
                 kubectl: this.kubectl,
@@ -317,6 +318,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     if (!options.keepDatabase && resolved.definition?.database && resolved.vars) {
       const dbResult = await runDatabasePostDestroy({
         namespace: resolved.name,
+        baseNamespace: resolved.base ?? resolved.name,
         vars: resolved.vars,
         database: resolved.definition.database,
         kubectl: this.kubectl,
@@ -625,14 +627,11 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
   ): Promise<ManifestChange[]> {
     const orphaned: ManifestChange[] = []
 
-    // Collect all namespaces we should check
+    // Collect all namespaces we should check. Plan entries already carry
+    // the resolved namespace (e.g. `pr-123` for an overlay), so we don't
+    // re-derive it from `options.namespace` — that would be the template
+    // key (`preview`) and wouldn't match anything in the cluster.
     const namespacesToCheck = new Set(plan.entries.map((e) => e.namespace))
-
-    // If namespace filter is set, only check that namespace
-    if (options.namespace) {
-      namespacesToCheck.clear()
-      namespacesToCheck.add(options.namespace)
-    }
 
     // For each namespace, find orphaned app resources
     for (const namespace of namespacesToCheck) {

@@ -132,12 +132,17 @@ export interface OverlayDatabase<TVars extends OverlayVars = OverlayVars> {
   postDestroy: 'drop-schema'
   /**
    * Extra env injected into all apps in this overlay. Useful to expose
-   * the overlay-specific schema name. Skipped when `DATABASE_URL` is a
-   * SecretRef/ConfigMapRef so we don't silently blank a typed binding.
+   * the overlay-specific schema name (e.g. `DATABASE_SCHEMA`).
+   *
+   * `baseUrl` is the app's existing `DATABASE_URL` when it's a plain string,
+   * or `undefined` when it's a SecretRef/ConfigMapRef. The callback always
+   * runs so non-`DATABASE_URL` keys (like `DATABASE_SCHEMA`) still apply
+   * for typed bindings; tsops drops any `DATABASE_URL` returned in that
+   * case so we don't silently overwrite the typed binding.
    */
   appEnvOverride?: (
     vars: TVars,
-    baseUrl: string,
+    baseUrl: string | undefined,
     schema: string
   ) => Record<string, string>
 }

@@ -210,6 +210,96 @@ describe('overlay namespaces (resolver)', () => {
     expect(ctx.domain).toBe('pr-8.stage.example.com')
   })
 
+  it('appEnvOverride applies non-DATABASE_URL keys even when DATABASE_URL is a typed binding', async () => {
+    const cfg = defineConfig({
+      ...baseConfig,
+      namespaces: {
+        'ru-stage': { domain: 'stage.example.com' },
+        preview: {
+          extends: 'ru-stage' as const,
+          naming: ({ pr }: { pr: string }) => `pr-${pr}`,
+          domain: ({ pr }: { pr: string }) => `pr-${pr}.stage.example.com`,
+          fallback: 'ru-stage' as const,
+          database: {
+            urlSecret: { name: 'stage', key: 'DATABASE_URL' },
+            schema: ({ pr }: { pr: string }) => `pr_${pr}`,
+            preDeploy: 'create-schema' as const,
+            postDestroy: 'drop-schema' as const,
+            appEnvOverride: (
+              _vars: { pr: string },
+              baseUrl: string | undefined,
+              schema: string
+            ) => ({
+              ...(baseUrl ? { DATABASE_URL: `${baseUrl}?schema=${schema}` } : {}),
+              DATABASE_SCHEMA: schema
+            })
+          }
+        }
+      },
+      apps: {
+        api: {
+          // DATABASE_URL is a typed SecretRef, not a string — old code would
+          // skip the entire override callback. New behaviour: drop only the
+          // DATABASE_URL key, keep DATABASE_SCHEMA.
+          env: ({ secret }: any) => ({
+            DATABASE_URL: secret('app-secrets', 'DATABASE_URL')
+          }),
+          ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+        }
+      }
+    } as any)
+    const resolver = createConfigResolver(cfg)
+    const planner = new Planner({ resolver })
+    const plan = await planner.plan({ namespace: 'preview', vars: { pr: '7' } })
+    const apiEntry = plan.entries.find((e) => e.app === 'api')!
+    // DATABASE_URL stays as the original SecretRef binding.
+    expect(typeof apiEntry.env.DATABASE_URL).toBe('object')
+    // DATABASE_SCHEMA is still applied.
+    expect(apiEntry.env.DATABASE_SCHEMA).toBe('pr_7')
+  })
+
+  it('appEnvOverride drops empty-string DATABASE_URL outputs', async () => {
+    const cfg = defineConfig({
+      ...baseConfig,
+      namespaces: {
+        'ru-stage': { domain: 'stage.example.com' },
+        preview: {
+          extends: 'ru-stage' as const,
+          naming: ({ pr }: { pr: string }) => `pr-${pr}`,
+          domain: ({ pr }: { pr: string }) => `pr-${pr}.stage.example.com`,
+          fallback: 'ru-stage' as const,
+          database: {
+            urlSecret: { name: 'stage', key: 'DATABASE_URL' },
+            schema: ({ pr }: { pr: string }) => `pr_${pr}`,
+            preDeploy: 'create-schema' as const,
+            postDestroy: 'drop-schema' as const,
+            // Naive override that returns '' when baseUrl is missing.
+            appEnvOverride: (
+              _vars: { pr: string },
+              baseUrl: string | undefined,
+              schema: string
+            ) => ({
+              DATABASE_URL: baseUrl ? `${baseUrl}?schema=${schema}` : '',
+              DATABASE_SCHEMA: schema
+            })
+          }
+        }
+      },
+      apps: {
+        api: {
+          // No DATABASE_URL at all — override should not silently inject ''.
+          ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+        }
+      }
+    } as any)
+    const resolver = createConfigResolver(cfg)
+    const planner = new Planner({ resolver })
+    const plan = await planner.plan({ namespace: 'preview', vars: { pr: '9' } })
+    const apiEntry = plan.entries.find((e) => e.app === 'api')!
+    expect(apiEntry.env.DATABASE_URL).toBeUndefined()
+    expect(apiEntry.env.DATABASE_SCHEMA).toBe('pr_9')
+  })
+
   it('resolve() rejects non-string return from domain()', () => {
     const cfg = defineConfig({
       ...baseConfig,

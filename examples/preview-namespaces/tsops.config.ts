@@ -55,7 +55,12 @@ const config = defineConfig({
         preDeploy: 'create-schema',
         postDestroy: 'drop-schema',
         appEnvOverride: (_vars, baseUrl, schema) => ({
-          DATABASE_URL: baseUrl ? `${baseUrl}?schema=${schema}` : '',
+          // When DATABASE_URL is a plain string we rewrite it to scope the
+          // connection to the per-overlay schema. When the app binds it via
+          // SecretRef/ConfigMapRef instead, baseUrl is undefined and tsops
+          // drops the DATABASE_URL key automatically — DATABASE_SCHEMA still
+          // applies, so app code can read it and SET search_path itself.
+          ...(baseUrl ? { DATABASE_URL: `${baseUrl}?schema=${schema}` } : {}),
           DATABASE_SCHEMA: schema
         })
       }

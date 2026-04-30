@@ -5,6 +5,8 @@ import type { CustomJobConfig, OverlayDatabase, OverlayVars } from '../types.js'
 
 interface DbHookCommonOptions {
   namespace: string
+  /** Base (static) namespace the overlay extends — source of `urlSecret`. */
+  baseNamespace: string
   vars: OverlayVars
   database: OverlayDatabase
   kubectl: KubectlClient
@@ -76,10 +78,16 @@ function assertValidSchema(schema: string): void {
 export async function runDatabasePreDeploy(
   options: DbHookCommonOptions
 ): Promise<{ jobName: string }> {
-  const { namespace, vars, database, kubectl, logger } = options
+  const { namespace, baseNamespace, vars, database, kubectl, logger } = options
   const schema = database.schema(vars)
   assertValidSchema(schema)
   const slug = toK8sName(schema)
+
+  // The Job runs in the overlay namespace and reads `DATABASE_URL` via
+  // `secretKeyRef` from a Secret in *that* namespace. The user declares the
+  // Secret in the base (static) namespace, so we materialise a copy into the
+  // overlay before the Job is applied. Idempotent: re-applying overwrites.
+  await ensureUrlSecretInOverlay({ namespace, baseNamespace, database, kubectl, logger })
 
   if (typeof database.preDeploy === 'object') {
     validateCustomJob(database.preDeploy)
@@ -129,11 +137,16 @@ function validateCustomJob(custom: CustomJobConfig): void {
 export async function runDatabasePostDestroy(
   options: DbHookCommonOptions
 ): Promise<{ jobName: string }> {
-  const { namespace, vars, database, kubectl, logger } = options
+  const { namespace, baseNamespace, vars, database, kubectl, logger } = options
   const schema = database.schema(vars)
   assertValidSchema(schema)
   const slug = toK8sName(schema)
   const jobName = toK8sName(`tsops-db-drop-${slug}`)
+
+  // Same reason as in runDatabasePreDeploy: the drop Job needs the connection
+  // Secret available locally. If the namespace was created by `up` we'd
+  // already have it, but `down` has to be safe to call standalone too.
+  await ensureUrlSecretInOverlay({ namespace, baseNamespace, database, kubectl, logger })
 
   logger.info('Dropping overlay schema', { namespace, schema, jobName })
   const job = renderPsqlJob({
@@ -144,6 +157,62 @@ export async function runDatabasePostDestroy(
   })
   await kubectl.apply(job, { namespace })
   return { jobName }
+}
+
+/**
+ * Read `database.urlSecret` from the base namespace and apply a copy into
+ * the overlay namespace. Without this the DB Job's `secretKeyRef` would
+ * resolve against an empty namespace and the pod would never start.
+ */
+async function ensureUrlSecretInOverlay(input: {
+  namespace: string
+  baseNamespace: string
+  database: OverlayDatabase
+  kubectl: KubectlClient
+  logger: Logger
+}): Promise<void> {
+  const { namespace, baseNamespace, database, kubectl, logger } = input
+  if (namespace === baseNamespace) return
+  const source = await kubectl.get('Secret', database.urlSecret.name, baseNamespace)
+  if (!source) {
+    throw new Error(
+      `Database hook: Secret "${database.urlSecret.name}" not found in base namespace "${baseNamespace}". ` +
+        `The overlay's database connection Secret must exist in the base namespace so it can be copied into "${namespace}".`
+    )
+  }
+  const sourceData = (source as unknown as { data?: Record<string, string> }).data ?? {}
+  if (!(database.urlSecret.key in sourceData)) {
+    throw new Error(
+      `Database hook: Secret "${database.urlSecret.name}" in namespace "${baseNamespace}" ` +
+        `does not contain key "${database.urlSecret.key}".`
+    )
+  }
+  const sourceMeta =
+    ((source as unknown as { metadata?: Record<string, unknown> }).metadata ??
+      {}) as Record<string, unknown>
+  const labels = (sourceMeta.labels as Record<string, string> | undefined) ?? {}
+  const copy = {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    type: (source as unknown as { type?: string }).type ?? 'Opaque',
+    metadata: {
+      name: database.urlSecret.name,
+      namespace,
+      labels: {
+        ...labels,
+        'tsops/managed': 'true',
+        'tsops/copied-from': baseNamespace,
+        'tsops/hook': 'database'
+      }
+    },
+    data: sourceData
+  } as unknown as SupportedManifest
+  logger.info('Copying database urlSecret into overlay', {
+    from: baseNamespace,
+    to: namespace,
+    secretName: database.urlSecret.name
+  })
+  await kubectl.apply(copy, { namespace })
 }
 
 function renderPsqlJob(input: {
