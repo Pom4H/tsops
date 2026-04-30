@@ -240,4 +240,16 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
   ) {
     return this.deployer.deploy(options)
   }
+
+  /**
+   * Tear down an overlay namespace. Refuses to run on static namespaces —
+   * static namespace deletion should go through `kubectl` after a human
+   * reviews it, not through tsops automation.
+   *
+   * @example
+   * await tsops.down({ namespace: 'preview', vars: { pr: '123' } })
+   */
+  down(options: { namespace: string; vars?: OverlayVars }) {
+    return this.deployer.down(options)
+  }
 }
