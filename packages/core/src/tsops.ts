@@ -224,7 +224,20 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * console.log(result.entries[0].appliedManifests) // => ['Deployment/api', 'Service/api', ...]
    * ```
    */
-  deploy(options: { namespace?: string; app?: string } = {}) {
+  deploy(
+    options: {
+      namespace?: string
+      app?: string
+      /** Runtime variables for overlay namespaces (`--var key=value`). */
+      vars?: OverlayVars
+      /**
+       * Apps to deploy fully. Apps not in this list become `Service:
+       * ExternalName` stubs that proxy to the same app in the overlay's
+       * fallback namespace. Only meaningful when targeting an overlay.
+       */
+      include?: readonly string[]
+    } = {}
+  ) {
     return this.deployer.deploy(options)
   }
 }

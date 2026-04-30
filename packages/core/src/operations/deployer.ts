@@ -1,9 +1,14 @@
 import type { ManifestBuilder } from '@tsops/k8'
-import { buildConfigMap, buildNamespace, buildSecret } from '@tsops/k8'
+import {
+  buildConfigMap,
+  buildExternalNameService,
+  buildNamespace,
+  buildSecret
+} from '@tsops/k8'
 import type { ConfigResolver } from '../config/resolver.js'
 import type { Logger } from '../logger.js'
 import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
-import type { TsOpsConfig } from '../types.js'
+import type { OverlayVars, TsOpsConfig } from '../types.js'
 import type { Planner } from './planner.js'
 import type {
   AppResourceChanges,
@@ -48,7 +53,14 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    * All manifests within each group are applied atomically using kubectl batch apply.
    * If any manifest fails, the entire group fails and no changes are made.
    */
-  async deploy(options: { namespace?: string; app?: string } = {}): Promise<DeployResult> {
+  async deploy(
+    options: {
+      namespace?: string
+      app?: string
+      vars?: OverlayVars
+      include?: readonly string[]
+    } = {}
+  ): Promise<DeployResult> {
     const plan = await this.planner.plan(options)
     const entries: DeployResult['entries'] = []
     const createdNamespaces = new Set<string>()
@@ -73,6 +85,55 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
         }
 
         createdNamespaces.add(entry.namespace)
+      }
+
+      // 1b. Apps not in --include become ExternalName proxies into fallback.
+      // We still emit the ingress (and certificate) manifests so the overlay
+      // domain stays routable for the proxied app — only the Deployment and
+      // Secrets/ConfigMaps are skipped, since those live in the base
+      // namespace already.
+      if (entry.fallback) {
+        const serviceName = this.resolver.project.serviceName(entry.app)
+        const stub = buildExternalNameService({
+          serviceName,
+          namespace: entry.namespace,
+          fallbackNamespace: entry.fallback.namespace,
+          baseLabels: {
+            'app.kubernetes.io/name': entry.app,
+            'app.kubernetes.io/part-of': this.resolver.project.name,
+            'tsops/app': entry.app,
+            'tsops/managed': 'true'
+          },
+          ports: entry.ports?.map((p) => ({
+            name: p.name,
+            port: p.port,
+            protocol: p.protocol
+          }))
+        })
+        const stubManifests: SupportedManifest[] = [stub]
+
+        const builtForFallback = this.manifestBuilder.build(entry.app, {
+          namespace: entry.namespace,
+          serviceName,
+          image: entry.image,
+          host: entry.host,
+          env: entry.env,
+          envFrom: entry.envFrom,
+          network: entry.network,
+          podAnnotations: entry.podAnnotations,
+          volumes: entry.volumes,
+          volumeMounts: entry.volumeMounts,
+          args: entry.args,
+          ports: entry.ports
+        })
+        if (builtForFallback.ingress) stubManifests.push(builtForFallback.ingress)
+        if (builtForFallback.ingressRoute) stubManifests.push(builtForFallback.ingressRoute)
+        if (builtForFallback.certificate) stubManifests.push(builtForFallback.certificate)
+
+        const refs = await this.kubectl.applyBatch(stubManifests, { namespace: entry.namespace })
+        applied.push(...refs)
+        entries.push({ ...entry, appliedManifests: applied })
+        continue
       }
 
       // 2. Validate and create secrets (atomically)
