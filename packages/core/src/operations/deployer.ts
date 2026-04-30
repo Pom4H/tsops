@@ -101,28 +101,38 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
           ) {
             overlayHooksRun.add(entry.namespace)
             if (!options.skipCert && resolved.definition?.cert) {
-              await runCertbotHook({
+              const certResult = await runCertbotHook({
                 namespace: resolved.name,
                 domain: resolved.domain ?? '',
                 cert: resolved.definition.cert,
                 kubectl: this.kubectl,
                 logger: this.logger
               })
+              if (certResult?.jobName) {
+                await this.kubectl.waitForJob(certResult.jobName, resolved.name)
+              }
             }
             if (!options.skipDatabase && resolved.definition?.database) {
-              await runDatabasePreDeploy({
+              const dbResult = await runDatabasePreDeploy({
                 namespace: resolved.name,
                 vars: options.vars,
                 database: resolved.definition.database,
                 kubectl: this.kubectl,
                 logger: this.logger
               })
+              if (dbResult?.jobName) {
+                await this.kubectl.waitForJob(dbResult.jobName, resolved.name)
+              }
             }
           }
         }
       }
 
       // 1b. Apps not in --include become ExternalName proxies into fallback.
+      // We still emit the ingress (and certificate) manifests so the overlay
+      // domain stays routable for the proxied app — only the Deployment and
+      // Secrets/ConfigMaps are skipped, since those live in the base
+      // namespace already.
       if (entry.fallback) {
         const serviceName = this.resolver.project.serviceName(entry.app)
         const stub = buildExternalNameService({
@@ -141,8 +151,30 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
             protocol: p.protocol
           }))
         })
-        const ref = await this.kubectl.apply(stub, { namespace: entry.namespace })
-        applied.push(ref)
+        const stubManifests: SupportedManifest[] = [stub]
+
+        const builtForFallback = this.manifestBuilder.build(entry.app, {
+          namespace: entry.namespace,
+          serviceName,
+          image: entry.image,
+          host: entry.host,
+          env: entry.env,
+          envFrom: entry.envFrom,
+          network: entry.network,
+          podAnnotations: entry.podAnnotations,
+          volumes: entry.volumes,
+          volumeMounts: entry.volumeMounts,
+          args: entry.args,
+          ports: entry.ports
+        })
+        // Skip Deployment/Service (we just emitted our own ExternalName Service)
+        // and any Secret/ConfigMap-bearing resources; keep ingress only.
+        if (builtForFallback.ingress) stubManifests.push(builtForFallback.ingress)
+        if (builtForFallback.ingressRoute) stubManifests.push(builtForFallback.ingressRoute)
+        if (builtForFallback.certificate) stubManifests.push(builtForFallback.certificate)
+
+        const refs = await this.kubectl.applyBatch(stubManifests, { namespace: entry.namespace })
+        applied.push(...refs)
         entries.push({ ...entry, appliedManifests: applied })
         continue
       }
@@ -254,15 +286,18 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
   }
 
   /**
-   * Tears down a namespace, including overlay-specific cleanup hooks.
+   * Tears down an overlay namespace, including its lifecycle cleanup hooks.
    *
-   * For overlay namespaces this:
-   * 1. Runs the database `postDestroy` hook (e.g. `DROP SCHEMA ... CASCADE`)
+   * Refuses to operate on static namespaces — deleting `ru-stage` because of
+   * a typo would be catastrophic and is exactly the kind of action that
+   * should go through `kubectl` after a human reviews it. Use `tsops up
+   * <overlay> --var ...` to materialise an overlay first; only the resulting
+   * resolved namespace is deletable here.
+   *
+   * Steps for an overlay:
+   * 1. Run the database `postDestroy` hook (e.g. `DROP SCHEMA ... CASCADE`)
    *    so per-PR schemas don't leak.
-   * 2. Deletes the resolved namespace, which cascades to all owned objects.
-   *
-   * For static namespaces it just deletes the namespace, which is almost
-   * always a foot-gun — callers should confirm before invoking.
+   * 2. Delete the resolved namespace, which cascades to all owned objects.
    */
   async down(options: {
     namespace: string
@@ -270,21 +305,28 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     keepDatabase?: boolean
   }): Promise<{ deleted: string[] }> {
     const resolved = this.resolver.namespaces.resolve(options.namespace, options.vars)
+
+    if (!resolved.overlay) {
+      throw new Error(
+        `Refusing to tear down static namespace "${options.namespace}". ` +
+          `tsops down only operates on overlay (preview) namespaces. ` +
+          `Use \`kubectl delete namespace ${resolved.name}\` if you really want to remove this.`
+      )
+    }
+
     const deleted: string[] = []
 
-    if (
-      resolved.overlay &&
-      !options.keepDatabase &&
-      resolved.definition?.database &&
-      resolved.vars
-    ) {
-      await runDatabasePostDestroy({
+    if (!options.keepDatabase && resolved.definition?.database && resolved.vars) {
+      const dbResult = await runDatabasePostDestroy({
         namespace: resolved.name,
         vars: resolved.vars,
         database: resolved.definition.database,
         kubectl: this.kubectl,
         logger: this.logger
       })
+      // Wait synchronously: if we delete the namespace before the drop Job
+      // finishes, the Job is killed and the schema leaks behind.
+      await this.kubectl.waitForJob(dbResult.jobName, resolved.name)
     }
 
     try {

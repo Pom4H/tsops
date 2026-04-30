@@ -131,4 +131,75 @@ describe('overlay namespaces', () => {
     expect(ctx.branch).toBe('feature-x')
     expect(ctx.domain).toBe('pr-99.stage.example.com')
   })
+
+  it('createHostContext does not let --vars override reserved keys', () => {
+    const cfg = makeCfg()
+    const resolver = createConfigResolver(cfg)
+    const ctx = resolver.namespaces.createHostContext('preview', {
+      vars: { pr: '5', namespace: 'evil', project: 'evil' }
+    }) as { namespace: string; project: string }
+    // Built-in fields must always win, regardless of what --vars contain.
+    expect(ctx.namespace).toBe('pr-5')
+    expect(ctx.project).toBe('demo')
+  })
+
+  it('resolve() rejects extends pointing at another overlay', () => {
+    const cfg = defineConfig({
+      ...baseConfig,
+      namespaces: {
+        ...baseConfig.namespaces,
+        nested: {
+          extends: 'preview' as const,
+          naming: ({ pr }: { pr: string }) => `nested-${pr}`,
+          domain: ({ pr }: { pr: string }) => `nested-${pr}.stage.example.com`,
+          fallback: 'ru-stage' as const
+        }
+      },
+      apps: { api: { ports: [{ name: 'http', port: 80, targetPort: 3000 }] } }
+    } as any)
+    const resolver = createConfigResolver(cfg)
+    expect(() => resolver.namespaces.resolve('nested', { pr: '1' })).toThrow(
+      /extends "preview", which is itself an overlay/
+    )
+  })
+
+  it('resolve() rejects fallback pointing at another overlay', () => {
+    const cfg = defineConfig({
+      ...baseConfig,
+      namespaces: {
+        ...baseConfig.namespaces,
+        bad: {
+          extends: 'ru-stage' as const,
+          naming: ({ pr }: { pr: string }) => `bad-${pr}`,
+          domain: () => 'x.example.com',
+          fallback: 'preview' as const
+        }
+      },
+      apps: { api: { ports: [{ name: 'http', port: 80, targetPort: 3000 }] } }
+    } as any)
+    const resolver = createConfigResolver(cfg)
+    expect(() => resolver.namespaces.resolve('bad', { pr: '1' })).toThrow(
+      /Fallback must be a static namespace/
+    )
+  })
+
+  it('resolve() rejects fallback pointing at unknown namespace', () => {
+    const cfg = defineConfig({
+      ...baseConfig,
+      namespaces: {
+        ...baseConfig.namespaces,
+        bad: {
+          extends: 'ru-stage' as const,
+          naming: ({ pr }: { pr: string }) => `bad-${pr}`,
+          domain: () => 'x.example.com',
+          fallback: 'does-not-exist' as const
+        }
+      },
+      apps: { api: { ports: [{ name: 'http', port: 80, targetPort: 3000 }] } }
+    } as any)
+    const resolver = createConfigResolver(cfg)
+    expect(() => resolver.namespaces.resolve('bad', { pr: '1' })).toThrow(
+      /unknown fallback namespace "does-not-exist"/
+    )
+  })
 })

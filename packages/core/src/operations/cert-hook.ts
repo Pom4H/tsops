@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import type { Logger } from '../logger.js'
 import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
 import type { OverlayCertStrategy } from '../types.js'
@@ -10,20 +11,34 @@ interface RunCertbotHookOptions {
   logger: Logger
 }
 
+function toK8sName(input: string): string {
+  const sanitized = input
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-+|-+$/g, '')
+  const safe = sanitized || 'tsops'
+  if (safe.length <= 63) return safe
+  const hash = createHash('sha1').update(input).digest('hex').slice(0, 8)
+  return `${safe.slice(0, 63 - 9)}-${hash}`
+}
+
 /**
- * Pre-deploy TLS hook for overlay namespaces.
+ * Pre-deploy TLS hook for overlay namespaces. Returns the Job name when one
+ * was scheduled so the caller can `waitForJob` on it before deploying apps.
  *
  * - `wildcard-shared` only logs — the assumption is that the IngressRoute will
  *   reference an existing wildcard cert that already covers the overlay's
  *   subdomain. Nothing to issue, nothing to wait for.
  * - `per-namespace` schedules a certbot DNS-01 Job that writes the resulting
- *   TLS Secret into the overlay namespace. The Job runs to completion before
- *   the deployer continues.
+ *   TLS Secret into the overlay namespace.
  *
  * This is intentionally a thin wrapper. The real cert pipeline is the certbot
  * image and its DNS-provider plugin; tsops just owns the Job lifecycle.
  */
-export async function runCertbotHook(options: RunCertbotHookOptions): Promise<void> {
+export async function runCertbotHook(
+  options: RunCertbotHookOptions
+): Promise<{ jobName: string } | undefined> {
   const { namespace, domain, cert, kubectl, logger } = options
 
   if (cert.mode === 'wildcard-shared') {
@@ -31,11 +46,11 @@ export async function runCertbotHook(options: RunCertbotHookOptions): Promise<vo
       namespace,
       secretName: cert.secretName
     })
-    return
+    return undefined
   }
 
   const secretName = cert.secretName ?? `${namespace}-wildcard-tls`
-  const jobName = `tsops-certbot-${namespace}`
+  const jobName = toK8sName(`tsops-certbot-${namespace}`)
 
   logger.info('Issuing per-namespace certificate via certbot', {
     namespace,
@@ -58,7 +73,7 @@ export async function runCertbotHook(options: RunCertbotHookOptions): Promise<vo
       template: {
         spec: {
           restartPolicy: 'Never',
-          serviceAccountName: 'tsops-certbot',
+          serviceAccountName: cert.issuer.serviceAccountName,
           containers: [
             {
               name: 'certbot',
@@ -91,4 +106,5 @@ export async function runCertbotHook(options: RunCertbotHookOptions): Promise<vo
   }
 
   await kubectl.apply(job as unknown as SupportedManifest, { namespace })
+  return { jobName }
 }

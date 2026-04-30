@@ -32,8 +32,18 @@ export type TagStrategy =
 export type NamespaceRuntime = 'kubernetes' | 'docker' | 'local'
 
 /**
- * Static namespace definition - can contain any custom variables.
- * All namespaces in config must have the same shape (consistent structure).
+ * Static namespace definition — declares a long-lived namespace and any
+ * custom variables apps need (region, replicas, base domain, ...).
+ *
+ * Static namespaces are siblings of `OverlayNamespaceDefinition` in the
+ * `NamespaceDefinition` union. Apps see the same shape from both: helpers
+ * (`dns`, `url`, ...) plus whatever you put in this object. For overlays the
+ * extra fields are inherited from the base static namespace and then merged
+ * with the runtime `--vars` at deploy time.
+ *
+ * Within a single config, all *static* namespaces should share the same key
+ * shape so app code can safely destructure the context. Overlays
+ * intentionally diverge (they add `extends` / `naming` / `domain` / ...).
  *
  * @property runtime - Runtime environment for this namespace. Defaults to
  *                     `kubernetes`. `local: true` is a shorthand for
@@ -87,6 +97,13 @@ export type OverlayCertStrategy =
         email: string
         dnsProvider: 'cloudru' | 'cloudflare' | 'route53' | (string & Record<never, never>)
         credentialsSecret: string
+        /**
+         * ServiceAccount the certbot Job runs as. Required: the Job creates
+         * the resulting TLS Secret in the overlay namespace and therefore
+         * needs RBAC. tsops does not provision the SA — it expects an
+         * appropriate Role/RoleBinding to already exist.
+         */
+        serviceAccountName: string
       }
       /** Resulting TLS Secret name. Defaults to `<namespace>-wildcard-tls`. */
       secretName?: string
@@ -103,7 +120,14 @@ export type OverlayCertStrategy =
 export interface OverlayDatabase<TVars extends OverlayVars = OverlayVars> {
   urlSecret: { name: string; key: string }
   schema: (vars: TVars) => string
-  preDeploy: 'create-schema' | 'create-and-migrate' | CustomJobConfig
+  /**
+   * `'create-schema'` runs `CREATE SCHEMA IF NOT EXISTS <s>` and stops.
+   *
+   * For migrations, supply a `CustomJobConfig` pointing at your project's
+   * migrate image (`prisma migrate deploy`, `golang-migrate`, ...). tsops
+   * does not bundle a migration runner.
+   */
+  preDeploy: 'create-schema' | CustomJobConfig
   postDestroy: 'drop-schema'
   /**
    * Extra env injected into all apps in this overlay. Useful to point apps at

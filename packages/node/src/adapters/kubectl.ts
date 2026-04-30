@@ -310,13 +310,91 @@ export class Kubectl implements KubectlClient {
       return `${ref} (dry-run)`
     }
 
-    await this.runner.run('kubectl', ['delete', kind, name, '-n', namespace], {
+    // Namespace and other cluster-scoped resources don't take `-n` and the
+    // server rejects the request when it's set.
+    const args = ['delete', kind, name]
+    if (kind !== 'Namespace') {
+      args.push('-n', namespace)
+    }
+
+    await this.runner.run('kubectl', args, {
       inheritStdio: false,
       onStdout: (data) => this.logger.debug('kubectl stdout', { output: data.trim() }),
       onStderr: (data) => this.logger.warn('kubectl stderr', { output: data.trim() })
     })
 
     return ref
+  }
+
+  async waitForJob(
+    name: string,
+    namespace: string,
+    options: { timeoutSeconds?: number } = {}
+  ): Promise<void> {
+    const timeout = options.timeoutSeconds ?? 600
+
+    this.logger.info('kubectl wait job', { name, namespace, timeoutSeconds: timeout })
+
+    if (this.dryRun) {
+      this.logger.debug('Dry run enabled – skipping kubectl wait', { name, namespace })
+      return
+    }
+
+    try {
+      await this.runner.run(
+        'kubectl',
+        [
+          'wait',
+          '--for=condition=complete',
+          `--timeout=${timeout}s`,
+          `job/${name}`,
+          '-n',
+          namespace
+        ],
+        {
+          inheritStdio: false,
+          onStdout: (data) => this.logger.debug('kubectl stdout', { output: data.trim() }),
+          onStderr: (data) => this.logger.debug('kubectl stderr', { output: data.trim() })
+        }
+      )
+    } catch (error) {
+      // `wait --for=condition=complete` returns non-zero on either timeout or
+      // a Failed condition. Inspect the job to surface a clearer message —
+      // and if it actually did succeed (rare race), don't spuriously throw.
+      const statusOutput = await this.runner
+        .run(
+          'kubectl',
+          ['get', `job/${name}`, '-n', namespace, '-o', 'json'],
+          { inheritStdio: false, captureOutput: true }
+        )
+        .catch(() => null)
+      if (statusOutput) {
+        try {
+          const job = JSON.parse(statusOutput) as {
+            status?: {
+              succeeded?: number
+              failed?: number
+              conditions?: Array<{ type?: string; status?: string; reason?: string; message?: string }>
+            }
+          }
+          if ((job.status?.succeeded ?? 0) >= 1) return
+          const failedCondition = job.status?.conditions?.find(
+            (c) => c.type === 'Failed' && c.status === 'True'
+          )
+          if (failedCondition) {
+            throw new Error(
+              `Job ${namespace}/${name} failed: ${failedCondition.reason ?? 'unknown'}` +
+                (failedCondition.message ? ` — ${failedCondition.message}` : '')
+            )
+          }
+        } catch (parseError) {
+          if (parseError instanceof Error && parseError.message.startsWith('Job ')) throw parseError
+        }
+      }
+      throw error instanceof Error
+        ? error
+        : new Error(`Failed to wait for job ${namespace}/${name}`)
+    }
   }
 }
 

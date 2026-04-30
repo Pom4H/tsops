@@ -133,15 +133,35 @@ export function createNamespaceResolver<
       )
     }
     const base = overlay.extends
-    if (!config.namespaces[base as keyof TConfig['namespaces']]) {
+    const baseDef = config.namespaces[base as keyof TConfig['namespaces']]
+    if (!baseDef) {
       throw new Error(`Overlay namespace "${target}" extends unknown base namespace "${base}".`)
+    }
+    if (isOverlayNamespace(baseDef as any)) {
+      throw new Error(
+        `Overlay namespace "${target}" extends "${base}", which is itself an overlay. ` +
+          `Overlays must extend a static namespace (single hop).`
+      )
+    }
+    const fallback = overlay.fallback
+    const fallbackDef = config.namespaces[fallback as keyof TConfig['namespaces']]
+    if (!fallbackDef) {
+      throw new Error(
+        `Overlay namespace "${target}" declares unknown fallback namespace "${fallback}".`
+      )
+    }
+    if (isOverlayNamespace(fallbackDef as any)) {
+      throw new Error(
+        `Overlay namespace "${target}" falls back to "${fallback}", which is itself an overlay. ` +
+          `Fallback must be a static namespace.`
+      )
     }
     return {
       name,
       source: target,
       overlay: true,
       base,
-      fallback: overlay.fallback,
+      fallback,
       domain: overlay.domain(vars),
       definition: overlay,
       vars
@@ -159,31 +179,22 @@ export function createNamespaceResolver<
     TConfig['configMaps'],
     TConfig['apps']
   > {
-    let rawMetadata = config.namespaces[namespace as keyof TConfig['namespaces']] as
+    const rawDefinition = config.namespaces[namespace as keyof TConfig['namespaces']] as
       | OverlayNamespaceDefinition
       | Record<string, unknown>
       | undefined
-    let resolvedNamespaceName = namespace
-    const overlayVars: OverlayVars | undefined = options.vars
+    if (!rawDefinition) throw new Error(`Unknown namespace: ${namespace}`)
 
-    // Overlay namespaces look up their base for static metadata, then layer
-    // runtime-resolved fields (name, domain) and the supplied --vars on top.
-    if (isOverlayNamespace(rawMetadata as any)) {
-      const overlay = rawMetadata as OverlayNamespaceDefinition
-      if (!overlayVars) {
-        throw new Error(
-          `Overlay namespace "${namespace}" requires runtime vars to build its host context.`
-        )
-      }
+    let resolvedNamespaceName = namespace
+    let metadata: Record<string, unknown>
+
+    if (isOverlayNamespace(rawDefinition as any)) {
+      // Route through resolve() so DNS-1123, extends-is-static, and
+      // fallback-is-static checks all run consistently.
+      const resolvedNs = resolve(namespace, options.vars)
+      resolvedNamespaceName = resolvedNs.name
+      const overlay = rawDefinition as OverlayNamespaceDefinition
       const baseMetadata = config.namespaces[overlay.extends as keyof TConfig['namespaces']]
-      if (!baseMetadata) {
-        throw new Error(
-          `Overlay namespace "${namespace}" extends unknown base namespace "${overlay.extends}".`
-        )
-      }
-      resolvedNamespaceName = overlay.naming(overlayVars)
-      const overlayDomain = overlay.domain(overlayVars)
-      // Strip overlay-specific fields, keep base metadata, then add resolved domain + vars.
       const {
         extends: _e,
         naming: _n,
@@ -193,16 +204,20 @@ export function createNamespaceResolver<
         database: _db,
         ...rest
       } = overlay as Record<string, unknown> & OverlayNamespaceDefinition
-      rawMetadata = {
+      const overlayVars = (options.vars ?? {}) as OverlayVars
+      // Reserved context keys must always come from tsops, not from user
+      // `--vars`. We strip them from the overlay-vars layer so a stray
+      // `--var namespace=foo` can't silently override `ctx.namespace`.
+      const safeVars = stripReservedKeys(overlayVars)
+      metadata = {
         ...(baseMetadata as Record<string, unknown>),
-        ...(rest as Record<string, unknown>),
-        domain: overlayDomain,
-        ...overlayVars
+        ...rest,
+        domain: resolvedNs.domain ?? '',
+        ...safeVars
       }
+    } else {
+      metadata = rawDefinition as Record<string, unknown>
     }
-
-    const metadata = rawMetadata
-    if (!metadata) throw new Error(`Unknown namespace: ${namespace}`)
 
     const projectName = config.project
     const {
@@ -325,8 +340,13 @@ export function createNamespaceResolver<
       return str.replace(/\{(\w+)\}/g, (_, key) => vars[key] || '')
     }
 
-    // Create context with helpers and spread namespace variables
+    // Spread namespace variables first so the built-in helpers and metadata
+    // below always win, even if the metadata happens to contain colliding
+    // keys (e.g. an overlay var named `namespace` or a base namespace that
+    // declares its own `dns` field).
     return {
+      ...metadata,
+
       // Metadata
       project: projectName,
       namespace: resolvedNamespaceName,
@@ -348,10 +368,7 @@ export function createNamespaceResolver<
 
       // Utilities
       env,
-      template,
-
-      // ✨ Spread all namespace variables into context
-      ...metadata
+      template
     } as AppHostContextWithHelpers<
       ExtractNamespaceVarsFromConfig<TConfig>,
       TConfig['project'],
@@ -369,6 +386,34 @@ export function createNamespaceResolver<
 }
 
 const DNS_1123_LABEL = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/
+
+const RESERVED_CONTEXT_KEYS = new Set([
+  'project',
+  'namespace',
+  'appName',
+  'cluster',
+  'dns',
+  'url',
+  'label',
+  'resource',
+  'servicePort',
+  'targetPort',
+  'listenPort',
+  'secret',
+  'configMap',
+  'env',
+  'template',
+  'local',
+  'runtime'
+])
+
+function stripReservedKeys(input: Record<string, string>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [k, v] of Object.entries(input)) {
+    if (!RESERVED_CONTEXT_KEYS.has(k)) out[k] = v
+  }
+  return out
+}
 
 function isValidDnsLabel(name: string): boolean {
   return name.length <= 63 && DNS_1123_LABEL.test(name)

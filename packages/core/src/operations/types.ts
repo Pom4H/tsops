@@ -41,13 +41,17 @@ export interface PlanEntry {
     protocol?: 'TCP' | 'UDP'
   }>
   /**
-   * When set, this entry is a stub that should resolve to a
-   * `Service: ExternalName` pointing at the same app in `namespace`.
-   * Produced when an overlay is deployed with `--include` and this app is not
-   * in the include list. The deployer skips Deployments and emits a Service
-   * + IngressRoute that proxies to the fallback namespace.
+   * When set, this entry is a stub: instead of a Deployment, the deployer
+   * emits a `Service: ExternalName` in `entry.namespace` (the overlay) that
+   * points at the same app in `fallback.namespace` (the base / static
+   * namespace) via cluster DNS. Optional ingress resources are still emitted
+   * so the app remains reachable on the overlay's domain.
+   *
+   * Produced when an overlay deploys with `--include` and this app isn't in
+   * the include list.
    */
   fallback?: {
+    /** Static namespace whose `<svc>.<ns>.svc.cluster.local` we proxy to. */
     namespace: string
   }
 }

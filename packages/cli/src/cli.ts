@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
+import { isOverlayNamespace } from '@tsops/core'
 import { createNodeTsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from '@tsops/node'
 import { Command } from 'commander'
 
@@ -384,6 +385,7 @@ async function main(): Promise<void> {
     .option('--dry-run', 'skip external commands, log actions only')
     .action(async (namespace: string, options) => {
       const config = await loadConfig(options.config)
+      assertOverlay(config, namespace, 'up')
       const envProvider = new GitEnvironmentProvider(new ProcessEnvironmentProvider())
       const tsops = createNodeTsOps(config, {
         dryRun: options.dryRun,
@@ -460,6 +462,7 @@ async function main(): Promise<void> {
     .option('--dry-run', 'skip external commands, log actions only')
     .action(async (namespace: string, options) => {
       const config = await loadConfig(options.config)
+      assertOverlay(config, namespace, 'down')
       const tsops = createNodeTsOps(config, {
         dryRun: options.dryRun,
         env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
@@ -484,6 +487,25 @@ async function main(): Promise<void> {
     })
 
   await program.parseAsync(process.argv)
+}
+
+/**
+ * Both `up` and `down` operate on overlay templates. If the user passes a
+ * static namespace (or a typo), fail before constructing the tsops client so
+ * the error is unambiguous.
+ */
+function assertOverlay(config: unknown, namespace: string, command: 'up' | 'down'): void {
+  const ns = (config as { namespaces?: Record<string, unknown> }).namespaces?.[namespace]
+  if (!ns) {
+    throw new Error(`Unknown namespace: "${namespace}".`)
+  }
+  if (!isOverlayNamespace(ns as never)) {
+    throw new Error(
+      `\`tsops ${command}\` only operates on overlay namespaces, but "${namespace}" is static. ` +
+        `Use \`tsops deploy --namespace ${namespace}\` for static namespaces, or define an overlay ` +
+        `with \`extends: "${namespace}"\` and target that instead.`
+    )
+  }
 }
 
 /**
