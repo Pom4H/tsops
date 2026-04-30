@@ -156,13 +156,21 @@ export function createNamespaceResolver<
           `Fallback must be a static namespace.`
       )
     }
+    const domain = overlay.domain(vars)
+    if (typeof domain !== 'string' || domain.length === 0) {
+      throw new Error(
+        `Overlay namespace "${target}" produced an invalid domain ` +
+          `(${typeof domain === 'string' ? '""' : typeof domain}) from domain(${JSON.stringify(vars)}). ` +
+          `domain() must return a non-empty string.`
+      )
+    }
     return {
       name,
       source: target,
       overlay: true,
       base,
       fallback,
-      domain: overlay.domain(vars),
+      domain,
       definition: overlay,
       vars
     }
@@ -207,13 +215,16 @@ export function createNamespaceResolver<
       const overlayVars = (options.vars ?? {}) as OverlayVars
       // Reserved context keys must always come from tsops, not from user
       // `--vars`. We strip them from the overlay-vars layer so a stray
-      // `--var namespace=foo` can't silently override `ctx.namespace`.
+      // `--var namespace=foo` (or `--var domain=evil`) can't silently
+      // override `ctx.namespace` or the resolved overlay domain.
       const safeVars = stripReservedKeys(overlayVars)
       metadata = {
         ...(baseMetadata as Record<string, unknown>),
         ...rest,
-        domain: resolvedNs.domain ?? '',
-        ...safeVars
+        ...safeVars,
+        // Resolved overlay fields must win over both base metadata and
+        // overlay vars — they're computed by tsops and validated above.
+        domain: resolvedNs.domain ?? ''
       }
     } else {
       metadata = rawDefinition as Record<string, unknown>
@@ -404,7 +415,11 @@ const RESERVED_CONTEXT_KEYS = new Set([
   'env',
   'template',
   'local',
-  'runtime'
+  'runtime',
+  // `domain` is computed by the overlay's domain() template and must not
+  // be shadowed by a `--var domain=...`. Stripping it here, in addition to
+  // the explicit re-assignment after the spread, is belt-and-braces.
+  'domain'
 ])
 
 function stripReservedKeys(input: Record<string, string>): Record<string, string> {

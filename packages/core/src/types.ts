@@ -1042,11 +1042,34 @@ export type ConfigMapsMap<
 }
 
 /**
- * Extract the shape of namespace variables (all namespaces must have consistent shape).
- * Returns the type of the first namespace's value.
+ * Compile-time discriminator for overlay templates. We can't use the
+ * runtime `isOverlayNamespace` here, so we pattern-match on the overlay's
+ * structural fields. Anything that has both `extends: string` and a
+ * `naming: (...) => any` is an overlay template.
  */
-export type ExtractNamespaceVars<TNamespaces extends Record<string, NamespaceDefinition>> = 
-  TNamespaces[keyof TNamespaces]
+type IsOverlayDefinition<T> = T extends {
+  extends: string
+  naming: (...args: never[]) => unknown
+}
+  ? true
+  : false
+
+/**
+ * Shape of variables apps see in their config-time context.
+ *
+ * Overlay templates are excluded: their fields (`extends`, `naming`,
+ * `domain: (vars) => string`, ...) are template metadata, not user-visible
+ * vars. App code reads the *resolved* overlay context, which is the base
+ * static namespace's vars + the runtime `--vars` — i.e. the same shape as
+ * the static namespace it extends. Including overlays in the union would
+ * regress `domain: string` to `domain: string | ((vars) => string)` for
+ * any config that adds an overlay.
+ */
+export type ExtractNamespaceVars<TNamespaces extends Record<string, NamespaceDefinition>> = {
+  [K in keyof TNamespaces]: IsOverlayDefinition<TNamespaces[K]> extends true
+    ? never
+    : TNamespaces[K]
+}[keyof TNamespaces]
 
 /**
  * Extract namespace variables type from TsOpsConfig
