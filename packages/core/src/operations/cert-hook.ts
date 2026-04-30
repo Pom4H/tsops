@@ -1,16 +1,24 @@
 import { createHash } from 'node:crypto'
 import type { Logger } from '../logger.js'
 import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
-import type { OverlayCertStrategy } from '../types.js'
+import type { CustomJobConfig, OverlayCertStrategy } from '../types.js'
 
 interface RunCertbotHookOptions {
+  /** Resolved overlay namespace. */
   namespace: string
-  domain: string
+  /** Base (static) namespace the overlay extends — used for `wildcard-shared`. */
+  baseNamespace: string
   cert: OverlayCertStrategy
   kubectl: KubectlClient
   logger: Logger
 }
 
+/**
+ * Lowercase, replace invalid characters with `-`, collapse runs, trim. If
+ * the result still exceeds 63 chars (the DNS-1123 label limit), keep a
+ * leading prefix and append a stable short hash so distinct inputs never
+ * collide on the same Job name.
+ */
 function toK8sName(input: string): string {
   const sanitized = input
     .toLowerCase()
@@ -24,80 +32,120 @@ function toK8sName(input: string): string {
 }
 
 /**
- * Pre-deploy TLS hook for overlay namespaces. Returns the Job name when one
- * was scheduled so the caller can `waitForJob` on it before deploying apps.
+ * Pre-deploy TLS hook for overlay namespaces.
  *
- * - `wildcard-shared` only logs — the assumption is that the IngressRoute will
- *   reference an existing wildcard cert that already covers the overlay's
- *   subdomain. Nothing to issue, nothing to wait for.
- * - `per-namespace` schedules a certbot DNS-01 Job that writes the resulting
- *   TLS Secret into the overlay namespace.
+ * - `wildcard-shared`: read the named TLS Secret from the base namespace
+ *   and apply an identical Secret into the overlay namespace. This is the
+ *   cheap, provider-agnostic path for the common case where the base
+ *   namespace already holds a wildcard cert that covers the overlay
+ *   subdomain (e.g. `*.stage.example.com` → `pr-123.stage.example.com`).
+ *   Returns no Job to wait on.
  *
- * This is intentionally a thin wrapper. The real cert pipeline is the certbot
- * image and its DNS-provider plugin; tsops just owns the Job lifecycle.
+ * - `job`: apply a user-supplied Job and return its name so the caller can
+ *   `waitForJob` before continuing the deploy. The Job is expected to
+ *   produce the TLS Secret in the overlay namespace itself; tsops doesn't
+ *   prescribe the issuer (certbot, cert-manager Certificate resource, ...).
  */
 export async function runCertbotHook(
   options: RunCertbotHookOptions
 ): Promise<{ jobName: string } | undefined> {
-  const { namespace, domain, cert, kubectl, logger } = options
+  const { namespace, baseNamespace, cert, kubectl, logger } = options
 
   if (cert.mode === 'wildcard-shared') {
-    logger.info('Reusing shared wildcard certificate for overlay', {
-      namespace,
+    logger.info('Copying shared TLS secret into overlay', {
+      from: baseNamespace,
+      to: namespace,
       secretName: cert.secretName
     })
+    const source = await kubectl.get('Secret', cert.secretName, baseNamespace)
+    if (!source) {
+      throw new Error(
+        `Cert hook (wildcard-shared): TLS secret "${cert.secretName}" not found in base namespace "${baseNamespace}".`
+      )
+    }
+    const copy = stripServerFields(source, namespace)
+    await kubectl.apply(copy, { namespace })
     return undefined
   }
 
-  const secretName = cert.secretName ?? `${namespace}-wildcard-tls`
-  const jobName = toK8sName(`tsops-certbot-${namespace}`)
+  validateCustomJob(cert.job)
+  const jobName = toK8sName(cert.name ?? `tsops-cert-${namespace}`)
+  logger.info('Running custom certificate issuance job', { namespace, jobName })
+  const job = renderCustomJob(jobName, namespace, cert.job)
+  await kubectl.apply(job, { namespace })
+  return { jobName }
+}
 
-  logger.info('Issuing per-namespace certificate via certbot', {
-    namespace,
-    domain,
-    issuer: cert.issuer.dnsProvider,
-    secretName
-  })
+/**
+ * Strip server-managed metadata so a Secret read from one namespace can be
+ * cleanly re-applied into another. Keeps `data` / `type` / labels.
+ */
+function stripServerFields(source: SupportedManifest, namespace: string): SupportedManifest {
+  const meta = (source.metadata as Record<string, unknown> | undefined) ?? {}
+  const cleaned: SupportedManifest = {
+    ...source,
+    metadata: {
+      name: meta.name as string,
+      namespace,
+      labels: {
+        ...((meta.labels as Record<string, string> | undefined) ?? {}),
+        'tsops/managed': 'true',
+        'tsops/copied-from': String(meta.namespace ?? '')
+      }
+    }
+  }
+  return cleaned
+}
 
-  const job: Record<string, unknown> = {
+function validateCustomJob(custom: CustomJobConfig): void {
+  if (!custom.image) {
+    throw new Error('Cert hook job: CustomJobConfig.image is required.')
+  }
+  for (const ref of custom.envFrom ?? []) {
+    if (!ref.secretName && !ref.configMapName) {
+      throw new Error(
+        'Cert hook job: envFrom entry must specify either secretName or configMapName.'
+      )
+    }
+    if (ref.secretName && ref.configMapName) {
+      throw new Error(
+        'Cert hook job: envFrom entry must specify only one of secretName / configMapName.'
+      )
+    }
+  }
+}
+
+function renderCustomJob(
+  jobName: string,
+  namespace: string,
+  custom: CustomJobConfig
+): SupportedManifest {
+  const job = {
     apiVersion: 'batch/v1',
     kind: 'Job',
     metadata: {
       name: jobName,
       namespace,
-      labels: { 'tsops/managed': 'true', 'tsops/hook': 'certbot' }
+      labels: { 'tsops/managed': 'true', 'tsops/hook': 'cert' }
     },
     spec: {
-      backoffLimit: 2,
+      backoffLimit: 1,
       ttlSecondsAfterFinished: 300,
       template: {
         spec: {
           restartPolicy: 'Never',
-          serviceAccountName: cert.issuer.serviceAccountName,
           containers: [
             {
-              name: 'certbot',
-              image: 'certbot/dns-' + cert.issuer.dnsProvider + ':latest',
-              env: [
-                { name: 'CERTBOT_EMAIL', value: cert.issuer.email },
-                { name: 'CERTBOT_DOMAIN', value: domain },
-                { name: 'CERTBOT_SECRET_NAME', value: secretName }
-              ],
-              envFrom: [{ secretRef: { name: cert.issuer.credentialsSecret } }],
-              command: ['/bin/sh', '-c'],
-              args: [
-                [
-                  'certbot certonly --non-interactive --agree-tos',
-                  `--email "$CERTBOT_EMAIL"`,
-                  `--dns-${cert.issuer.dnsProvider}`,
-                  `-d "$CERTBOT_DOMAIN" -d "*.$CERTBOT_DOMAIN"`,
-                  '&&',
-                  `kubectl create secret tls "$CERTBOT_SECRET_NAME" --namespace ${namespace}`,
-                  '--cert=/etc/letsencrypt/live/$CERTBOT_DOMAIN/fullchain.pem',
-                  '--key=/etc/letsencrypt/live/$CERTBOT_DOMAIN/privkey.pem',
-                  '--dry-run=client -o yaml | kubectl apply -f -'
-                ].join(' ')
-              ]
+              name: 'cert',
+              image: custom.image,
+              command: custom.command,
+              args: custom.args,
+              env: Object.entries(custom.env ?? {}).map(([k, v]) => ({ name: k, value: v })),
+              envFrom: (custom.envFrom ?? []).map((ref) =>
+                ref.secretName
+                  ? { secretRef: { name: ref.secretName } }
+                  : { configMapRef: { name: ref.configMapName } }
+              )
             }
           ]
         }
@@ -105,6 +153,5 @@ export async function runCertbotHook(
     }
   }
 
-  await kubectl.apply(job as unknown as SupportedManifest, { namespace })
-  return { jobName }
+  return job as unknown as SupportedManifest
 }

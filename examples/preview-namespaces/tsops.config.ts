@@ -28,10 +28,27 @@ const config = defineConfig({
       naming: ({ pr }) => `pr-${pr}`,
       domain: ({ pr }) => `pr-${pr}.stage.example.com`,
       fallback: 'ru-stage',
+      // Reuse the wildcard cert from the base namespace. tsops will copy
+      // the named TLS Secret from `ru-stage` into `pr-<N>` at deploy time
+      // so the IngressRoute can reference it like any local Secret.
       cert: {
         mode: 'wildcard-shared',
         secretName: 'stage-wildcard-tls'
       },
+      // To issue a fresh cert per overlay instead, point `cert` at any Job
+      // that produces a TLS Secret in the overlay namespace. The example
+      // below uses certbot DNS-01; the same shape works for cert-manager
+      // CLI tools, acme.sh containers, etc. Pick one — you don't need both.
+      //
+      // cert: {
+      //   mode: 'job',
+      //   job: {
+      //     image: 'certbot/dns-cloudflare:v2.10.0',
+      //     command: ['/bin/sh', '-c'],
+      //     args: ['certbot certonly ... && kubectl create secret tls ...'],
+      //     envFrom: [{ secretName: 'cloudflare-creds' }]
+      //   }
+      // },
       database: {
         urlSecret: { name: 'stage', key: 'DATABASE_URL' },
         schema: ({ pr }) => `pr_${pr}`,

@@ -103,7 +103,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
             if (!options.skipCert && resolved.definition?.cert) {
               const certResult = await runCertbotHook({
                 namespace: resolved.name,
-                domain: resolved.domain ?? '',
+                baseNamespace: resolved.base ?? entry.namespace,
                 cert: resolved.definition.cert,
                 kubectl: this.kubectl,
                 logger: this.logger

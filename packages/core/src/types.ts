@@ -80,33 +80,35 @@ export interface CustomJobConfig {
 /**
  * Per-namespace TLS strategy for overlays.
  *
- * - `wildcard-shared` reuses an existing wildcard certificate from the base
- *   namespace (cheap; nothing to issue).
- * - `per-namespace` issues a fresh certificate via a certbot DNS-01 Job
- *   before the rest of the deploy proceeds.
+ * - `wildcard-shared` copies an existing TLS Secret from the base namespace
+ *   into the overlay namespace at deploy time. Use this when the base
+ *   already has a wildcard cert that covers the overlay's subdomain (e.g.
+ *   `*.stage.example.com` covers `pr-123.stage.example.com`). Cheap and
+ *   provider-agnostic.
+ * - `job` delegates issuance to a user-supplied Job (typically certbot or a
+ *   cert-manager-driven flow). The Job is expected to write the resulting
+ *   TLS Secret into the overlay namespace; tsops only owns its lifecycle.
+ *   Keeps tsops out of the cert-issuer business.
  */
 export type OverlayCertStrategy =
   | {
       mode: 'wildcard-shared'
-      /** Secret in fallback namespace that already holds the cert. */
+      /** Name of the TLS Secret in the base namespace to copy. */
       secretName: string
     }
   | {
-      mode: 'per-namespace'
-      issuer: {
-        email: string
-        dnsProvider: 'cloudru' | 'cloudflare' | 'route53' | (string & Record<never, never>)
-        credentialsSecret: string
-        /**
-         * ServiceAccount the certbot Job runs as. Required: the Job creates
-         * the resulting TLS Secret in the overlay namespace and therefore
-         * needs RBAC. tsops does not provision the SA — it expects an
-         * appropriate Role/RoleBinding to already exist.
-         */
-        serviceAccountName: string
-      }
-      /** Resulting TLS Secret name. Defaults to `<namespace>-wildcard-tls`. */
-      secretName?: string
+      mode: 'job'
+      /**
+       * Job that issues / publishes the cert into the overlay namespace.
+       * Whatever the Job writes (typically a `kubernetes.io/tls` Secret) is
+       * the user's responsibility — tsops just runs it and waits.
+       */
+      job: CustomJobConfig
+      /**
+       * Optional explicit Job name. Defaults to `tsops-cert-<namespace>`,
+       * sanitised and hash-truncated when needed.
+       */
+      name?: string
     }
 
 /**
