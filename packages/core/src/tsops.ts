@@ -7,7 +7,7 @@ import { Deployer } from './operations/deployer.js'
 import { Planner } from './operations/planner.js'
 import type { DockerClient } from './ports/docker.js'
 import type { KubectlClient } from './ports/kubectl.js'
-import type { TsOpsConfig } from './types.js'
+import type { OverlayVars, TsOpsConfig } from './types.js'
 
 /**
  * Options for configuring TsOps behavior.
@@ -120,7 +120,18 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * console.log(plan.entries[0].image) // => 'ghcr.io/org/api:abc123'
    * ```
    */
-  plan(options: { namespace?: string; app?: string } = {}) {
+  plan(
+    options: {
+      namespace?: string
+      app?: string
+      /**
+       * Runtime variables for overlay namespaces (e.g.
+       * `{ pr: '123' }` for `tsops up preview --var pr=123`). Required
+       * when `namespace` targets an overlay.
+       */
+      vars?: OverlayVars
+    } = {}
+  ) {
     return this.planner.plan(options)
   }
 

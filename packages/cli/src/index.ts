@@ -5,15 +5,19 @@ export type {
   DependencyError,
   DependencyGraph,
   NormalizedPort,
+  OverlayNamespaceDefinition,
+  OverlayVars,
   PlanEntry,
   PlanResult,
   SensitiveEnvConfig,
-  SensitiveEnvFinding
+  SensitiveEnvFinding,
+  StaticNamespaceDefinition
 } from '@tsops/core'
 export {
   buildGraph,
   createConfigResolver,
   enforceMode,
+  isOverlayNamespace,
   normalizePort,
   normalizePorts,
   pickPort,
