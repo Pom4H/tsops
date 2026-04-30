@@ -173,6 +173,39 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
             ? { namespace: resolvedNs.fallback ?? resolvedNs.base ?? filterNs }
             : undefined
         }
+
+        // Apply overlay-level env override (e.g. expose DATABASE_SCHEMA so
+        // apps can pick up the per-overlay schema). We only run this when
+        // the app actually deploys here and `DATABASE_URL` is a plain
+        // string. If it's a SecretRef/ConfigMapRef (the common production
+        // shape), skip the callback entirely — silently overwriting a
+        // typed env value with a string would break the deploy in subtle
+        // ways. The user can always inject extra overlay-only env via
+        // `appEnvOverride` keys other than `DATABASE_URL`.
+        if (
+          !useFallback &&
+          resolvedNs.overlay &&
+          resolvedNs.definition?.database?.appEnvOverride &&
+          resolvedNs.vars
+        ) {
+          const baseUrl = entry.env['DATABASE_URL']
+          if (baseUrl !== undefined && typeof baseUrl !== 'string') {
+            console.warn(
+              `[tsops] appEnvOverride skipped for app "${appName}": ` +
+                `DATABASE_URL is a typed env reference (Secret/ConfigMap), not a string. ` +
+                `Move overlay-specific overrides to non-DATABASE_URL keys.`
+            )
+          } else {
+            const overrides = resolvedNs.definition.database.appEnvOverride(
+              resolvedNs.vars,
+              baseUrl ?? '',
+              resolvedNs.definition.database.schema(resolvedNs.vars)
+            )
+            for (const [k, v] of Object.entries(overrides)) {
+              entry.env[k] = v
+            }
+          }
+        }
         entries.push(entry)
 
         if (sensitiveEnvConfig) {
