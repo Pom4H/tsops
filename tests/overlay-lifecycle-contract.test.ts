@@ -223,7 +223,7 @@ describe('overlay lifecycle preview contract', () => {
     const ingress = applied(kubectl, 'Ingress', 'worken-api-ingress')[0] as any
     expect(ingress.spec.tls).toEqual([
       {
-        secretName: 'stage-worken-ru-wildcard-tls',
+        secretName: 'staging-wildcard-tls',
         hosts: ['api.pr-857.stage.worken.ru']
       }
     ])
