@@ -288,7 +288,8 @@ describe('overlay lifecycle preview contract', () => {
       secret('stage', 'ru-stage', {
         DATABASE_URL: Buffer.from('postgresql://worken:secret@postgres:5432/worken').toString(
           'base64'
-        )
+        ),
+        AUTH_YANDEX_ID: ''
       })
     )
 
@@ -322,14 +323,16 @@ describe('overlay lifecycle preview contract', () => {
       },
       secrets: {
         stage: {
-          DATABASE_URL: undefined as unknown as string
+          DATABASE_URL: undefined as unknown as string,
+          AUTH_YANDEX_ID: undefined as unknown as string
         }
       },
       apps: {
         'worken-api': {
           image: 'ghcr.io/worken/worken-api:test',
           env: ({ secret }: any) => ({
-            DATABASE_URL: secret('stage', 'DATABASE_URL')
+            DATABASE_URL: secret('stage', 'DATABASE_URL'),
+            AUTH_YANDEX_ID: secret('stage', 'AUTH_YANDEX_ID')
           }),
           ingress: ({ domain }: { domain: string }) => ({ domain: `api.${domain}` }),
           ports: [{ name: 'http', port: 80, targetPort: 3000 }]
@@ -353,6 +356,7 @@ describe('overlay lifecycle preview contract', () => {
     expect(decodeSecretData(copied).DATABASE_URL).toBe(
       'postgresql://worken:secret@postgres:5432/worken'
     )
+    expect(decodeSecretData(copied).AUTH_YANDEX_ID).toBe('')
 
     const secretIndex = kubectl.applied.findIndex(
       ({ manifest }) => manifest.kind === 'Secret' && manifest.metadata?.name === 'stage'

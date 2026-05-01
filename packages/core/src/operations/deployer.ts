@@ -436,7 +436,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
 
         // Verify all required keys exist in cluster secret
         const missingInCluster = [...missingInEnv, ...emptyValues].filter(
-          (key) => !existingSecret[key]
+          (key) => !(key in existingSecret)
         )
 
         if (missingInCluster.length > 0) {
