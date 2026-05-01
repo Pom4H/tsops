@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
 import { pathToFileURL } from 'node:url'
+import { isOverlayNamespace } from '@tsops/core'
 import { createNodeTsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from '@tsops/node'
 import { Command } from 'commander'
 
@@ -367,7 +368,146 @@ async function main(): Promise<void> {
       }
     })
 
+  program
+    .command('up')
+    .description('Materialise an overlay namespace (e.g. PR preview) and deploy apps into it')
+    .argument('<namespace>', 'overlay namespace key from the config (e.g. preview)')
+    .option('--var <key=value>', 'runtime variable for the overlay (repeatable)', collectVar, {})
+    .option(
+      '--include <apps>',
+      'comma-separated list of apps to deploy fully; others fall back to base namespace via ExternalName'
+    )
+    .option('--apps-from-changes', 'auto-detect apps from `git diff <base-ref>`')
+    .option('--base-ref <ref>', 'git ref to diff against (default: origin/main)', 'origin/main')
+    .option('-c, --config <path>', 'path to config file', 'tsops.config')
+    .option('--dry-run', 'skip external commands, log actions only')
+    .action(async (namespace: string, options) => {
+      const config = await loadConfig(options.config)
+      assertOverlay(config, namespace, 'up')
+      const envProvider = new GitEnvironmentProvider(new ProcessEnvironmentProvider())
+      const tsops = createNodeTsOps(config, {
+        dryRun: options.dryRun,
+        env: envProvider
+      })
+
+      const vars = options.var as Record<string, string>
+      let include: string[] | undefined
+
+      if (options.include) {
+        include = String(options.include)
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      } else if (options.appsFromChanges) {
+        const gitAdapter = envProvider.getGitAdapter()
+        const changedFiles = gitAdapter.getChangedFiles(options.baseRef)
+        if (changedFiles.length === 0) {
+          console.log(`✨ No changes detected vs ${options.baseRef}; nothing to include.`)
+          return
+        }
+        const apps = (config as { apps: Record<string, { build?: { context?: string } }> }).apps
+        include = Object.entries(apps)
+          .filter(([, app]) => {
+            const ctx = app.build?.context
+            if (!ctx) return false
+            const normalized = ctx.replace(/\/$/, '')
+            return changedFiles.some((f) => f === normalized || f.startsWith(`${normalized}/`))
+          })
+          .map(([name]) => name)
+        if (include.length === 0) {
+          console.log(`✨ No apps affected by changes vs ${options.baseRef}.`)
+          return
+        }
+        console.log(`📊 Apps affected: ${include.join(', ')}`)
+      }
+
+      console.log(`🚀 Materialising overlay "${namespace}"`)
+      if (Object.keys(vars).length > 0) {
+        const varSummary = Object.entries(vars)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', ')
+        console.log(`   vars: ${varSummary}`)
+      }
+      if (include && include.length > 0) {
+        console.log(`   include: ${include.join(', ')}`)
+      }
+
+      const result = await tsops.deploy({ namespace, vars, include })
+
+      console.log('\n✅ Deployed:')
+      for (const entry of result.entries) {
+        const tag = entry.fallback ? ` → fallback ${entry.fallback.namespace}` : ''
+        console.log(`\n- ${entry.app} @ ${entry.namespace}${tag}`)
+        for (const manifest of entry.appliedManifests) {
+          console.log(`  • ${manifest}`)
+        }
+      }
+    })
+
+  program
+    .command('down')
+    .description('Tear down an overlay namespace')
+    .argument('<namespace>', 'overlay namespace key from the config')
+    .option('--var <key=value>', 'runtime variable for the overlay (repeatable)', collectVar, {})
+    .option('-c, --config <path>', 'path to config file', 'tsops.config')
+    .option('--dry-run', 'skip external commands, log actions only')
+    .action(async (namespace: string, options) => {
+      const config = await loadConfig(options.config)
+      assertOverlay(config, namespace, 'down')
+      const tsops = createNodeTsOps(config, {
+        dryRun: options.dryRun,
+        env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
+      })
+
+      const vars = options.var as Record<string, string>
+
+      console.log(`🗑️  Tearing down "${namespace}"`)
+      const result = await tsops.down({ namespace, vars })
+
+      if (result.deleted.length === 0) {
+        console.log('   nothing was deleted')
+      } else {
+        for (const ref of result.deleted) {
+          console.log(`   • ${ref}`)
+        }
+      }
+    })
+
   await program.parseAsync(process.argv)
+}
+
+/**
+ * Both `up` and `down` operate on overlay templates. If the user passes a
+ * static namespace (or a typo), fail before constructing the tsops client so
+ * the error is unambiguous.
+ */
+function assertOverlay(config: unknown, namespace: string, command: 'up' | 'down'): void {
+  const ns = (config as { namespaces?: Record<string, unknown> }).namespaces?.[namespace]
+  if (!ns) {
+    throw new Error(`Unknown namespace: "${namespace}".`)
+  }
+  if (!isOverlayNamespace(ns as never)) {
+    throw new Error(
+      `\`tsops ${command}\` only operates on overlay namespaces, but "${namespace}" is static. ` +
+        `Use \`tsops deploy --namespace ${namespace}\` for static namespaces, or define an overlay ` +
+        `with \`extends: "${namespace}"\` and target that instead.`
+    )
+  }
+}
+
+/**
+ * Commander value-collector for repeatable `--var key=value` flags.
+ * Accumulates into a flat string→string record.
+ */
+function collectVar(value: string, previous: Record<string, string>): Record<string, string> {
+  const eq = value.indexOf('=')
+  if (eq === -1) {
+    throw new Error(`Invalid --var "${value}": expected key=value`)
+  }
+  const key = value.slice(0, eq).trim()
+  const val = value.slice(eq + 1)
+  if (!key) throw new Error(`Invalid --var "${value}": empty key`)
+  return { ...previous, [key]: val }
 }
 
 async function loadConfig(configPath: string): Promise<any> {

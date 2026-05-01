@@ -243,6 +243,45 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
   }
 
   /**
+   * Tears down an overlay namespace.
+   *
+   * Refuses to operate on static namespaces — deleting `ru-stage` because
+   * of a typo would be catastrophic and is exactly the kind of action that
+   * should go through `kubectl` after a human reviews it. Use `tsops up
+   * <overlay> --var ...` to materialise an overlay first; only the
+   * resulting resolved namespace is deletable here.
+   *
+   * Lifecycle hooks (e.g. dropping per-overlay database schemas) are added
+   * in a follow-up layer; for now this only deletes the namespace, which
+   * cascades to everything inside.
+   */
+  async down(options: {
+    namespace: string
+    vars?: OverlayVars
+  }): Promise<{ deleted: string[] }> {
+    const resolved = this.resolver.namespaces.resolve(options.namespace, options.vars)
+
+    if (!resolved.overlay) {
+      throw new Error(
+        `Refusing to tear down static namespace "${options.namespace}". ` +
+          `tsops down only operates on overlay (preview) namespaces. ` +
+          `Use \`kubectl delete namespace ${resolved.name}\` if you really want to remove this.`
+      )
+    }
+
+    const deleted: string[] = []
+    try {
+      const ref = await this.kubectl.delete('Namespace', resolved.name, resolved.name)
+      deleted.push(ref)
+    } catch (error) {
+      this.logger.warn(`Failed to delete namespace ${resolved.name}`, {
+        error: error instanceof Error ? error.message : String(error)
+      })
+    }
+    return { deleted }
+  }
+
+  /**
    * Validates that all secret values are available either in process.env or in the cluster.
    *
    * This ensures that:
