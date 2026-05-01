@@ -1,5 +1,16 @@
 # tsops
 
+## 2.0.1
+
+### Patch Changes
+
+- [#53](https://github.com/Pom4H/tsops/pull/53) [`93cb495`](https://github.com/Pom4H/tsops/commit/93cb4951643cd8d68e418a101670d5c7100d5b9f) Thanks [@arhebs](https://github.com/arhebs)! - Complete the PR preview overlay contract by copying configured app secrets into
+  overlay namespaces and report the CLI version from the published package
+  metadata.
+- Updated dependencies [[`93cb495`](https://github.com/Pom4H/tsops/commit/93cb4951643cd8d68e418a101670d5c7100d5b9f)]:
+  - @tsops/core@2.0.1
+  - @tsops/node@2.0.1
+
 ## 2.0.0
 
 ### Major Changes
