@@ -85,7 +85,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       const resolvedNs = this.resolver.namespaces.resolve(namespaceKey, options.vars)
       const namespace = resolvedNs.name
       // For `app.deploy` filters and dependency tracking, overlays should
-      // behave as if they were their base — users write `deploy: ['ru-stage']`,
+      // behave as if they were their base — users write `deploy: ['staging']`,
       // not the runtime overlay name (e.g. `pr-123`).
       const filterNs = resolvedNs.base ?? namespaceKey
       const namespaceStart = entries.length

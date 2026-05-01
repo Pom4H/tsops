@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import { createConfigResolver, defineConfig, Planner } from 'tsops'
+import { describe, expect, it } from 'vitest'
 
 const baseConfig = {
   project: 'demo',

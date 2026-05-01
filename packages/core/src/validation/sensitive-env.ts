@@ -1,6 +1,6 @@
-import { isConfigMapRef, isSecretRef } from '../types.js'
 import type { PlanEntry } from '../operations/types.js'
 import type { DockerfileBuild, SensitiveEnvConfig } from '../types.js'
+import { isConfigMapRef, isSecretRef } from '../types.js'
 
 /** Key pattern for anything that looks secret-ish. */
 const DEFAULT_PATTERN = /TOKEN|SECRET|PASSWORD|PRIVATE_KEY|API_KEY|KEY/i

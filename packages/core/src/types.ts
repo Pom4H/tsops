@@ -94,7 +94,7 @@ export interface CustomJobConfig<TVars extends OverlayVars = OverlayVars> {
  * - `wildcard-shared` copies an existing TLS Secret from the base namespace
  *   into the overlay namespace at deploy time. Use this when the base
  *   already has a wildcard cert that covers the overlay's subdomain (e.g.
- *   `*.stage.example.com` covers `pr-123.stage.example.com`). Cheap and
+ *   `*.staging.example.com` covers `pr-123.staging.example.com`). Cheap and
  *   provider-agnostic.
  * - `job` delegates issuance to a user-supplied Job (typically certbot or a
  *   cert-manager-driven flow). The Job is expected to write the resulting

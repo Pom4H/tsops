@@ -311,7 +311,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
   /**
    * Tears down an overlay namespace.
    *
-   * Refuses to operate on static namespaces — deleting `ru-stage` because
+   * Refuses to operate on static namespaces — deleting `staging` because
    * of a typo would be catastrophic and is exactly the kind of action that
    * should go through `kubectl` after a human reviews it. Use `tsops up
    * <overlay> --var ...` to materialise an overlay first; only the

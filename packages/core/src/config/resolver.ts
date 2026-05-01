@@ -53,11 +53,11 @@ export function createConfigResolver<
 }
 
 export type {
-  ProjectResolver,
-  NamespaceResolver,
-  ImagesResolver,
-  AppsResolver,
   AppEntry,
+  AppsResolver,
+  ImagesResolver,
+  NamespaceResolver,
+  ProjectResolver,
   ResolverApp
 }
-export { createProjectResolver, createNamespaceResolver, createImagesResolver, createAppsResolver }
+export { createAppsResolver, createImagesResolver, createNamespaceResolver, createProjectResolver }
