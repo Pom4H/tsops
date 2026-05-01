@@ -1,165 +1,193 @@
 # What is tsops?
 
-**tsops** is a TypeScript-first toolkit for planning, building, and deploying containerized applications. It replaces YAML configurations with type-safe TypeScript code, giving you the power of a programming language while maintaining the simplicity of declarative configuration.
+**tsops is a typed operational model for containerized applications.**
 
-## The Problem
+You describe your product topology in TypeScript — apps, namespaces, secrets, ports, routes, dependencies, overlays. tsops uses that single description as the source of truth for three different things:
 
-Deploying containerized applications traditionally involves:
+1. **Builds** — what images to build and tag
+2. **Manifests** — what to apply to Kubernetes
+3. **Runtime config** — what your application code imports to find services and secrets
 
-- ❌ Writing repetitive YAML files
-- ❌ Copying and pasting configurations
-- ❌ Hardcoding service names, domains, and DNS
-- ❌ Managing secrets separately from deployment
-- ❌ No type safety or validation until runtime
-- ❌ Difficult to maintain across environments
+The third item is the one that matters. It's also what no other tool gives you.
 
-## The tsops Solution
+## The problem tsops solves
 
-tsops provides:
+A working preview-environment-with-fallbacks setup is not hard to design. An experienced DevOps engineer can sketch it in an afternoon:
 
-- ✅ **Type-safe configuration** - Catch errors at compile time
-- ✅ **Context helpers** - secret(), configMap(), env()
-- ✅ **Single source of truth** - Define once, use everywhere
-- ✅ **Secret validation** - Automatic checks before deployment
-- ✅ **Built-in Docker** - Build and push images
-- ✅ **Multi-environment** - Easy dev/staging/prod management
+```
+PR #123 → CI → namespace pr-123 → real deploys for changed apps
+                                → ExternalName fallbacks for the rest
+                                → BasicAuth + ResourceQuota
+                                → per-PR DB schema
+                                → preview URL posted back to PR
+```
 
-## How It Works
+The pattern is well-known. The pain isn't the pattern — it's that the operational model lives in seven places and the compiler can't see any of them.
+
+The name `worken-api` ends up repeated in:
+
+- Helm values
+- Service and IngressRoute backends
+- ExternalName fallback targets
+- GitHub Actions matrix
+- Secret keys
+- Cleanup scripts
+- The application's `BACKEND_URL` env
+
+When something drifts, the failure mode is runtime:
+
+| Mistake                              | Symptom                            |
+|--------------------------------------|------------------------------------|
+| Wrong service name in IngressRoute   | 502                                |
+| Wrong secret key                     | Pod CrashLoopBackOff               |
+| Wrong fallback target                | Preview talks to staging backend   |
+| Missing BasicAuth annotation         | Public preview leaks integrations  |
+| Wrong namespace in deploy            | Accidental staging overwrite       |
+
+You can mitigate this with templates, conventions, and CI smoke tests — but the TypeScript compiler is sitting right there, and it can't help, because the operational model isn't TypeScript.
+
+## What tsops actually does
+
+tsops moves the operational model into one typed graph. The same `tsops.config.ts` is consumed by:
+
+```
+                tsops.config.ts
+                /             \
+   manifest builder        runtime helper
+   (kubectl apply)         (your app code)
+```
+
+```ts
+// In your app:
+import config from '../tsops.config'
+
+const apiUrl = config.url('api', 'service')  // http://api
+```
+
+If you rename the `api` app to `core-api` in `tsops.config.ts`, every caller of `config.url('api', ...)` becomes a compile error. Same for `config.env('api', 'JWT_SECRET')` if `JWT_SECRET` disappears from the secret. That's the core idea.
+
+## How it differs from existing tools
+
+| Tool             | Generates manifests | Imported by your app | Catches typos at compile time |
+|------------------|:-------------------:|:--------------------:|:----------------------------:|
+| Helm / Kustomize | ✅                  | ❌                   | ❌                           |
+| CDK8s            | ✅                  | ❌                   | ✅ (deploy side only)        |
+| Pulumi           | ✅                  | ❌                   | ✅ (deploy side only)        |
+| **tsops**        | ✅                  | ✅                   | ✅ (deploy + app)            |
+
+CDK8s and Pulumi solve half the problem: typed manifest generation. They still leave you wiring up `BACKEND_URL` env vars and praying you spelled the service name right. tsops closes that loop.
+
+## The two paradigms, stated plainly
+
+```
+Without tsops:  Kubernetes-first  →  product semantics encoded by conventions
+With tsops:     Product topology  →  Kubernetes generated as execution backend
+```
+
+That's the entire shift. Everything else — the CLI, the planner, the secret validation, the preview overlays — follows from that inversion.
+
+## A minimal example
 
 ```typescript
-// tsops.config.ts
 import { defineConfig } from 'tsops'
 
 export default defineConfig({
-  project: 'my-app',
-  domain: { prod: 'example.com' },
-  
+  project: 'orchard',
+
+  namespaces: {
+    dev:  { domain: 'dev.example.com', production: false },
+    prod: { domain: 'example.com',     production: true  }
+  },
+
+  clusters: {
+    platform: {
+      apiServer: 'https://k8s.example.com',
+      context: 'prod',
+      namespaces: ['dev', 'prod']
+    }
+  },
+
+  images: {
+    registry: 'ghcr.io/example',
+    tagStrategy: 'git-sha'
+  },
+
+  secrets: {
+    'api-secrets': ({ production }) => ({
+      JWT_SECRET: production ? process.env.JWT_SECRET ?? '' : 'dev-secret'
+    })
+  },
+
   apps: {
     api: {
+      build: { type: 'dockerfile', context: './apps/api', dockerfile: './apps/api/Dockerfile' },
       ingress: ({ domain }) => ({ domain: `api.${domain}` }),
-      env: () => ({
-        // ✅ In your app: config.url('postgres', 'service')
+      ports: [{ name: 'http', port: 80, targetPort: 8080 }],
+      env: ({ secret }) => ({
+        JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
       })
     }
   }
 })
 ```
 
+Then:
+
 ```bash
-# Deploy
-$ pnpm tsops deploy --namespace production
+tsops plan --namespace prod
 ```
 
-That's it! tsops:
-1. Resolves your configuration
-2. Builds Docker images (if needed)
-3. Generates deployment manifests
-4. Applies them to your cluster
+```
+📋 Generating deployment plan and validating manifests...
 
-## Key Features
+🌐 Global Resources
+   ➕ Namespaces to create:  prod
+   ✅ Secret/api-secrets:    valid (JWT_SECRET set from env)
 
-### 🎯 Type Safety
+📦 Application Resources
+   api @ prod (api.example.com)
+   Image: ghcr.io/example/orchard-api:abc123
 
-Write configuration in TypeScript with full IntelliSense support. Get instant feedback on typos and type errors.
+      ➕ Will create:
+         • Deployment/orchard-api
+         • Service/orchard-api
+         • Ingress/orchard-api
 
-### ✨ Context Helpers
-
-Built-in helpers for common patterns:
-
-```typescript
-{
-  // ✅ Use runtime config in your app code:
-  import config from './tsops.config'
-  const POSTGRES_URL = config.url('postgres', 'service')
-  // → 'http://postgres' or 'http://my-app-postgres.production.svc.cluster.local'
-  
-  // Use namespace variables for domain
-  ingress: ({ domain }) => ({ domain: `api.${domain}` })
-  // → 'api.example.com'
-  
-  secret('api-secrets')
-  // → envFrom: secretRef
-}
+✅ Validation passed. Run "tsops deploy" to apply.
 ```
 
-### 🔒 Secret Validation
+If `process.env.JWT_SECRET` is missing, `tsops plan` blocks with a typed error before `kubectl` is ever invoked.
 
-Automatic validation before deployment:
+## What tsops gives you, concretely
 
-```typescript
-secrets: {
-  'api-secrets': () => ({
-    JWT_SECRET: process.env.PROD_JWT ?? ''  // ← Validated!
-  })
-}
-```
+- **`tsops plan`** — diff the cluster against your config, validate every secret, list orphans. Errors fail the command.
+- **`tsops deploy`** — apply the planned manifests atomically. Prune orphans tagged `tsops/managed=true`.
+- **`tsops build`** — resolve image references and invoke Docker.
+- **`tsops up/down preview`** — overlay-based PR preview namespaces with TLS, BasicAuth, ResourceQuota, per-PR DB schema, and lifecycle hooks.
+- **`config.url(app, scope)`** — `service` / `cluster` / `ingress` DNS resolution at runtime, namespace-aware via `TSOPS_NAMESPACE`.
+- **`config.env(app, key)`** — typed access to resolved environment for a given app.
+- **Type safety end to end** — IntelliSense for app names, secret keys, namespace variables. Renaming an app is a refactor, not a search-and-replace.
 
-If `PROD_JWT` is missing, tsops:
-1. Checks if secret exists in cluster
-2. Uses cluster secret if available
-3. Shows helpful error if not
+## Honest trade-offs
 
-### 🚀 Single Source of Truth
+- **Opinionated topology.** tsops models `apps × namespaces × clusters` plus overlays. If your topology doesn't fit, you'll fight the framework.
+- **Application layer only.** Platform components — Traefik, cert-manager, external-secrets, ArgoCD, the Postgres operator — still live in Helm. tsops covers what you ship, not the cluster you ship it to.
+- **No state file.** Drift detection is convention-based (`tsops/managed=true` label) and orphan scanning, not a Pulumi/Terraform-style state store.
+- **One config can grow large.** In a 30-service monorepo the config becomes its own subproject that needs to be split across files.
+- **Node.js runtime.** Adapters live in `@tsops/node`. The core (`@tsops/core`) is platform-agnostic if you need to embed it elsewhere.
 
-Use the same config for deployment AND runtime:
+## Why this matters more every year
 
-```typescript
-// Deployment
-env: ({ secret }) => secret('api-secrets')
+The percentage of infrastructure changes made by automated tools — Renovate, Dependabot, Claude Code, Copilot Workspace — is going up, not down.
 
-// Runtime (in your app)
-import config from './tsops.config'
-process.env.TSOPS_NAMESPACE = 'production'
-const nodeEnv = config.env('api', 'NODE_ENV')
-```
+Tribal knowledge ("don't touch this Helm value", "remember to attach the BasicAuth middleware") cannot be transferred to an LLM agent. It isn't written down anywhere. A typed contract can. A typed operational model is one that an agent can safely modify.
 
-## Comparison
+The same compiler that protects your application code, protecting your operational model — that's tsops.
 
-| Feature | YAML | Helm | tsops |
-|---------|------|------|-------|
-| Type Safety | ❌ | ❌ | ✅ |
-| IntelliSense | ❌ | ❌ | ✅ |
-| Functions | ❌ | Limited | ✅ |
-| Validation | Runtime | Runtime | Compile-time |
-| Secret Validation | ❌ | ❌ | ✅ |
-| Context Helpers | ❌ | ❌ | ✅ |
-| Learning Curve | Low | High | Medium |
+## Next
 
-## Who is tsops for?
-
-tsops is perfect for:
-
-- **TypeScript teams** - You already know the language
-- **Platform engineers** - Managing multiple apps and environments
-- **Startups** - Need to move fast with confidence
-- **Teams tired of YAML** - Want type safety and better DX
-
-## Next Steps
-
-<div class="next-steps">
-
-### [🚀 Get Started](/guide/getting-started)
-Install tsops and deploy your first app
-
-### [📖 Context Helpers](/guide/context-helpers)
-Learn about configuration helpers and runtime utilities
-
-### [💡 Examples](/examples/)
-See real-world use cases
-
-</div>
-
-<style>
-.next-steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin: 2rem 0;
-}
-
-.next-steps > div {
-  padding: 1.5rem;
-  background: var(--vp-c-bg-soft);
-  border-radius: 8px;
-}
-</style>
+- [Getting started](./getting-started.md)
+- [Quick start](./quick-start.md)
+- [Context helpers](./context-helpers.md)
+- [Secrets & ConfigMaps](./secrets.md)
+- [Preview overlays](./preview-overlays.md)
