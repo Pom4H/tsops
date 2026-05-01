@@ -69,6 +69,12 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/vercel:
+    dependencies:
+      '@tsops/core':
+        specifier: workspace:*
+        version: link:../core
+
   tests:
     dependencies:
       '@tsops/core':
