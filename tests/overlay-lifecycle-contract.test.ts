@@ -282,6 +282,88 @@ describe('overlay lifecycle preview contract', () => {
     expect(kinds.indexOf('LimitRange')).toBeLessThan(kinds.indexOf('Deployment'))
   })
 
+  it('copies explicit base app secrets into the overlay before included app rollout', async () => {
+    const kubectl = new FakeKubectl()
+    kubectl.seed(
+      secret('stage', 'ru-stage', {
+        DATABASE_URL: Buffer.from('postgresql://worken:secret@postgres:5432/worken').toString(
+          'base64'
+        )
+      })
+    )
+
+    const config = defineConfig({
+      project: 'worken-preview',
+      namespaces: {
+        'ru-stage': {
+          domain: 'stage.worken.ru'
+        },
+        preview: {
+          extends: 'ru-stage' as const,
+          naming: ({ pr }: { pr: string }) => `pr-${pr}`,
+          domain: ({ pr }: { pr: string }) => `pr-${pr}.stage.worken.ru`,
+          fallback: 'ru-stage' as const,
+          appSecrets: {
+            sourceNamespace: 'ru-stage',
+            names: ['stage']
+          }
+        }
+      },
+      clusters: {
+        stage: {
+          apiServer: 'https://stage:6443',
+          context: 'stage',
+          namespaces: ['ru-stage', 'preview'] as const
+        }
+      },
+      images: {
+        registry: 'ghcr.io/worken',
+        tagStrategy: 'git-sha' as const
+      },
+      secrets: {
+        stage: {
+          DATABASE_URL: undefined as unknown as string
+        }
+      },
+      apps: {
+        'worken-api': {
+          image: 'ghcr.io/worken/worken-api:test',
+          env: ({ secret }: any) => ({
+            DATABASE_URL: secret('stage', 'DATABASE_URL')
+          }),
+          ingress: ({ domain }: { domain: string }) => ({ domain: `api.${domain}` }),
+          ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+        }
+      }
+    } as any)
+
+    await makeTsOps(config, kubectl).deploy({
+      namespace: 'preview',
+      vars: { pr: '857' },
+      include: ['worken-api']
+    })
+
+    expect(kubectl.getCalls).toContainEqual({
+      kind: 'Secret',
+      name: 'stage',
+      namespace: 'ru-stage'
+    })
+    const copied = applied(kubectl, 'Secret', 'stage')[0] as any
+    expect(copied.metadata.namespace).toBe('pr-857')
+    expect(decodeSecretData(copied).DATABASE_URL).toBe(
+      'postgresql://worken:secret@postgres:5432/worken'
+    )
+
+    const secretIndex = kubectl.applied.findIndex(
+      ({ manifest }) => manifest.kind === 'Secret' && manifest.metadata?.name === 'stage'
+    )
+    const deploymentIndex = kubectl.applied.findIndex(
+      ({ manifest }) => manifest.kind === 'Deployment'
+    )
+    expect(secretIndex).toBeGreaterThan(-1)
+    expect(deploymentIndex).toBeGreaterThan(secretIndex)
+  })
+
   it('injects generated per-preview runtime database secret refs into app pods', async () => {
     const config = makePreviewConfig({
       database: {
