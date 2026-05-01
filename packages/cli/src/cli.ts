@@ -2,12 +2,26 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 import { isOverlayNamespace } from '@tsops/core'
 import { createNodeTsOps, GitEnvironmentProvider, ProcessEnvironmentProvider } from '@tsops/node'
 import { Command } from 'commander'
 
 const CONFIG_EXTENSION_ORDER = ['', '.ts', '.mts', '.cts', '.js', '.mjs', '.cjs'] as const
+
+function readCliVersion(): string {
+  try {
+    const packageJsonPath = path.resolve(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'package.json'
+    )
+    const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as { version?: string }
+    return pkg.version ?? '0.0.0'
+  } catch {
+    return '0.0.0'
+  }
+}
 
 async function main(): Promise<void> {
   const program = new Command()
@@ -15,7 +29,7 @@ async function main(): Promise<void> {
   program
     .name('tsops')
     .description('TypeScript-first toolkit for planning, building, and deploying to Kubernetes')
-    .version('0.1.0')
+    .version(readCliVersion())
 
   program
     .command('plan')
