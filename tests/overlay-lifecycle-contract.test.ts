@@ -168,7 +168,7 @@ function makePreviewConfig(previewOverrides: Record<string, unknown> = {}) {
       },
       'worken-front': {
         image: 'ghcr.io/worken/worken-front:test',
-        ingress: ({ domain }: { domain: string }) => ({ domain, port: 3000 }),
+        ingress: ({ domain }: { domain: string }) => ({ domain }),
         ports: [{ name: 'http', port: 3000, targetPort: 3000 }]
       }
     }
@@ -253,6 +253,19 @@ describe('overlay lifecycle preview contract', () => {
     const ingress = applied(kubectl, 'Ingress', 'worken-api-ingress')[0] as any
     expect(ingress.spec.rules[0].http.paths[0].backend.service).toEqual({
       name: 'worken-api',
+      port: { number: 3000 }
+    })
+  })
+
+  it('defaults preview ingress backends to the first declared service port', async () => {
+    const kubectl = new FakeKubectl()
+    const config = makePreviewConfig()
+
+    await makeTsOps(config, kubectl).deploy({ namespace: 'preview', vars: { pr: '857' } })
+
+    const ingress = applied(kubectl, 'Ingress', 'worken-front-ingress')[0] as any
+    expect(ingress.spec.rules[0].http.paths[0].backend.service).toEqual({
+      name: 'worken-front',
       port: { number: 3000 }
     })
   })

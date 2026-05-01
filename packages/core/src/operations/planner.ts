@@ -142,6 +142,9 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         const needs = (app.needs as readonly string[] | undefined) ?? []
         if (needs.length > 0) hasAnyDeps = true
         namespaceApps.push({ name: appName, needs })
+        const ports = resolvePorts(
+          app.ports as ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined
+        )
 
         const entry: PlanEntry = {
           namespace,
@@ -166,12 +169,14 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           args: resolveParam(app.args as Parameters<typeof resolveParam>[0]) as
             | string[]
             | undefined,
-          ports: resolvePorts(
-            app.ports as ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined
-          ),
+          ports,
           fallback: useFallback
             ? { namespace: resolvedNs.fallback ?? resolvedNs.base ?? filterNs }
             : undefined
+        }
+
+        if (entry.network?.ingress && entry.network.ingress.port === undefined) {
+          entry.network.ingress.port = ports?.[0]?.port
         }
 
         if (resolvedNs.overlay && resolvedNs.definition?.cert && entry.network?.ingress) {
