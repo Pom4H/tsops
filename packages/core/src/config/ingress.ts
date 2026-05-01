@@ -16,7 +16,7 @@ import type { AppIngressOptions } from '../types.js'
 export function createAutoHTTPS(
   domain: string,
   serviceName: string,
-  options: { issuer?: string; className?: string; protocol?: 'http' | 'https' } = {}
+  options: { issuer?: string; className?: string; protocol?: 'http' | 'https'; port?: number } = {}
 ): {
   ingress: ResolvedIngressConfig
   protocol: 'http' | 'https'
@@ -33,7 +33,7 @@ export function createAutoHTTPS(
   if (!useHttps) {
     // For HTTP: simple ingress without TLS (no certificate warnings!)
     return {
-      ingress: normalizeIngress(domain, { className }),
+      ingress: normalizeIngress(domain, { className, port: options.port }),
       protocol: 'http'
     }
   }
@@ -43,6 +43,7 @@ export function createAutoHTTPS(
   return {
     ingress: normalizeIngress(domain, {
       className,
+      port: options.port,
       annotations: {
         'traefik.ingress.kubernetes.io/router.entrypoints': 'websecure',
         'traefik.ingress.kubernetes.io/router.tls': 'true',
@@ -67,10 +68,11 @@ export function createAutoHTTPS(
  * @param options - Optional ingress customization
  * @returns Resolved ingress configuration
  */
-function normalizeIngress(host: string, options?: AppIngressOptions): ResolvedIngressConfig {
+function normalizeIngress(_host: string, options?: AppIngressOptions): ResolvedIngressConfig {
   return {
     className: options?.className,
     annotations: options?.annotations ? { ...options.annotations } : undefined,
+    port: options?.port,
     path: options?.path ?? '/',
     pathType: options?.pathType ?? 'Prefix',
     tls: options?.tls ? options.tls.map((item) => ({ ...item })) : undefined

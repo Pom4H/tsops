@@ -174,12 +174,27 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
             : undefined
         }
 
-        if (
-          !useFallback &&
-          resolvedNs.overlay &&
-          resolvedNs.definition?.access &&
-          resolvedNs.vars
-        ) {
+        if (resolvedNs.overlay && resolvedNs.definition?.cert && entry.network?.ingress) {
+          const cert = resolvedNs.definition.cert
+          if (cert.mode === 'wildcard-shared' && cert.copyToOverlayNamespace !== false) {
+            const tlsHosts =
+              entry.network.ingress.tls?.flatMap((item) => item.hosts ?? []) ??
+              (entry.host ? [entry.host] : [])
+            entry.network.ingress.tls = [
+              {
+                secretName: cert.secretName,
+                hosts: tlsHosts
+              }
+            ]
+            const annotations = { ...(entry.network.ingress.annotations ?? {}) }
+            delete annotations['cert-manager.io/cluster-issuer']
+            delete annotations['cert-manager.io/issuer']
+            entry.network.ingress.annotations =
+              Object.keys(annotations).length > 0 ? annotations : undefined
+          }
+        }
+
+        if (resolvedNs.overlay && resolvedNs.definition?.access && resolvedNs.vars) {
           const access = resolvedNs.definition.access
           if (access.mode === 'traefik-basic-auth' && entry.network?.ingress) {
             const middlewareName = resolveTemplate(access.middlewareName, resolvedNs.vars)

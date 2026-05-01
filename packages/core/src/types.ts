@@ -825,6 +825,7 @@ export interface ResolvedEnv {
 export interface AppIngressOptions {
   className?: string
   annotations?: Record<string, string>
+  port?: number
   path?: string
   pathType?: HTTPIngressPath['pathType']
   tls?: IngressTLS[]

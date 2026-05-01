@@ -163,8 +163,13 @@ function makePreviewConfig(previewOverrides: Record<string, unknown> = {}) {
     apps: {
       'worken-api': {
         image: 'ghcr.io/worken/worken-api:test',
-        ingress: ({ domain }: { domain: string }) => ({ domain: `api.${domain}` }),
-        ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+        ingress: ({ domain }: { domain: string }) => ({ domain: `api.${domain}`, port: 3000 }),
+        ports: [{ name: 'http', port: 3000, targetPort: 3000 }]
+      },
+      'worken-front': {
+        image: 'ghcr.io/worken/worken-front:test',
+        ingress: ({ domain }: { domain: string }) => ({ domain, port: 3000 }),
+        ports: [{ name: 'http', port: 3000, targetPort: 3000 }]
       }
     }
   })
@@ -214,6 +219,89 @@ describe('overlay lifecycle preview contract', () => {
     const routeIndex = kubectl.applied.findIndex(({ manifest }) => manifest.kind === 'Ingress')
     expect(copyIndex).toBeGreaterThan(-1)
     expect(routeIndex).toBeGreaterThan(copyIndex)
+
+    const ingress = applied(kubectl, 'Ingress', 'worken-api-ingress')[0] as any
+    expect(ingress.spec.tls).toEqual([
+      {
+        secretName: 'stage-worken-ru-wildcard-tls',
+        hosts: ['api.pr-857.stage.worken.ru']
+      }
+    ])
+  })
+
+  it('renders preview ingress backends with the app ingress port', async () => {
+    const kubectl = new FakeKubectl()
+    const config = makePreviewConfig({
+      cert: {
+        mode: 'wildcard-shared',
+        secretName: 'stage-worken-ru-wildcard-tls',
+        sourceNamespace: 'kube-system',
+        copyToOverlayNamespace: true
+      }
+    })
+    kubectl.seed(
+      secret(
+        'stage-worken-ru-wildcard-tls',
+        'kube-system',
+        { 'tls.crt': 'crt', 'tls.key': 'key' },
+        'kubernetes.io/tls'
+      )
+    )
+
+    await makeTsOps(config, kubectl).deploy({ namespace: 'preview', vars: { pr: '857' } })
+
+    const ingress = applied(kubectl, 'Ingress', 'worken-api-ingress')[0] as any
+    expect(ingress.spec.rules[0].http.paths[0].backend.service).toEqual({
+      name: 'worken-api',
+      port: { number: 3000 }
+    })
+  })
+
+  it('applies wildcard TLS and access middleware to fallback preview routes', async () => {
+    const kubectl = new FakeKubectl()
+    kubectl.seed(
+      secret(
+        'stage-worken-ru-wildcard-tls',
+        'kube-system',
+        { 'tls.crt': 'crt', 'tls.key': 'key' },
+        'kubernetes.io/tls'
+      )
+    )
+    kubectl.seed(secret('preview-basic-auth', 'kube-system', { users: 'hashed-users' }))
+
+    const config = makePreviewConfig({
+      cert: {
+        mode: 'wildcard-shared',
+        secretName: 'stage-worken-ru-wildcard-tls',
+        sourceNamespace: 'kube-system',
+        copyToOverlayNamespace: true
+      },
+      access: {
+        mode: 'traefik-basic-auth',
+        sourceNamespace: 'kube-system',
+        secretName: 'preview-basic-auth',
+        middlewareName: ({ pr }: { pr: string }) => `preview-basic-auth-pr-${pr}`,
+        attachTo: 'all-public-routes',
+        failClosed: true
+      }
+    })
+
+    await makeTsOps(config, kubectl).deploy({
+      namespace: 'preview',
+      vars: { pr: '857' },
+      include: ['worken-api']
+    })
+
+    const fallbackIngress = applied(kubectl, 'Ingress', 'worken-front-ingress')[0] as any
+    expect(
+      fallbackIngress.metadata.annotations['traefik.ingress.kubernetes.io/router.middlewares']
+    ).toBe('pr-857-preview-basic-auth-pr-857@kubernetescrd')
+    expect(fallbackIngress.spec.tls).toEqual([
+      {
+        secretName: 'stage-worken-ru-wildcard-tls',
+        hosts: ['pr-857.stage.worken.ru']
+      }
+    ])
   })
 
   it('fails closed and attaches Traefik BasicAuth middleware to every public preview route', async () => {

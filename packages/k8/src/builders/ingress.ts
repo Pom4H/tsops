@@ -28,7 +28,7 @@ export function buildIngress(
     backend: {
       service: {
         name: ctx.serviceName,
-        port: { number: DEFAULT_HTTP_PORT }
+        port: { number: config.port ?? DEFAULT_HTTP_PORT }
       }
     }
   }
