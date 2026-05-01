@@ -176,6 +176,21 @@ describe('overlay namespaces (resolver)', () => {
     expect(ctx.domain).toBe('pr-99.stage.example.com')
   })
 
+  it('plan() with --include marks excluded apps as fallback stubs', async () => {
+    const cfg = makeCfg()
+    const resolver = createConfigResolver(cfg)
+    const planner = new Planner({ resolver })
+    const plan = await planner.plan({
+      namespace: 'preview',
+      vars: { pr: '7' },
+      include: ['api']
+    })
+    const apiEntry = plan.entries.find((e) => e.app === 'api')!
+    const webEntry = plan.entries.find((e) => e.app === 'web')!
+    expect(apiEntry.fallback).toBeUndefined()
+    expect(webEntry.fallback).toEqual({ namespace: 'ru-stage' })
+  })
+
   it('createHostContext does not let --vars override reserved keys', () => {
     const cfg = makeCfg()
     const resolver = createConfigResolver(cfg)

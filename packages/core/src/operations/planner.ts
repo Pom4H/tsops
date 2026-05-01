@@ -64,6 +64,8 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       namespace?: string
       app?: string
       vars?: OverlayVars
+      /** When set, only these apps deploy normally; others fall back via ExternalName. */
+      include?: readonly string[]
     } = {}
   ): Promise<PlanResult> {
     const namespaces = this.resolver.namespaces.select(options.namespace, options.vars)
@@ -71,6 +73,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
     const allAppsForDeps = this.resolver.apps.select()
     const knownAppNames = new Set(allAppsForDeps.map(([name]) => name))
     const entries: PlanEntry[] = []
+    const includeSet = options.include ? new Set(options.include) : undefined
 
     const sensitiveEnvConfig = this.config?.validation?.sensitiveEnv
     const findings: SensitiveEnvFinding[] = []
@@ -97,6 +100,8 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
 
       for (const [appName, app] of apps) {
         if (!this.resolver.apps.shouldDeploy(app, filterNs)) continue
+
+        const useFallback = Boolean(resolvedNs.overlay && includeSet && !includeSet.has(appName))
 
         const context = this.resolver.namespaces.createHostContext(namespaceKey, {
           appName,
@@ -163,7 +168,10 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
             | undefined,
           ports: resolvePorts(
             app.ports as ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined
-          )
+          ),
+          fallback: useFallback
+            ? { namespace: resolvedNs.fallback ?? resolvedNs.base ?? filterNs }
+            : undefined
         }
         entries.push(entry)
 

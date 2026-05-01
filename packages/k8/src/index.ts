@@ -1,4 +1,5 @@
 export { buildConfigMap } from './builders/configmap.js'
+export { buildExternalNameService } from './builders/external-name-service.js'
 export { buildNamespace } from './builders/namespace.js'
 export { buildSecret, buildSecretFromStringData } from './builders/secret.js'
 export * from './manifest-builder.js'
