@@ -1,0 +1,40 @@
+{
+  "name": "@tsops/skill",
+  "version": "0.1.0",
+  "description": "Claude Skill for tsops — installs into ~/.claude/skills or .claude/skills",
+  "type": "module",
+  "bin": {
+    "tsops-skill": "./bin/install.mjs"
+  },
+  "files": [
+    "bin",
+    "skill",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "node ./scripts/sync-skill.mjs",
+    "lint": "pnpm -w exec eslint ."
+  },
+  "keywords": [
+    "tsops",
+    "claude",
+    "claude-code",
+    "agent-skill",
+    "skill",
+    "anthropic"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Pom4H/tsops.git",
+    "directory": "packages/skill"
+  },
+  "license": "MIT",
+  "author": "Roman Popov",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
