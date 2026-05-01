@@ -76,6 +76,14 @@ function assertValidIdentifier(kind: string, value: string): void {
   }
 }
 
+function quoteIdentifier(identifier: string): string {
+  return `"${identifier}"`
+}
+
+function sqlLiteral(value: string): string {
+  return `'${value.replace(/'/g, "''")}'`
+}
+
 /**
  * Pre-deploy database hook for overlay namespaces.
  *
@@ -175,7 +183,7 @@ function validateCustomJob(custom: CustomJobConfig): void {
 
 /**
  * Post-destroy hook for overlay namespaces. Currently only supports
- * `'drop-schema'`, which runs `DROP SCHEMA <s> CASCADE` against the same
+ * `'drop-schema'`, which tears down the overlay schema through the lifecycle
  * connection. This intentionally runs *before* the namespace is deleted so
  * the Job can finish and report status.
  */
@@ -209,10 +217,84 @@ export async function runDatabasePostDestroy(
     lifecycleSecret,
     vars,
     schema,
-    sqlSteps: [`DROP SCHEMA IF EXISTS "${schema}" CASCADE`]
+    sqlSteps: buildDropSchemaSqlSteps(database, vars, schema)
   })
   await kubectl.apply(job, { namespace })
   return { jobName }
+}
+
+function buildDropSchemaSqlSteps(
+  database: OverlayDatabase,
+  vars: OverlayVars,
+  schema: string
+): string[] {
+  const quotedSchema = quoteIdentifier(schema)
+  const runtimeRole = database.runtimeRole ? resolveTemplate(database.runtimeRole, vars) : undefined
+
+  if (runtimeRole) {
+    assertValidIdentifier('runtime role', runtimeRole)
+  }
+
+  const steps = [buildExternalDependencyGuard(schema)]
+  if (runtimeRole) {
+    const quotedRole = quoteIdentifier(runtimeRole)
+    steps.push(
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quotedSchema} REVOKE ALL ON TABLES FROM ${quotedRole}`,
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quotedSchema} REVOKE ALL ON SEQUENCES FROM ${quotedRole}`,
+      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quotedSchema} REVOKE ALL ON FUNCTIONS FROM ${quotedRole}`,
+      `REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA ${quotedSchema} FROM ${quotedRole}`,
+      `REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ${quotedSchema} FROM ${quotedRole}`,
+      `REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA ${quotedSchema} FROM ${quotedRole}`,
+      `REVOKE ALL PRIVILEGES ON SCHEMA ${quotedSchema} FROM ${quotedRole}`
+    )
+  }
+
+  steps.push(`DROP SCHEMA IF EXISTS ${quotedSchema} CASCADE`)
+  if (runtimeRole) {
+    steps.push(`DROP ROLE IF EXISTS ${quoteIdentifier(runtimeRole)}`)
+  }
+  return steps
+}
+
+function buildExternalDependencyGuard(schema: string): string {
+  const literalSchema = sqlLiteral(schema)
+  return `
+DO $tsops$
+BEGIN
+  IF EXISTS (
+    WITH referenced_objects AS (
+      SELECT c.oid
+      FROM pg_class c
+      JOIN pg_namespace n ON n.oid = c.relnamespace
+      WHERE n.nspname = ${literalSchema}
+    ),
+    external_dependencies AS (
+      SELECT COALESCE(class_ns.nspname, rewrite_ns.nspname, constraint_ns.nspname) AS dependent_schema
+      FROM pg_depend d
+      JOIN referenced_objects ref ON ref.oid = d.refobjid
+      LEFT JOIN pg_class class_dep
+        ON d.classid = 'pg_class'::regclass AND class_dep.oid = d.objid
+      LEFT JOIN pg_namespace class_ns ON class_ns.oid = class_dep.relnamespace
+      LEFT JOIN pg_rewrite rewrite_dep
+        ON d.classid = 'pg_rewrite'::regclass AND rewrite_dep.oid = d.objid
+      LEFT JOIN pg_class rewrite_class ON rewrite_class.oid = rewrite_dep.ev_class
+      LEFT JOIN pg_namespace rewrite_ns ON rewrite_ns.oid = rewrite_class.relnamespace
+      LEFT JOIN pg_constraint constraint_dep
+        ON d.classid = 'pg_constraint'::regclass AND constraint_dep.oid = d.objid
+      LEFT JOIN pg_class constraint_class ON constraint_class.oid = constraint_dep.conrelid
+      LEFT JOIN pg_namespace constraint_ns ON constraint_ns.oid = constraint_class.relnamespace
+    )
+    SELECT 1
+    FROM external_dependencies
+    WHERE dependent_schema IS NOT NULL
+      AND dependent_schema <> ${literalSchema}
+      AND dependent_schema <> 'information_schema'
+      AND dependent_schema NOT LIKE 'pg\\_%' ESCAPE '\\'
+  ) THEN
+    RAISE EXCEPTION 'Refusing to drop schema ${schema}: cross-schema dependencies exist';
+  END IF;
+END
+$tsops$`.trim()
 }
 
 /**

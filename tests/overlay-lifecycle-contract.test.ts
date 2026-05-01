@@ -647,6 +647,55 @@ describe('overlay lifecycle preview contract', () => {
     })
   })
 
+  it('guards schema teardown before cascade and revokes generated runtime role', async () => {
+    const kubectl = new FakeKubectl()
+    kubectl.seed(secret('stage-db-lifecycle', 'kube-system', { DATABASE_URL: 'postgres://stage' }))
+
+    const config = makePreviewConfig({
+      database: {
+        lifecycleUrlSecret: {
+          name: 'stage-db-lifecycle',
+          key: 'DATABASE_URL',
+          sourceNamespace: 'kube-system'
+        },
+        runtimeSecret: {
+          mode: 'generated-per-overlay',
+          name: ({ pr }: { pr: string }) => `pr-${pr}-db-app`,
+          key: 'DATABASE_URL'
+        },
+        runtimeRole: ({ pr }: { pr: string }) => `worken_pr_${pr}_app`,
+        schema: ({ pr }: { pr: string }) => `pr_${pr}`,
+        preDeploy: 'create-schema',
+        postDestroy: 'drop-schema'
+      }
+    })
+
+    await makeTsOps(config, kubectl).down({
+      namespace: 'preview',
+      vars: { pr: '857' }
+    })
+
+    const job = applied(kubectl, 'Job', 'tsops-db-drop-pr-857')[0] as any
+    const command = job.spec.template.spec.containers[0].args[0] as string
+
+    expect(command).toContain('pg_depend')
+    expect(command).toContain('cross-schema dependencies')
+    expect(command.indexOf('pg_depend')).toBeLessThan(command.indexOf('DROP SCHEMA'))
+    expect(command).toContain(
+      'ALTER DEFAULT PRIVILEGES IN SCHEMA \\"pr_857\\" REVOKE ALL ON TABLES FROM \\"worken_pr_857_app\\"'
+    )
+    expect(command).toContain(
+      'REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA \\"pr_857\\" FROM \\"worken_pr_857_app\\"'
+    )
+    expect(command).toContain('DROP SCHEMA IF EXISTS \\"pr_857\\" CASCADE')
+    expect(command).toContain('DROP ROLE IF EXISTS \\"worken_pr_857_app\\"')
+    expect(kubectl.waited).toContainEqual({
+      name: 'tsops-db-drop-pr-857',
+      namespace: 'pr-857',
+      timeoutSeconds: undefined
+    })
+  })
+
   it('supports overlay runtime variable validation so raw integrations=real fails closed in V1', () => {
     const config = makePreviewConfig({
       validateVars: ({ integrations }: { integrations?: string }) => {
