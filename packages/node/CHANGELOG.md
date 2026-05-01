@@ -1,5 +1,33 @@
 # @tsops/node
 
+## 2.0.0
+
+### Patch Changes
+
+- [#47](https://github.com/Pom4H/tsops/pull/47) [`b7895b3`](https://github.com/Pom4H/tsops/commit/b7895b363e3a4b89824da7f7e54d1ae0dee13cb9) Thanks [@Pom4H](https://github.com/Pom4H)! - feat: preview/overlay namespaces (RFC 0001)
+
+  Adds first-class support for ephemeral preview namespaces (e.g. one per pull
+  request) on top of the existing static namespace model.
+
+  - New `OverlayNamespaceDefinition` form: `extends`, `naming(vars)`,
+    `domain(vars)`, `fallback`, optional `cert` and `database`.
+    `NamespaceDefinition` is now a discriminated union — see
+    `isOverlayNamespace` for the type guard.
+  - New CLI commands: `tsops up <ns> --var key=value [--include a,b]
+[--apps-from-changes]` and `tsops down <ns> --var key=value`.
+  - Apps not in `--include` are emitted as `Service: ExternalName` proxies into
+    the overlay's `fallback` namespace, so partial deploys stay routable.
+  - Optional per-namespace TLS via certbot DNS-01 (`cert.mode: 'per-namespace'`)
+    or shared wildcard reuse (`cert.mode: 'wildcard-shared'`).
+  - Optional schema-per-overlay PostgreSQL lifecycle (`database.preDeploy` /
+    `postDestroy`).
+
+  Existing static-namespace configs are unaffected; the union widening is the
+  reason for the major bump on `@tsops/core` / `tsops`.
+
+- Updated dependencies [[`b7895b3`](https://github.com/Pom4H/tsops/commit/b7895b363e3a4b89824da7f7e54d1ae0dee13cb9)]:
+  - @tsops/core@2.0.0
+
 ## 1.9.0
 
 ### Patch Changes
@@ -10,6 +38,7 @@
 > Historical note: releases `1.0.0` through `1.8.0` are not yet backfilled in this changelog.
 > The entries below are retained from the earlier `0.2.x` release history so consumers can still
 > trace older changes until the missing `1.x` entries are added.
+
 ## 0.2.8
 
 ### Patch Changes
