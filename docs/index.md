@@ -36,10 +36,6 @@ bun add tsops
 npm install tsops
 ```
 
-```bash [yarn]
-yarn add tsops
-```
-
 ::::
 
 > Works on Node.js 20+/22 LTS and Bun 1.1+ — pick whichever your project already uses.

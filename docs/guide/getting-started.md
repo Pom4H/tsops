@@ -25,10 +25,6 @@ bun add tsops
 npm install tsops
 ```
 
-```bash [yarn]
-yarn add tsops
-```
-
 :::
 
 > tsops itself is runtime-agnostic — the CLI runs on either Node.js or Bun.
