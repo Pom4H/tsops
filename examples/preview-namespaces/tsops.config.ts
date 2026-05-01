@@ -45,6 +45,12 @@ const config = defineConfig({
         attachTo: 'all-public-routes',
         failClosed: true
       },
+      // Included apps run in the overlay namespace, so any shared app
+      // Secrets they reference must be copied explicitly before rollout.
+      appSecrets: {
+        sourceNamespace: 'ru-stage',
+        names: ['stage']
+      },
       namespacePolicy: {
         resourceQuota: {
           pods: 25,

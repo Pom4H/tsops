@@ -142,6 +142,9 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         const needs = (app.needs as readonly string[] | undefined) ?? []
         if (needs.length > 0) hasAnyDeps = true
         namespaceApps.push({ name: appName, needs })
+        const ports = resolvePorts(
+          app.ports as ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined
+        )
 
         const entry: PlanEntry = {
           namespace,
@@ -166,20 +169,37 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           args: resolveParam(app.args as Parameters<typeof resolveParam>[0]) as
             | string[]
             | undefined,
-          ports: resolvePorts(
-            app.ports as ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined
-          ),
+          ports,
           fallback: useFallback
             ? { namespace: resolvedNs.fallback ?? resolvedNs.base ?? filterNs }
             : undefined
         }
 
-        if (
-          !useFallback &&
-          resolvedNs.overlay &&
-          resolvedNs.definition?.access &&
-          resolvedNs.vars
-        ) {
+        if (entry.network?.ingress && entry.network.ingress.port === undefined) {
+          entry.network.ingress.port = ports?.[0]?.port
+        }
+
+        if (resolvedNs.overlay && resolvedNs.definition?.cert && entry.network?.ingress) {
+          const cert = resolvedNs.definition.cert
+          if (cert.mode === 'wildcard-shared' && cert.copyToOverlayNamespace !== false) {
+            const tlsHosts =
+              entry.network.ingress.tls?.flatMap((item) => item.hosts ?? []) ??
+              (entry.host ? [entry.host] : [])
+            entry.network.ingress.tls = [
+              {
+                secretName: cert.secretName,
+                hosts: tlsHosts
+              }
+            ]
+            const annotations = { ...(entry.network.ingress.annotations ?? {}) }
+            delete annotations['cert-manager.io/cluster-issuer']
+            delete annotations['cert-manager.io/issuer']
+            entry.network.ingress.annotations =
+              Object.keys(annotations).length > 0 ? annotations : undefined
+          }
+        }
+
+        if (resolvedNs.overlay && resolvedNs.definition?.access && resolvedNs.vars) {
           const access = resolvedNs.definition.access
           if (access.mode === 'traefik-basic-auth' && entry.network?.ingress) {
             const middlewareName = resolveTemplate(access.middlewareName, resolvedNs.vars)

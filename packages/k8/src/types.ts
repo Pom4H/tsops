@@ -52,6 +52,7 @@ export type CertificateManifest = RawCertificate
 export interface ResolvedIngressConfig {
   className?: string
   annotations?: Record<string, string>
+  port?: number
   path: string
   pathType: HTTPIngressPath['pathType']
   tls?: IngressTLS[]

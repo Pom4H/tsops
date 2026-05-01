@@ -183,6 +183,13 @@ export type OverlayAccessStrategy<TVars extends OverlayVars = OverlayVars> = {
   failClosed?: boolean
 }
 
+export type OverlayAppSecrets<TVars extends OverlayVars = OverlayVars> = {
+  /** Namespace containing source app Secrets. Defaults to the overlay base namespace. */
+  sourceNamespace?: OverlayTemplate<TVars, string>
+  /** Explicit Secret names to copy into the overlay namespace before included apps roll out. */
+  names: readonly OverlayTemplate<TVars, string>[]
+}
+
 export interface OverlayNamespacePolicy {
   resourceQuota?: {
     pods?: number
@@ -226,6 +233,8 @@ export type OverlayNamespaceDefinition<
   cert?: OverlayCertStrategy
   /** Optional access gate rendered before public preview routes. */
   access?: OverlayAccessStrategy<TVars>
+  /** Explicit app Secrets copied from the base/source namespace into each overlay. */
+  appSecrets?: OverlayAppSecrets<TVars>
   /** Optional ResourceQuota/LimitRange policy rendered into each overlay namespace. */
   namespacePolicy?: OverlayNamespacePolicy
   /** Optional schema-per-overlay PostgreSQL lifecycle. */
@@ -816,6 +825,7 @@ export interface ResolvedEnv {
 export interface AppIngressOptions {
   className?: string
   annotations?: Record<string, string>
+  port?: number
   path?: string
   pathType?: HTTPIngressPath['pathType']
   tls?: IngressTLS[]

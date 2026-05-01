@@ -5,6 +5,7 @@ import type { Logger } from '../logger.js'
 import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
 import type {
   OverlayAccessStrategy,
+  OverlayAppSecrets,
   OverlayNamespacePolicy,
   OverlayVars,
   TsOpsConfig
@@ -134,6 +135,17 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
               })
               applied.push(...refs)
             }
+            if (resolved.definition?.appSecrets) {
+              const refs = await copyOverlayAppSecrets({
+                namespace: resolved.name,
+                baseNamespace: resolved.base ?? entry.namespace,
+                vars: resolved.vars ?? options.vars,
+                appSecrets: resolved.definition.appSecrets,
+                kubectl: this.kubectl,
+                logger: this.logger
+              })
+              applied.push(...refs)
+            }
             if (!options.skipDatabase && resolved.definition?.database) {
               const dbResult = await runDatabasePreDeploy({
                 namespace: resolved.name,
@@ -206,17 +218,17 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
       const secretManifests: SupportedManifest[] = []
       for (const [secretName, secretData] of Object.entries(entry.secrets)) {
         // ✨ Validate that all secret values are available
-        await this.validateSecretValues(secretName, secretData, entry.namespace, entry.app)
-
-        const secretManifest = buildSecret(
+        const resolvedSecretData = await this.resolveSecretValues(
           secretName,
+          secretData,
           entry.namespace,
-          secretData as Record<string, string>,
-          {
-            'tsops/app': entry.app,
-            'tsops/managed': 'true'
-          }
+          entry.app
         )
+
+        const secretManifest = buildSecret(secretName, entry.namespace, resolvedSecretData, {
+          'tsops/app': entry.app,
+          'tsops/managed': 'true'
+        })
         secretManifests.push(secretManifest)
       }
 
@@ -377,12 +389,12 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
    * @param namespace - Target namespace
    * @param appName - Application name (for error messages)
    */
-  private async validateSecretValues(
+  private async resolveSecretValues(
     secretName: string,
     secretData: Record<string, string>,
     namespace: string,
     appName: string
-  ): Promise<void> {
+  ): Promise<Record<string, string>> {
     const missingInEnv: string[] = []
     const emptyValues: string[] = []
 
@@ -424,7 +436,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
 
         // Verify all required keys exist in cluster secret
         const missingInCluster = [...missingInEnv, ...emptyValues].filter(
-          (key) => !existingSecret[key]
+          (key) => !(key in existingSecret)
         )
 
         if (missingInCluster.length > 0) {
@@ -437,6 +449,13 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
               `  1. Set these values in process.env before deployment\n` +
               `  2. Ensure they exist in the cluster secret "${secretName}" in namespace "${namespace}"\n` +
               `  3. Update your tsops.config.ts to provide actual values`
+          )
+        }
+
+        return {
+          ...secretData,
+          ...Object.fromEntries(
+            [...missingInEnv, ...emptyValues].map((key) => [key, existingSecret[key]])
           )
         }
       } else {
@@ -453,6 +472,8 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
         )
       }
     }
+
+    return secretData
   }
 
   /**
@@ -539,7 +560,13 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     // Step 3: Check all unique secrets
     const secretChanges: ManifestChange[] = []
     for (const secret of secretsMap.values()) {
-      const secretManifest = buildSecret(secret.name, secret.namespace, secret.data, {
+      const resolvedSecretData = await this.resolveSecretValues(
+        secret.name,
+        secret.data,
+        secret.namespace,
+        secret.app
+      )
+      const secretManifest = buildSecret(secret.name, secret.namespace, resolvedSecretData, {
         'tsops/app': secret.app,
         'tsops/managed': 'true'
       })
@@ -876,6 +903,55 @@ async function runAccessHook(input: {
     middlewareName
   })
   return kubectl.applyBatch([secretCopy, middleware], { namespace })
+}
+
+async function copyOverlayAppSecrets(input: {
+  namespace: string
+  baseNamespace: string
+  vars: OverlayVars
+  appSecrets: OverlayAppSecrets
+  kubectl: KubectlClient
+  logger: Logger
+}): Promise<string[]> {
+  const { namespace, baseNamespace, vars, appSecrets, kubectl, logger } = input
+  const sourceNamespace = appSecrets.sourceNamespace
+    ? resolveTemplate(appSecrets.sourceNamespace, vars)
+    : baseNamespace
+  const names = [...new Set(appSecrets.names.map((name) => resolveTemplate(name, vars)))]
+  if (names.length === 0) return []
+
+  const copies: SupportedManifest[] = []
+  for (const name of names) {
+    const source = await kubectl.get('Secret', name, sourceNamespace)
+    if (!source) {
+      throw new Error(
+        `App secret copy: Secret "${name}" not found in source namespace "${sourceNamespace}".`
+      )
+    }
+    const sourceData = (source as unknown as { data?: Record<string, string> }).data ?? {}
+    copies.push({
+      apiVersion: 'v1',
+      kind: 'Secret',
+      type: (source as unknown as { type?: string }).type ?? 'Opaque',
+      metadata: {
+        name,
+        namespace,
+        labels: {
+          'tsops/managed': 'true',
+          'tsops/copied-from': sourceNamespace,
+          'tsops/hook': 'app-secrets'
+        }
+      },
+      data: sourceData
+    } as unknown as SupportedManifest)
+  }
+
+  logger.info('Copying app Secrets into overlay', {
+    namespace,
+    from: sourceNamespace,
+    secrets: names
+  })
+  return kubectl.applyBatch(copies, { namespace })
 }
 
 function resolveTemplate<T>(value: T | ((vars: OverlayVars) => T), vars: OverlayVars): T {

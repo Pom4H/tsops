@@ -291,7 +291,7 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     const resolved = typeof ingressDef === 'function' ? ingressDef(context) : ingressDef
 
     // Check if resolved is valid (function might return undefined/null)
-    if (!resolved || !resolved.domain) {
+    if (!resolved?.domain) {
       return { network: undefined, host: undefined }
     }
 
@@ -306,7 +306,8 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     const result = createAutoHTTPS(resolved.domain, serviceName, {
       issuer: context.env('CERT_ISSUER', 'letsencrypt-prod'),
       className: context.env('INGRESS_CLASS', 'traefik'),
-      protocol
+      protocol,
+      port: resolved.port
     })
 
     return {
