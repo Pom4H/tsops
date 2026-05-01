@@ -71,6 +71,9 @@ importers:
 
   tests:
     dependencies:
+      '@tsops/core':
+        specifier: workspace:*
+        version: link:../packages/core
       tsops:
         specifier: workspace:*
         version: link:../packages/cli

@@ -1,7 +1,13 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
+import { buildSecret } from '@tsops/k8'
 import type { Logger } from '../logger.js'
 import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
-import type { CustomJobConfig, OverlayDatabase, OverlayVars } from '../types.js'
+import type {
+  CustomJobConfig,
+  OverlayDatabase,
+  OverlaySecretKeyRef,
+  OverlayVars
+} from '../types.js'
 
 interface DbHookCommonOptions {
   namespace: string
@@ -61,6 +67,15 @@ function assertValidSchema(schema: string): void {
   }
 }
 
+function assertValidIdentifier(kind: string, value: string): void {
+  if (!POSTGRES_IDENT.test(value)) {
+    throw new Error(
+      `Invalid PostgreSQL ${kind} "${value}". ` +
+        `${kind} must match ${POSTGRES_IDENT.source} (letters, digits, underscores; 1–63 chars).`
+    )
+  }
+}
+
 /**
  * Pre-deploy database hook for overlay namespaces.
  *
@@ -77,25 +92,52 @@ function assertValidSchema(schema: string): void {
  */
 export async function runDatabasePreDeploy(
   options: DbHookCommonOptions
-): Promise<{ jobName: string }> {
+): Promise<{ jobName: string; timeoutSeconds?: number }> {
   const { namespace, baseNamespace, vars, database, kubectl, logger } = options
   const schema = database.schema(vars)
   assertValidSchema(schema)
   const slug = toK8sName(schema)
+  const lifecycleSecret = getLifecycleUrlSecret(database, vars)
 
   // The Job runs in the overlay namespace and reads `DATABASE_URL` via
   // `secretKeyRef` from a Secret in *that* namespace. The user declares the
   // Secret in the base (static) namespace, so we materialise a copy into the
   // overlay before the Job is applied. Idempotent: re-applying overwrites.
-  await ensureUrlSecretInOverlay({ namespace, baseNamespace, database, kubectl, logger })
+  await ensureUrlSecretInOverlay({
+    namespace,
+    baseNamespace,
+    database,
+    lifecycleSecret,
+    kubectl,
+    logger
+  })
+  await ensureRuntimeSecretInOverlay({
+    namespace,
+    vars,
+    database,
+    lifecycleSecret,
+    schema,
+    kubectl,
+    logger
+  })
 
   if (typeof database.preDeploy === 'object') {
     validateCustomJob(database.preDeploy)
-    const jobName = toK8sName(`tsops-db-custom-${slug}`)
-    const job = renderCustomJob(jobName, namespace, schema, database, database.preDeploy)
+    const jobName = database.preDeploy.name
+      ? toK8sName(resolveTemplate(database.preDeploy.name, vars))
+      : toK8sName(`tsops-db-custom-${slug}`)
+    const job = renderCustomJob(
+      jobName,
+      namespace,
+      schema,
+      lifecycleSecret,
+      database,
+      database.preDeploy,
+      vars
+    )
     logger.info('Running custom database pre-deploy job', { namespace, schema, jobName })
     await kubectl.apply(job, { namespace })
-    return { jobName }
+    return { jobName, timeoutSeconds: database.preDeploy.timeoutSeconds }
   }
 
   const jobName = toK8sName(`tsops-db-create-${slug}`)
@@ -104,6 +146,9 @@ export async function runDatabasePreDeploy(
     namespace,
     name: jobName,
     database,
+    lifecycleSecret,
+    vars,
+    schema,
     sqlSteps: [`CREATE SCHEMA IF NOT EXISTS "${schema}"`]
   })
   await kubectl.apply(createJob, { namespace })
@@ -142,17 +187,28 @@ export async function runDatabasePostDestroy(
   assertValidSchema(schema)
   const slug = toK8sName(schema)
   const jobName = toK8sName(`tsops-db-drop-${slug}`)
+  const lifecycleSecret = getLifecycleUrlSecret(database, vars)
 
   // Same reason as in runDatabasePreDeploy: the drop Job needs the connection
   // Secret available locally. If the namespace was created by `up` we'd
   // already have it, but `down` has to be safe to call standalone too.
-  await ensureUrlSecretInOverlay({ namespace, baseNamespace, database, kubectl, logger })
+  await ensureUrlSecretInOverlay({
+    namespace,
+    baseNamespace,
+    database,
+    lifecycleSecret,
+    kubectl,
+    logger
+  })
 
   logger.info('Dropping overlay schema', { namespace, schema, jobName })
   const job = renderPsqlJob({
     namespace,
     name: jobName,
     database,
+    lifecycleSecret,
+    vars,
+    schema,
     sqlSteps: [`DROP SCHEMA IF EXISTS "${schema}" CASCADE`]
   })
   await kubectl.apply(job, { namespace })
@@ -168,60 +224,157 @@ async function ensureUrlSecretInOverlay(input: {
   namespace: string
   baseNamespace: string
   database: OverlayDatabase
+  lifecycleSecret: ResolvedSecretKeyRef
   kubectl: KubectlClient
   logger: Logger
 }): Promise<void> {
-  const { namespace, baseNamespace, database, kubectl, logger } = input
-  if (namespace === baseNamespace) return
-  const source = await kubectl.get('Secret', database.urlSecret.name, baseNamespace)
+  const { namespace, baseNamespace, lifecycleSecret, kubectl, logger } = input
+  const sourceNamespace = lifecycleSecret.sourceNamespace ?? baseNamespace
+  if (namespace === sourceNamespace) return
+  const source = await kubectl.get('Secret', lifecycleSecret.name, sourceNamespace)
   if (!source) {
     throw new Error(
-      `Database hook: Secret "${database.urlSecret.name}" not found in base namespace "${baseNamespace}". ` +
+      `Database hook: Secret "${lifecycleSecret.name}" not found in source namespace "${sourceNamespace}". ` +
         `The overlay's database connection Secret must exist in the base namespace so it can be copied into "${namespace}".`
     )
   }
   const sourceData = (source as unknown as { data?: Record<string, string> }).data ?? {}
-  if (!(database.urlSecret.key in sourceData)) {
+  if (!(lifecycleSecret.key in sourceData)) {
     throw new Error(
-      `Database hook: Secret "${database.urlSecret.name}" in namespace "${baseNamespace}" ` +
-        `does not contain key "${database.urlSecret.key}".`
+      `Database hook: Secret "${lifecycleSecret.name}" in namespace "${sourceNamespace}" ` +
+        `does not contain key "${lifecycleSecret.key}".`
     )
   }
-  const sourceMeta =
-    ((source as unknown as { metadata?: Record<string, unknown> }).metadata ??
-      {}) as Record<string, unknown>
+  const sourceMeta = ((source as unknown as { metadata?: Record<string, unknown> }).metadata ??
+    {}) as Record<string, unknown>
   const labels = (sourceMeta.labels as Record<string, string> | undefined) ?? {}
   const copy = {
     apiVersion: 'v1',
     kind: 'Secret',
     type: (source as unknown as { type?: string }).type ?? 'Opaque',
     metadata: {
-      name: database.urlSecret.name,
+      name: lifecycleSecret.name,
       namespace,
       labels: {
         ...labels,
         'tsops/managed': 'true',
-        'tsops/copied-from': baseNamespace,
+        'tsops/copied-from': sourceNamespace,
         'tsops/hook': 'database'
       }
     },
     data: sourceData
   } as unknown as SupportedManifest
   logger.info('Copying database urlSecret into overlay', {
-    from: baseNamespace,
+    from: sourceNamespace,
     to: namespace,
-    secretName: database.urlSecret.name
+    secretName: lifecycleSecret.name
   })
   await kubectl.apply(copy, { namespace })
+}
+
+async function ensureRuntimeSecretInOverlay(input: {
+  namespace: string
+  vars: OverlayVars
+  database: OverlayDatabase
+  lifecycleSecret: ResolvedSecretKeyRef
+  schema: string
+  kubectl: KubectlClient
+  logger: Logger
+}): Promise<void> {
+  const { namespace, vars, database, lifecycleSecret, schema, kubectl, logger } = input
+  const runtimeSecret = database.runtimeSecret
+  if (runtimeSecret?.mode !== 'generated-per-overlay') return
+  if (!database.runtimeRole) {
+    throw new Error(
+      'Database hook: database.runtimeRole is required when runtimeSecret.mode is "generated-per-overlay".'
+    )
+  }
+
+  const secretName = resolveTemplate(runtimeSecret.name, vars)
+  const runtimeRole = resolveTemplate(database.runtimeRole, vars)
+  assertValidIdentifier('runtime role', runtimeRole)
+
+  const existing = await kubectl.getSecretData(secretName, namespace)
+  if (
+    existing?.[runtimeSecret.key] &&
+    existing.DATABASE_PASSWORD &&
+    existing.DATABASE_SCHEMA === schema &&
+    existing.DATABASE_RUNTIME_ROLE === runtimeRole
+  ) {
+    logger.info('Using existing generated runtime database Secret', {
+      namespace,
+      secretName,
+      schema
+    })
+    return
+  }
+
+  const lifecycleData = await kubectl.getSecretData(lifecycleSecret.name, namespace)
+  const lifecycleUrl = lifecycleData?.[lifecycleSecret.key]
+  if (!lifecycleUrl) {
+    throw new Error(
+      `Database hook: Secret "${lifecycleSecret.name}" in namespace "${namespace}" ` +
+        `does not contain decoded key "${lifecycleSecret.key}" required to generate runtime credentials.`
+    )
+  }
+
+  const password = randomBytes(32).toString('base64url')
+  const runtimeUrl = buildRuntimeDatabaseUrl(lifecycleUrl, runtimeRole, password)
+  const manifest = buildSecret(
+    secretName,
+    namespace,
+    {
+      [runtimeSecret.key]: runtimeUrl,
+      DATABASE_PASSWORD: password,
+      DATABASE_SCHEMA: schema,
+      DATABASE_RUNTIME_ROLE: runtimeRole
+    },
+    {
+      'tsops/managed': 'true',
+      'tsops/hook': 'database',
+      'tsops/secret-purpose': 'preview-runtime-database'
+    }
+  )
+
+  logger.info('Creating generated runtime database Secret', {
+    namespace,
+    secretName,
+    schema,
+    runtimeRole
+  })
+  await kubectl.apply(manifest as unknown as SupportedManifest, { namespace })
+}
+
+function buildRuntimeDatabaseUrl(lifecycleUrl: string, runtimeRole: string, password: string) {
+  let url: URL
+  try {
+    url = new URL(lifecycleUrl)
+  } catch {
+    throw new Error('Database hook: lifecycle DATABASE_URL must be a valid PostgreSQL URL.')
+  }
+
+  if (url.protocol !== 'postgres:' && url.protocol !== 'postgresql:') {
+    throw new Error(
+      `Database hook: lifecycle DATABASE_URL must use postgres/postgresql protocol, got "${url.protocol}".`
+    )
+  }
+
+  url.username = runtimeRole
+  url.password = password
+  url.searchParams.delete('schema')
+  return url.toString()
 }
 
 function renderPsqlJob(input: {
   namespace: string
   name: string
   database: OverlayDatabase
+  lifecycleSecret: ResolvedSecretKeyRef
+  vars: OverlayVars
+  schema: string
   sqlSteps: string[]
 }): SupportedManifest {
-  const { namespace, name, database, sqlSteps } = input
+  const { namespace, name, database, lifecycleSecret, vars, schema, sqlSteps } = input
   const sql = sqlSteps.map((s) => s.replace(/"/g, '\\"')).join('; ')
 
   const job = {
@@ -249,11 +402,13 @@ function renderPsqlJob(input: {
                   name: 'DATABASE_URL',
                   valueFrom: {
                     secretKeyRef: {
-                      name: database.urlSecret.name,
-                      key: database.urlSecret.key
+                      name: lifecycleSecret.name,
+                      key: lifecycleSecret.key
                     }
                   }
-                }
+                },
+                ...renderDatabaseMetadataEnv(database, vars, schema),
+                ...renderRuntimeSecretEnv(database, vars)
               ]
             }
           ]
@@ -269,9 +424,14 @@ function renderCustomJob(
   jobName: string,
   namespace: string,
   schema: string,
+  lifecycleSecret: ResolvedSecretKeyRef,
   database: OverlayDatabase,
-  custom: CustomJobConfig
+  custom: CustomJobConfig,
+  vars: OverlayVars
 ): SupportedManifest {
+  const command = custom.command ? resolveTemplate(custom.command, vars) : undefined
+  const args = custom.args ? resolveTemplate(custom.args, vars) : undefined
+  const customEnv = typeof custom.env === 'function' ? custom.env(vars) : (custom.env ?? {})
   const job = {
     apiVersion: 'batch/v1',
     kind: 'Job',
@@ -290,20 +450,22 @@ function renderCustomJob(
             {
               name: 'migrate',
               image: custom.image,
-              command: custom.command,
-              args: custom.args,
+              command,
+              args,
               env: [
                 {
                   name: 'DATABASE_URL',
                   valueFrom: {
                     secretKeyRef: {
-                      name: database.urlSecret.name,
-                      key: database.urlSecret.key
+                      name: lifecycleSecret.name,
+                      key: lifecycleSecret.key
                     }
                   }
                 },
                 { name: 'TSOPS_OVERLAY_SCHEMA', value: schema },
-                ...Object.entries(custom.env ?? {}).map(([k, v]) => ({ name: k, value: v }))
+                ...renderDatabaseMetadataEnv(database, vars, schema),
+                ...renderRuntimeSecretEnv(database, vars),
+                ...Object.entries(customEnv).map(([k, v]) => ({ name: k, value: v }))
               ],
               envFrom: (custom.envFrom ?? []).map((ref) =>
                 ref.secretName
@@ -318,4 +480,96 @@ function renderCustomJob(
   }
 
   return job as unknown as SupportedManifest
+}
+
+interface ResolvedSecretKeyRef {
+  name: string
+  key: string
+  sourceNamespace?: string
+}
+
+function getLifecycleUrlSecret(database: OverlayDatabase, vars: OverlayVars): ResolvedSecretKeyRef {
+  const configured = database.lifecycleUrlSecret ?? database.urlSecret
+  if (!configured) {
+    throw new Error(
+      'Database hook requires database.lifecycleUrlSecret (or legacy database.urlSecret).'
+    )
+  }
+  return {
+    name: resolveTemplate((configured as OverlaySecretKeyRef).name, vars),
+    key: configured.key,
+    sourceNamespace: configured.sourceNamespace
+  }
+}
+
+function resolveTemplate<T>(value: T | ((vars: OverlayVars) => T), vars: OverlayVars): T {
+  return typeof value === 'function' ? (value as (vars: OverlayVars) => T)(vars) : value
+}
+
+function renderDatabaseMetadataEnv(
+  database: OverlayDatabase,
+  vars: OverlayVars,
+  schema: string | undefined
+): Array<{ name: string; value: string }> {
+  const env: Array<{ name: string; value: string }> = []
+  const runtimeSecret = database.runtimeSecret
+  if (runtimeSecret?.mode === 'generated-per-overlay') {
+    env.push(
+      {
+        name: 'DATABASE_RUNTIME_SECRET_NAME',
+        value: resolveTemplate(runtimeSecret.name, vars)
+      },
+      { name: 'DATABASE_RUNTIME_SECRET_KEY', value: runtimeSecret.key }
+    )
+  }
+  if (database.runtimeRole) {
+    env.push({
+      name: 'DATABASE_RUNTIME_ROLE',
+      value: resolveTemplate(database.runtimeRole, vars)
+    })
+  }
+  if (schema) {
+    env.push({ name: 'DATABASE_SCHEMA', value: schema })
+  }
+  return dedupeEnv(env)
+}
+
+function renderRuntimeSecretEnv(
+  database: OverlayDatabase,
+  vars: OverlayVars
+): Array<{ name: string; valueFrom: { secretKeyRef: { name: string; key: string } } }> {
+  const runtimeSecret = database.runtimeSecret
+  if (runtimeSecret?.mode !== 'generated-per-overlay') return []
+  const secretName = resolveTemplate(runtimeSecret.name, vars)
+  return [
+    {
+      name: 'DATABASE_RUNTIME_URL',
+      valueFrom: {
+        secretKeyRef: {
+          name: secretName,
+          key: runtimeSecret.key
+        }
+      }
+    },
+    {
+      name: 'DATABASE_RUNTIME_PASSWORD',
+      valueFrom: {
+        secretKeyRef: {
+          name: secretName,
+          key: 'DATABASE_PASSWORD'
+        }
+      }
+    }
+  ]
+}
+
+function dedupeEnv(
+  env: Array<{ name: string; value: string }>
+): Array<{ name: string; value: string }> {
+  const seen = new Set<string>()
+  return env.filter((item) => {
+    if (seen.has(item.name)) return false
+    seen.add(item.name)
+    return true
+  })
 }

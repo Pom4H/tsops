@@ -1,14 +1,16 @@
-export type { DockerfileBuildDefaults, TsOpsConfigWithRuntime } from '@tsops/core/config'
-export { defineConfig, defineDockerfileBuild } from '@tsops/core/config'
 export type {
   CustomJobConfig,
   DependencyEdge,
   DependencyError,
   DependencyGraph,
   NormalizedPort,
+  OverlayAccessStrategy,
   OverlayCertStrategy,
   OverlayDatabase,
   OverlayNamespaceDefinition,
+  OverlayNamespacePolicy,
+  OverlaySecretKeyRef,
+  OverlayTemplate,
   OverlayVars,
   PlanEntry,
   PlanResult,
@@ -23,10 +25,12 @@ export {
   isOverlayNamespace,
   normalizePort,
   normalizePorts,
-  pickPort,
   Planner,
+  pickPort,
   scanBuildEnv,
   scanRuntimeEnv,
   topoSort,
   validateDependencies
 } from '@tsops/core'
+export type { DockerfileBuildDefaults, TsOpsConfigWithRuntime } from '@tsops/core/config'
+export { defineConfig, defineDockerfileBuild } from '@tsops/core/config'

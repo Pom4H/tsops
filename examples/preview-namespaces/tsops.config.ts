@@ -28,12 +28,45 @@ const config = defineConfig({
       naming: ({ pr }) => `pr-${pr}`,
       domain: ({ pr }) => `pr-${pr}.stage.example.com`,
       fallback: 'ru-stage',
-      // Reuse the wildcard cert from the base namespace. tsops will copy
-      // the named TLS Secret from `ru-stage` into `pr-<N>` at deploy time
-      // so the IngressRoute can reference it like any local Secret.
+      // Reuse the staging wildcard cert. The source lives outside the base
+      // app namespace, so sourceNamespace is explicit and tsops copies the
+      // secret into each preview namespace before public routes are applied.
       cert: {
         mode: 'wildcard-shared',
-        secretName: 'stage-wildcard-tls'
+        secretName: 'stage-worken-ru-wildcard-tls',
+        sourceNamespace: 'kube-system',
+        copyToOverlayNamespace: true
+      },
+      access: {
+        mode: 'traefik-basic-auth',
+        sourceNamespace: 'kube-system',
+        secretName: 'preview-basic-auth',
+        middlewareName: ({ pr }) => `preview-basic-auth-pr-${pr}`,
+        attachTo: 'all-public-routes',
+        failClosed: true
+      },
+      namespacePolicy: {
+        resourceQuota: {
+          pods: 25,
+          secrets: 50,
+          jobs: 20,
+          requestsCpu: '4',
+          requestsMemory: '8Gi',
+          limitsCpu: '8',
+          limitsMemory: '16Gi',
+          persistentVolumeClaims: 0
+        },
+        limitRange: {
+          defaultRequestCpu: '100m',
+          defaultRequestMemory: '256Mi',
+          defaultLimitCpu: '500m',
+          defaultLimitMemory: '1Gi'
+        }
+      },
+      validateVars: ({ integrations }) => {
+        if (integrations === 'real') {
+          throw new Error('real integrations are not enabled for V1 preview overlays')
+        }
       },
       // To issue a fresh cert per overlay instead, point `cert` at any Job
       // that produces a TLS Secret in the overlay namespace. The example
@@ -50,18 +83,34 @@ const config = defineConfig({
       //   }
       // },
       database: {
-        urlSecret: { name: 'stage', key: 'DATABASE_URL' },
+        lifecycleUrlSecret: {
+          name: 'stage-db-lifecycle',
+          key: 'DATABASE_URL',
+          sourceNamespace: 'kube-system'
+        },
+        runtimeSecret: {
+          mode: 'generated-per-overlay',
+          name: ({ pr }) => `pr-${pr}-db-app`,
+          key: 'DATABASE_URL'
+        },
+        runtimeRole: ({ pr }) => `worken_pr_${pr}_app`,
         schema: ({ pr }) => `pr_${pr}`,
-        preDeploy: 'create-schema',
+        preDeploy: {
+          mode: 'job',
+          name: ({ pr }) => `preview-db-prepare-pr-${pr}`,
+          image: `ghcr.io/example/preview-db-prepare:${process.env.GITHUB_SHA ?? 'local'}`,
+          timeoutSeconds: 600,
+          env: ({ seed }) => ({
+            PREVIEW_SEED_MODE: seed ?? 'demo'
+          }),
+          logs: 'tail-on-failure'
+        },
         postDestroy: 'drop-schema',
-        appEnvOverride: (_vars, baseUrl, schema) => ({
-          // When DATABASE_URL is a plain string we rewrite it to scope the
-          // connection to the per-overlay schema. When the app binds it via
-          // SecretRef/ConfigMapRef instead, baseUrl is undefined and tsops
-          // drops the DATABASE_URL key automatically — DATABASE_SCHEMA still
-          // applies, so app code can read it and SET search_path itself.
-          ...(baseUrl ? { DATABASE_URL: `${baseUrl}?schema=${schema}` } : {}),
-          DATABASE_SCHEMA: schema
+        appEnvOverride: (_vars, _baseUrl, schema) => ({
+          // `runtimeSecret` injects DATABASE_URL from a generated per-preview
+          // secret. Keep schema selection explicit for app/runtime adapters.
+          DATABASE_SCHEMA: schema,
+          WORKEN_INTEGRATIONS_MODE: 'mock'
         })
       }
     }

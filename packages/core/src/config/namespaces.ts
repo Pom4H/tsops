@@ -132,6 +132,7 @@ export function createNamespaceResolver<
         `Overlay namespace "${target}" produced "${name}", which is not a valid DNS-1123 label.`
       )
     }
+    overlay.validateVars?.(vars)
     const base = overlay.extends
     const baseDef = config.namespaces[base as keyof TConfig['namespaces']]
     if (!baseDef) {
@@ -209,7 +210,10 @@ export function createNamespaceResolver<
         domain: _d,
         fallback: _f,
         cert: _c,
+        access: _a,
+        namespacePolicy: _np,
         database: _db,
+        validateVars: _vv,
         ...rest
       } = overlay as Record<string, unknown> & OverlayNamespaceDefinition
       const overlayVars = (options.vars ?? {}) as OverlayVars
@@ -452,7 +456,6 @@ function selectPortForRuntime(
       return selected.localPort ?? selected.containerPort
     case 'docker':
       return selected.containerPort
-    case 'kubernetes':
     default:
       return selected.servicePort
   }

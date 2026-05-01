@@ -174,6 +174,43 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
             : undefined
         }
 
+        if (
+          !useFallback &&
+          resolvedNs.overlay &&
+          resolvedNs.definition?.access &&
+          resolvedNs.vars
+        ) {
+          const access = resolvedNs.definition.access
+          if (access.mode === 'traefik-basic-auth' && entry.network?.ingress) {
+            const middlewareName = resolveTemplate(access.middlewareName, resolvedNs.vars)
+            entry.network.ingress.annotations = {
+              ...(entry.network.ingress.annotations ?? {}),
+              'traefik.ingress.kubernetes.io/router.middlewares': `${namespace}-${middlewareName}@kubernetescrd`
+            }
+          }
+        }
+
+        if (
+          !useFallback &&
+          resolvedNs.overlay &&
+          resolvedNs.definition?.database &&
+          resolvedNs.vars
+        ) {
+          const database = resolvedNs.definition.database
+          const schema = database.schema(resolvedNs.vars)
+          if (database.runtimeSecret?.mode === 'generated-per-overlay') {
+            entry.env.DATABASE_URL = {
+              __type: 'SecretRef',
+              secretName: resolveTemplate(database.runtimeSecret.name, resolvedNs.vars),
+              key: database.runtimeSecret.key
+            }
+          }
+          entry.env.DATABASE_SCHEMA = schema
+          if (database.runtimeRole) {
+            entry.env.DATABASE_RUNTIME_ROLE = resolveTemplate(database.runtimeRole, resolvedNs.vars)
+          }
+        }
+
         // Apply overlay-level env override (e.g. expose DATABASE_SCHEMA so
         // apps can pick up the per-overlay schema). We always invoke the
         // callback when the app actually deploys here, so non-DATABASE_URL
@@ -187,7 +224,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           resolvedNs.definition?.database?.appEnvOverride &&
           resolvedNs.vars
         ) {
-          const baseEnv = entry.env['DATABASE_URL']
+          const baseEnv = entry.env.DATABASE_URL
           const baseUrlIsTyped = baseEnv !== undefined && typeof baseEnv !== 'string'
           const baseUrlString = typeof baseEnv === 'string' ? baseEnv : undefined
           const overrides = resolvedNs.definition.database.appEnvOverride(
@@ -245,7 +282,13 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         const order = fullOrder.filter((n) => selectedSet.has(n))
         const entriesByApp = new Map(entries.slice(namespaceStart).map((e) => [e.app, e]))
         for (let i = 0; i < order.length; i++) {
-          entries[namespaceStart + i] = entriesByApp.get(order[i])!
+          const orderedEntry = entriesByApp.get(order[i])
+          if (!orderedEntry) {
+            throw new Error(
+              `Could not reorder missing app "${order[i]}" in namespace "${namespace}"`
+            )
+          }
+          entries[namespaceStart + i] = orderedEntry
         }
         dependencies[namespace] = {
           graph: buildGraph(fullNsApps),
@@ -262,4 +305,8 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       dependencies: hasAnyDeps ? dependencies : undefined
     }
   }
+}
+
+function resolveTemplate<T>(value: T | ((vars: OverlayVars) => T), vars: OverlayVars): T {
+  return typeof value === 'function' ? (value as (vars: OverlayVars) => T)(vars) : value
 }

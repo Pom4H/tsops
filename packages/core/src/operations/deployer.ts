@@ -1,14 +1,14 @@
 import type { ManifestBuilder } from '@tsops/k8'
-import {
-  buildConfigMap,
-  buildExternalNameService,
-  buildNamespace,
-  buildSecret
-} from '@tsops/k8'
+import { buildConfigMap, buildExternalNameService, buildNamespace, buildSecret } from '@tsops/k8'
 import type { ConfigResolver } from '../config/resolver.js'
 import type { Logger } from '../logger.js'
 import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
-import type { OverlayVars, TsOpsConfig } from '../types.js'
+import type {
+  OverlayAccessStrategy,
+  OverlayNamespacePolicy,
+  OverlayVars,
+  TsOpsConfig
+} from '../types.js'
 import { runCertbotHook } from './cert-hook.js'
 import { runDatabasePostDestroy, runDatabasePreDeploy } from './db-hook.js'
 import type { Planner } from './planner.js'
@@ -85,7 +85,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
             namespace: entry.namespace
           })
           applied.push(ref)
-        } catch (error) {
+        } catch {
           // Namespace might already exist, that's okay
         }
 
@@ -100,6 +100,18 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
             !overlayHooksRun.has(entry.namespace)
           ) {
             overlayHooksRun.add(entry.namespace)
+            if (resolved.definition?.namespacePolicy) {
+              const policyManifests = renderNamespacePolicy(
+                resolved.name,
+                resolved.definition.namespacePolicy
+              )
+              if (policyManifests.length > 0) {
+                const refs = await this.kubectl.applyBatch(policyManifests, {
+                  namespace: resolved.name
+                })
+                applied.push(...refs)
+              }
+            }
             if (!options.skipCert && resolved.definition?.cert) {
               const certResult = await runCertbotHook({
                 namespace: resolved.name,
@@ -112,6 +124,16 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
                 await this.kubectl.waitForJob(certResult.jobName, resolved.name)
               }
             }
+            if (resolved.definition?.access) {
+              const refs = await runAccessHook({
+                namespace: resolved.name,
+                vars: resolved.vars ?? options.vars,
+                access: resolved.definition.access,
+                kubectl: this.kubectl,
+                logger: this.logger
+              })
+              applied.push(...refs)
+            }
             if (!options.skipDatabase && resolved.definition?.database) {
               const dbResult = await runDatabasePreDeploy({
                 namespace: resolved.name,
@@ -122,7 +144,9 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
                 logger: this.logger
               })
               if (dbResult?.jobName) {
-                await this.kubectl.waitForJob(dbResult.jobName, resolved.name)
+                await this.kubectl.waitForJob(dbResult.jobName, resolved.name, {
+                  timeoutSeconds: dbResult.timeoutSeconds
+                })
               }
             }
           }
@@ -581,7 +605,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
         { manifest: appManifests.certificate, kind: 'Certificate' }
       ]
 
-      for (const { manifest, kind } of manifestList) {
+      for (const { manifest } of manifestList) {
         if (!manifest) continue
 
         const change = await this.analyzeManifest(
@@ -728,4 +752,132 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
 
     return change
   }
+}
+
+function renderNamespacePolicy(
+  namespace: string,
+  policy: OverlayNamespacePolicy
+): SupportedManifest[] {
+  const manifests: SupportedManifest[] = []
+  if (policy.resourceQuota) {
+    const hard: Record<string, string> = {}
+    if (policy.resourceQuota.pods !== undefined) hard.pods = String(policy.resourceQuota.pods)
+    if (policy.resourceQuota.secrets !== undefined)
+      hard.secrets = String(policy.resourceQuota.secrets)
+    if (policy.resourceQuota.jobs !== undefined)
+      hard['count/jobs.batch'] = String(policy.resourceQuota.jobs)
+    if (policy.resourceQuota.requestsCpu) hard['requests.cpu'] = policy.resourceQuota.requestsCpu
+    if (policy.resourceQuota.requestsMemory)
+      hard['requests.memory'] = policy.resourceQuota.requestsMemory
+    if (policy.resourceQuota.limitsCpu) hard['limits.cpu'] = policy.resourceQuota.limitsCpu
+    if (policy.resourceQuota.limitsMemory) hard['limits.memory'] = policy.resourceQuota.limitsMemory
+    if (policy.resourceQuota.persistentVolumeClaims !== undefined) {
+      hard.persistentvolumeclaims = String(policy.resourceQuota.persistentVolumeClaims)
+    }
+    manifests.push({
+      apiVersion: 'v1',
+      kind: 'ResourceQuota',
+      metadata: {
+        name: 'tsops-preview-quota',
+        namespace,
+        labels: { 'tsops/managed': 'true', 'tsops/hook': 'namespace-policy' }
+      },
+      spec: { hard }
+    } as unknown as SupportedManifest)
+  }
+
+  if (policy.limitRange) {
+    const defaults: Record<string, string> = {}
+    const defaultRequests: Record<string, string> = {}
+    if (policy.limitRange.defaultLimitCpu) defaults.cpu = policy.limitRange.defaultLimitCpu
+    if (policy.limitRange.defaultLimitMemory) defaults.memory = policy.limitRange.defaultLimitMemory
+    if (policy.limitRange.defaultRequestCpu)
+      defaultRequests.cpu = policy.limitRange.defaultRequestCpu
+    if (policy.limitRange.defaultRequestMemory)
+      defaultRequests.memory = policy.limitRange.defaultRequestMemory
+    manifests.push({
+      apiVersion: 'v1',
+      kind: 'LimitRange',
+      metadata: {
+        name: 'tsops-preview-limits',
+        namespace,
+        labels: { 'tsops/managed': 'true', 'tsops/hook': 'namespace-policy' }
+      },
+      spec: {
+        limits: [
+          {
+            type: 'Container',
+            ...(Object.keys(defaults).length > 0 ? { default: defaults } : {}),
+            ...(Object.keys(defaultRequests).length > 0 ? { defaultRequest: defaultRequests } : {})
+          }
+        ]
+      }
+    } as unknown as SupportedManifest)
+  }
+
+  return manifests
+}
+
+async function runAccessHook(input: {
+  namespace: string
+  vars: OverlayVars
+  access: OverlayAccessStrategy
+  kubectl: KubectlClient
+  logger: Logger
+}): Promise<string[]> {
+  const { namespace, vars, access, kubectl, logger } = input
+  if (access.mode !== 'traefik-basic-auth') return []
+  const middlewareName = resolveTemplate(access.middlewareName, vars)
+  const source = await kubectl.get('Secret', access.secretName, access.sourceNamespace)
+  if (!source) {
+    const message = `Access hook: BasicAuth secret "${access.secretName}" not found in source namespace "${access.sourceNamespace}".`
+    if (access.failClosed !== false) throw new Error(message)
+    logger.warn(message)
+    return []
+  }
+  const sourceData = (source as unknown as { data?: Record<string, string> }).data ?? {}
+  if (!('users' in sourceData) && !('usersFile' in sourceData)) {
+    throw new Error(
+      `Access hook: BasicAuth secret "${access.secretName}" in namespace "${access.sourceNamespace}" must contain "users" or "usersFile".`
+    )
+  }
+  const secretCopy = {
+    apiVersion: 'v1',
+    kind: 'Secret',
+    type: (source as unknown as { type?: string }).type ?? 'Opaque',
+    metadata: {
+      name: access.secretName,
+      namespace,
+      labels: {
+        'tsops/managed': 'true',
+        'tsops/copied-from': access.sourceNamespace,
+        'tsops/hook': 'access'
+      }
+    },
+    data: sourceData
+  } as unknown as SupportedManifest
+  const middleware = {
+    apiVersion: 'traefik.io/v1alpha1',
+    kind: 'Middleware',
+    metadata: {
+      name: middlewareName,
+      namespace,
+      labels: { 'tsops/managed': 'true', 'tsops/hook': 'access' }
+    },
+    spec: {
+      basicAuth: {
+        secret: access.secretName
+      }
+    }
+  } as unknown as SupportedManifest
+  logger.info('Applying preview access middleware', {
+    namespace,
+    secretName: access.secretName,
+    middlewareName
+  })
+  return kubectl.applyBatch([secretCopy, middleware], { namespace })
+}
+
+function resolveTemplate<T>(value: T | ((vars: OverlayVars) => T), vars: OverlayVars): T {
+  return typeof value === 'function' ? (value as (vars: OverlayVars) => T)(vars) : value
 }

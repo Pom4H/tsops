@@ -52,15 +52,19 @@ export async function runCertbotHook(
   const { namespace, baseNamespace, cert, kubectl, logger } = options
 
   if (cert.mode === 'wildcard-shared') {
+    if (cert.copyToOverlayNamespace === false) {
+      return undefined
+    }
+    const sourceNamespace = cert.sourceNamespace ?? baseNamespace
     logger.info('Copying shared TLS secret into overlay', {
-      from: baseNamespace,
+      from: sourceNamespace,
       to: namespace,
       secretName: cert.secretName
     })
-    const source = await kubectl.get('Secret', cert.secretName, baseNamespace)
+    const source = await kubectl.get('Secret', cert.secretName, sourceNamespace)
     if (!source) {
       throw new Error(
-        `Cert hook (wildcard-shared): TLS secret "${cert.secretName}" not found in base namespace "${baseNamespace}".`
+        `Cert hook (wildcard-shared): TLS secret "${cert.secretName}" not found in source namespace "${sourceNamespace}".`
       )
     }
     const copy = stripServerFields(source, namespace)
