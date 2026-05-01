@@ -6,8 +6,10 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ```bash
-pnpm add tsops
+pnpm add tsops    # or: bun add tsops / npm install tsops
 ```
+
+> Runs on Node.js 20+/22 LTS or Bun 1.1+.
 
 ## What makes tsops different
 

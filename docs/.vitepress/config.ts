@@ -33,7 +33,7 @@ export default defineConfig({
         text: `v${cliPkg.version}`, 
         items: [
           { text: 'Changelog', link: 'https://github.com/Pom4H/tsops/blob/main/CHANGELOG.md' },
-          { text: 'Contributing', link: '/guide/contributing' }
+          { text: 'Contributing', link: 'https://github.com/Pom4H/tsops/blob/main/CONTRIBUTING.md' }
         ]
       }
     ],
@@ -51,20 +51,14 @@ export default defineConfig({
         {
           text: 'Core Concepts',
           items: [
-            { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Context Helpers', link: '/guide/context-helpers' },
             { text: 'Secrets & ConfigMaps', link: '/guide/secrets' },
-            { text: 'Networking', link: '/guide/networking' },
-            { text: 'Building Images', link: '/guide/building' },
           ]
         },
         {
           text: 'Advanced',
           items: [
-            { text: 'Secret Validation', link: '/guide/secret-validation' },
-            { text: 'Multi-Environment', link: '/guide/multi-environment' },
-            { text: 'Monorepo Setup', link: '/guide/monorepo' },
-            { text: 'CI/CD Integration', link: '/guide/cicd' },
+            { text: 'Preview Overlays', link: '/guide/preview-overlays' },
           ]
         }
       ],
@@ -84,9 +78,6 @@ export default defineConfig({
           text: 'API Reference',
           items: [
             { text: 'Overview', link: '/api/' },
-            { text: 'defineConfig', link: '/api/define-config' },
-            { text: 'Context Helpers', link: '/api/context-helpers' },
-            { text: 'CLI Commands', link: '/api/cli' },
           ]
         }
       ]

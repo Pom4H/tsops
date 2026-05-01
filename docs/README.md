@@ -65,6 +65,6 @@ See `.github/workflows/deploy-docs.yml` for details.
 
 ## Links
 
-- Live docs: https://yourusername.github.io/tsops/
+- Live docs: https://pom4h.github.io/tsops/
 - VitePress docs: https://vitepress.dev/
 

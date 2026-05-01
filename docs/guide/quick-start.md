@@ -4,9 +4,21 @@ Deploy your first containerized app in 5 minutes.
 
 ## 1. Install
 
-```bash
+::: code-group
+
+```bash [pnpm]
 pnpm add tsops
 ```
+
+```bash [bun]
+bun add tsops
+```
+
+```bash [npm]
+npm install tsops
+```
+
+:::
 
 ## 2. Create Config
 
@@ -34,7 +46,7 @@ export default defineConfig({
   },
   
   images: {
-    registry: 'ghcr.io/yourorg',
+    registry: 'ghcr.io/example',
     tagStrategy: 'git-sha'
   },
   

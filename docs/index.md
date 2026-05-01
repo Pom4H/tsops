@@ -24,23 +24,25 @@ hero:
 
 :::: code-group
 
-```bash [npm]
-npm install tsops
-```
-
 ```bash [pnpm]
 pnpm add tsops
-```
-
-```bash [yarn]
-yarn add tsops
 ```
 
 ```bash [bun]
 bun add tsops
 ```
 
+```bash [npm]
+npm install tsops
+```
+
+```bash [yarn]
+yarn add tsops
+```
+
 ::::
+
+> Works on Node.js 20+/22 LTS and Bun 1.1+ — pick whichever your project already uses.
 
 ## The differentiator
 
@@ -86,7 +88,7 @@ export default defineConfig({
   },
 
   images: {
-    registry: 'ghcr.io/yourorg',
+    registry: 'ghcr.io/example',
     tagStrategy: 'git-sha'
   },
 

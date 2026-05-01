@@ -4,21 +4,25 @@ Get up and running with tsops in minutes.
 
 ## Prerequisites
 
-- Node.js 18+ or 20+
+- Node.js 20+ or 22 LTS, **or** Bun 1.1+
 - Docker (for building images)
 - kubectl configured with cluster access
-- TypeScript knowledge
+- TypeScript 5.x
 
 ## Installation
 
 ::: code-group
 
-```bash [npm]
-npm install tsops
-```
-
 ```bash [pnpm]
 pnpm add tsops
+```
+
+```bash [bun]
+bun add tsops
+```
+
+```bash [npm]
+npm install tsops
 ```
 
 ```bash [yarn]
@@ -26,6 +30,9 @@ yarn add tsops
 ```
 
 :::
+
+> tsops itself is runtime-agnostic — the CLI runs on either Node.js or Bun.
+> Pick whichever your project already uses.
 
 ## Create Configuration
 
@@ -59,7 +66,7 @@ export default defineConfig({
   },
   
   images: {
-    registry: 'ghcr.io/yourorg',
+    registry: 'ghcr.io/example',
     tagStrategy: 'git-sha'
   },
   
@@ -140,7 +147,7 @@ Sample output:
 📦 Application Resources
 
    api @ production (api.example.com)
-   Image: ghcr.io/yourorg/api:abc123
+   Image: ghcr.io/example/api:abc123
 
       ➕ Will create:
          • Deployment/my-app-api
