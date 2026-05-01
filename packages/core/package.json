@@ -2,6 +2,7 @@
   "name": "@tsops/core",
   "version": "1.9.0",
   "description": "Core library for tsops - TypeScript toolkit for Kubernetes",
+  "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
