@@ -32,20 +32,83 @@ export type TagStrategy =
 export type NamespaceRuntime = 'kubernetes' | 'docker' | 'local'
 
 /**
- * Namespace definition - can contain any custom variables.
- * All namespaces in config must have the same shape (consistent structure).
+ * Static namespace definition — declares a long-lived namespace and any
+ * custom variables apps need (region, replicas, base domain, ...).
+ *
+ * Static namespaces are siblings of `OverlayNamespaceDefinition` in the
+ * `NamespaceDefinition` union. Apps see the same shape from both: helpers
+ * (`dns`, `url`, ...) plus whatever you put in this object. For overlays the
+ * extra fields are inherited from the base static namespace and then merged
+ * with the runtime `--vars` at deploy time.
+ *
+ * Within a single config, all *static* namespaces should share the same key
+ * shape so app code can safely destructure the context. Overlays
+ * intentionally diverge (they add `extends` / `naming` / `domain` / ...).
  *
  * @property runtime - Runtime environment for this namespace. Defaults to
  *                     `kubernetes`. `local: true` is a shorthand for
  *                     `runtime: 'local'` kept for backward compatibility.
  */
-export type NamespaceDefinition = {
+export type StaticNamespaceDefinition = {
   /**
    * @deprecated Use `runtime: 'local'` instead. Kept for backward compatibility.
    */
   local?: boolean
   runtime?: NamespaceRuntime
 } & Record<string, unknown>
+
+/**
+ * Runtime variables passed to overlay namespaces via `tsops up --var key=value`.
+ * Always a flat string→string map by the time templates see them.
+ */
+export type OverlayVars = Record<string, string>
+
+/**
+ * Overlay namespace — a namespace template that inherits from a base static
+ * namespace and is materialised at runtime from `--var` values supplied to
+ * `tsops up`. Used for ephemeral PR preview environments.
+ *
+ * Subsequent layers add optional TLS and database lifecycle fields; this
+ * foundation only defines naming / domain / fallback so the resolver can
+ * materialise overlays into concrete namespaces.
+ */
+export type OverlayNamespaceDefinition<
+  TBase extends string = string,
+  TVars extends OverlayVars = OverlayVars
+> = {
+  /** Base namespace this overlay inherits metadata from. */
+  extends: TBase
+  /** Namespace name template. Must produce a DNS-1123 label. */
+  naming: (vars: TVars) => string
+  /** External domain template for the overlay. */
+  domain: (vars: TVars) => string
+  /** Namespace ExternalName Services point at when an app isn't in --include. */
+  fallback: TBase
+  runtime?: NamespaceRuntime
+} & Record<string, unknown>
+
+/**
+ * Namespace definition — either a fully-resolved static namespace or a runtime
+ * overlay template. Most existing configs only use the static form.
+ */
+export type NamespaceDefinition = StaticNamespaceDefinition | OverlayNamespaceDefinition
+
+/**
+ * Type guard: true when the namespace is an overlay template that needs
+ * runtime `--vars` to materialise.
+ */
+export function isOverlayNamespace(
+  ns: NamespaceDefinition | undefined
+): ns is OverlayNamespaceDefinition {
+  return Boolean(
+    ns &&
+      typeof ns === 'object' &&
+      typeof (ns as { extends?: unknown }).extends === 'string' &&
+      typeof (ns as { naming?: unknown }).naming === 'function' &&
+      typeof (ns as { domain?: unknown }).domain === 'function' &&
+      typeof (ns as { fallback?: unknown }).fallback === 'string'
+  )
+}
 
 /**
  * Reserved context keys that cannot be used as namespace variables.
@@ -897,11 +960,34 @@ export type ConfigMapsMap<
 }
 
 /**
- * Extract the shape of namespace variables (all namespaces must have consistent shape).
- * Returns the type of the first namespace's value.
+ * Compile-time discriminator for overlay templates. We can't use the
+ * runtime `isOverlayNamespace` here, so we pattern-match on the overlay's
+ * structural fields. Anything that has both `extends: string` and a
+ * `naming: (...) => any` is an overlay template.
  */
-export type ExtractNamespaceVars<TNamespaces extends Record<string, NamespaceDefinition>> = 
-  TNamespaces[keyof TNamespaces]
+type IsOverlayDefinition<T> = T extends {
+  extends: string
+  naming: (...args: never[]) => unknown
+}
+  ? true
+  : false
+
+/**
+ * Shape of variables apps see in their config-time context.
+ *
+ * Overlay templates are excluded: their fields (`extends`, `naming`,
+ * `domain: (vars) => string`, ...) are template metadata, not user-visible
+ * vars. App code reads the *resolved* overlay context, which is the base
+ * static namespace's vars + the runtime `--vars` — i.e. the same shape as
+ * the static namespace it extends. Including overlays in the union would
+ * regress `domain: string` to `domain: string | ((vars) => string)` for
+ * any config that adds an overlay.
+ */
+export type ExtractNamespaceVars<TNamespaces extends Record<string, NamespaceDefinition>> = {
+  [K in keyof TNamespaces]: IsOverlayDefinition<TNamespaces[K]> extends true
+    ? never
+    : TNamespaces[K]
+}[keyof TNamespaces]
 
 /**
  * Extract namespace variables type from TsOpsConfig

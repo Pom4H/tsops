@@ -1,17 +1,17 @@
 import type { ConfigResolver } from '../config/resolver.js'
 import {
   buildGraph,
+  type DependencyGraph,
   topoSort,
-  validateDependencies,
-  type DependencyGraph
+  validateDependencies
 } from '../dependencies/graph.js'
 import { normalizePorts } from '../network/ports.js'
-import type { DockerfileBuild, ServicePort, TsOpsConfig } from '../types.js'
+import type { DockerfileBuild, OverlayVars, ServicePort, TsOpsConfig } from '../types.js'
 import {
   enforceMode,
+  type SensitiveEnvFinding,
   scanBuildEnv,
-  scanRuntimeEnv,
-  type SensitiveEnvFinding
+  scanRuntimeEnv
 } from '../validation/sensitive-env.js'
 import type { PlanEntry, PlanResult } from './types.js'
 
@@ -55,13 +55,18 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
   /**
    * Creates a deployment plan based on the configuration and filters.
    *
-   * @param options - Filtering options
-   * @param options.namespace - Target a single namespace (optional)
-   * @param options.app - Target a single app (optional)
-   * @returns Deployment plan with resolved entries
+   * @param options.vars Runtime variables used to materialise overlay
+   *   namespaces (`tsops up <ns> --var key=value`). Required when targeting
+   *   an overlay; ignored for static namespaces.
    */
-  async plan(options: { namespace?: string; app?: string } = {}): Promise<PlanResult> {
-    const namespaces = this.resolver.namespaces.select(options.namespace)
+  async plan(
+    options: {
+      namespace?: string
+      app?: string
+      vars?: OverlayVars
+    } = {}
+  ): Promise<PlanResult> {
+    const namespaces = this.resolver.namespaces.select(options.namespace, options.vars)
     const apps = this.resolver.apps.select(options.app)
     const allAppsForDeps = this.resolver.apps.select()
     const knownAppNames = new Set(allAppsForDeps.map(([name]) => name))
@@ -73,25 +78,30 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
     const dependencies: Record<string, { graph: DependencyGraph; order: string[] }> = {}
     let hasAnyDeps = false
 
-    for (const namespace of namespaces) {
+    for (const namespaceKey of namespaces) {
+      const resolvedNs = this.resolver.namespaces.resolve(namespaceKey, options.vars)
+      const namespace = resolvedNs.name
+      // For `app.deploy` filters and dependency tracking, overlays should
+      // behave as if they were their base — users write `deploy: ['ru-stage']`,
+      // not the runtime overlay name (e.g. `pr-123`).
+      const filterNs = resolvedNs.base ?? namespaceKey
       const namespaceStart = entries.length
       const namespaceApps: Array<{ name: string; needs: readonly string[] }> = []
 
-      // Dependency validation must reason about the full set of apps that
-      // deploy to this namespace — not just the subset selected by
-      // `options.app`. Otherwise `plan({ app: 'api' })` would misreport a
-      // valid dependency on a sibling app as `not-deployed-here`.
       const fullNsApps = allAppsForDeps
-        .filter(([, a]) => this.resolver.apps.shouldDeploy(a, namespace))
+        .filter(([, a]) => this.resolver.apps.shouldDeploy(a, filterNs))
         .map(([name, a]) => ({
           name,
           needs: ((a.needs as readonly string[] | undefined) ?? []) as readonly string[]
         }))
 
       for (const [appName, app] of apps) {
-        if (!this.resolver.apps.shouldDeploy(app, namespace)) continue
+        if (!this.resolver.apps.shouldDeploy(app, filterNs)) continue
 
-        const context = this.resolver.namespaces.createHostContext(namespace, { appName })
+        const context = this.resolver.namespaces.createHostContext(namespaceKey, {
+          appName,
+          vars: options.vars
+        })
         const resolvedEnv = this.resolver.apps.resolveEnv(app, namespace, context)
         const secrets = this.resolver.apps.resolveSecrets(app, namespace, context)
         const configMaps = this.resolver.apps.resolveConfigMaps(app, namespace, context)
@@ -99,10 +109,13 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         const image = app.image || this.resolver.images.buildRef(appName)
         const { network, host } = this.resolver.apps.resolveNetwork(appName, app, context)
 
-        // Resolve dynamic parameters (can be static values or functions)
-        const resolveParam = <T>(param: T | ((ctx: typeof context) => T) | undefined): T | undefined => {
+        const resolveParam = <T>(
+          param: T | ((ctx: typeof context) => T) | undefined
+        ): T | undefined => {
           if (param === undefined) return undefined
-          return typeof param === 'function' ? (param as (ctx: typeof context) => T)(context) : param
+          return typeof param === 'function'
+            ? (param as (ctx: typeof context) => T)(context)
+            : param
         }
 
         const resolvePorts = (
@@ -136,11 +149,21 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           secrets,
           configMaps,
           network,
-          podAnnotations: resolveParam(app.podAnnotations as Parameters<typeof resolveParam>[0]) as Record<string, string> | undefined,
-          volumes: resolveParam(app.volumes as Parameters<typeof resolveParam>[0]) as PlanEntry['volumes'],
-          volumeMounts: resolveParam(app.volumeMounts as Parameters<typeof resolveParam>[0]) as PlanEntry['volumeMounts'],
-          args: resolveParam(app.args as Parameters<typeof resolveParam>[0]) as string[] | undefined,
-          ports: resolvePorts(app.ports as ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined)
+          podAnnotations: resolveParam(app.podAnnotations as Parameters<typeof resolveParam>[0]) as
+            | Record<string, string>
+            | undefined,
+          volumes: resolveParam(
+            app.volumes as Parameters<typeof resolveParam>[0]
+          ) as PlanEntry['volumes'],
+          volumeMounts: resolveParam(
+            app.volumeMounts as Parameters<typeof resolveParam>[0]
+          ) as PlanEntry['volumeMounts'],
+          args: resolveParam(app.args as Parameters<typeof resolveParam>[0]) as
+            | string[]
+            | undefined,
+          ports: resolvePorts(
+            app.ports as ServicePort[] | ((ctx: typeof context) => ServicePort[]) | undefined
+          )
         }
         entries.push(entry)
 
@@ -150,11 +173,7 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
           if (!scannedBuilds.has(appName)) {
             scannedBuilds.add(appName)
             findings.push(
-              ...scanBuildEnv(
-                appName,
-                app.build as DockerfileBuild | undefined,
-                sensitiveEnvConfig
-              )
+              ...scanBuildEnv(appName, app.build as DockerfileBuild | undefined, sensitiveEnvConfig)
             )
           }
         }
@@ -165,27 +184,16 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       const deployedInNs = new Set(fullNsApps.map((a) => a.name))
       const hasNsDeps = fullNsApps.some((a) => a.needs.length > 0)
       if (hasNsDeps) {
-        const errors = validateDependencies(
-          fullNsApps,
-          knownAppNames,
-          deployedInNs,
-          namespace
-        )
+        const errors = validateDependencies(fullNsApps, knownAppNames, deployedInNs, namespace)
         if (errors.length > 0) {
           const summary = errors.map((e) => `  - ${e.message}`).join('\n')
-          throw new Error(
-            `Invalid app dependencies in namespace "${namespace}":\n${summary}`
-          )
+          throw new Error(`Invalid app dependencies in namespace "${namespace}":\n${summary}`)
         }
 
-        // Topo-sort the full graph, then reorder only the entries that made
-        // it into this plan, preserving their relative dependency order.
         const fullOrder = topoSort(fullNsApps)
         const selectedSet = new Set(namespaceApps.map((a) => a.name))
         const order = fullOrder.filter((n) => selectedSet.has(n))
-        const entriesByApp = new Map(
-          entries.slice(namespaceStart).map((e) => [e.app, e])
-        )
+        const entriesByApp = new Map(entries.slice(namespaceStart).map((e) => [e.app, e]))
         for (let i = 0; i < order.length; i++) {
           entries[namespaceStart + i] = entriesByApp.get(order[i])!
         }
