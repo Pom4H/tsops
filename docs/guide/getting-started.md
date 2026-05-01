@@ -99,6 +99,23 @@ Add to your `package.json`:
 }
 ```
 
+## Use the config from your app
+
+The same `tsops.config.ts` is consumed by your application code at runtime. This is the differentiator — not just typed manifests, but a typed operational model your app actually imports.
+
+```ts
+// apps/api/src/index.ts
+import config from '../../tsops.config'
+
+// Service-to-service URL, namespace-aware
+const dbUrl = config.url('postgres', 'service')
+
+// Resolved env value for this app
+const nodeEnv = config.env('api', 'NODE_ENV')
+```
+
+`TSOPS_NAMESPACE` selects the active namespace at runtime. Same code runs in `prod`, in a `pr-857` preview namespace, and locally.
+
 ## Deploy Your App
 
 ### Step 1: Plan
@@ -220,6 +237,6 @@ pnpm add -D typescript
 ## Getting Help
 
 - 📖 [Documentation](/guide/what-is-tsops)
-- 💬 [GitHub Discussions](https://github.com/yourusername/tsops/discussions)
-- 🐛 [Report Bug](https://github.com/yourusername/tsops/issues)
-- 💡 [Feature Request](https://github.com/yourusername/tsops/issues/new?template=feature_request.md)
+- 💬 [GitHub Discussions](https://github.com/Pom4H/tsops/discussions)
+- 🐛 [Report Bug](https://github.com/Pom4H/tsops/issues)
+- 💡 [Feature Request](https://github.com/Pom4H/tsops/issues/new)

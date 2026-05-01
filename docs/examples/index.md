@@ -275,15 +275,19 @@ export default defineConfig({
 - [Monitoring](/examples/monitoring) - Observability stack
 - [Monorepo](/examples/monorepo) - Multi-app repo
 
-## Example Repository
+## Runnable examples
 
-All examples are available in the [tsops-examples](https://github.com/yourusername/tsops-examples) repository.
+All examples live in the main repo under [`examples/`](https://github.com/Pom4H/tsops/tree/main/examples):
+
+- `examples/fullstack` — frontend + backend in Docker Desktop
+- `examples/monorepo` — multi-package project
+- `examples/otel` — OpenTelemetry collector
+- `examples/preview-namespaces` — PR preview overlays
 
 ```bash
-git clone https://github.com/yourusername/tsops-examples
-cd tsops-examples/simple-app
-pnpm install
-pnpm tsops plan
+git clone https://github.com/Pom4H/tsops
+cd tsops && pnpm install
+pnpm --filter @example/fullstack tsops plan
 ```
 
 
