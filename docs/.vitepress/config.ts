@@ -65,6 +65,13 @@ export default defineConfig({
             { text: 'Multi-Environment', link: '/guide/multi-environment' },
             { text: 'Monorepo Setup', link: '/guide/monorepo' },
             { text: 'CI/CD Integration', link: '/guide/cicd' },
+            { text: 'Preview Overlays', link: '/guide/preview-overlays' },
+          ]
+        },
+        {
+          text: 'Platforms',
+          items: [
+            { text: 'Vercel (skeleton)', link: '/guide/vercel' },
           ]
         }
       ],

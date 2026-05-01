@@ -16,6 +16,7 @@
     { "path": "packages/k8" },
     { "path": "packages/core" },
     { "path": "packages/node" },
+    { "path": "packages/vercel" },
     { "path": "packages/cli" }
   ]
 }
