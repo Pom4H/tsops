@@ -173,6 +173,48 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
             ? { namespace: resolvedNs.fallback ?? resolvedNs.base ?? filterNs }
             : undefined
         }
+
+        // Apply overlay-level env override (e.g. expose DATABASE_SCHEMA so
+        // apps can pick up the per-overlay schema). We always invoke the
+        // callback when the app actually deploys here, so non-DATABASE_URL
+        // overrides apply even when DATABASE_URL is a typed binding. The
+        // returned DATABASE_URL is dropped if it's empty (avoids silently
+        // overwriting a real value with `''`) or if the existing binding
+        // is a SecretRef/ConfigMapRef (avoids blanking a typed env).
+        if (
+          !useFallback &&
+          resolvedNs.overlay &&
+          resolvedNs.definition?.database?.appEnvOverride &&
+          resolvedNs.vars
+        ) {
+          const baseEnv = entry.env['DATABASE_URL']
+          const baseUrlIsTyped = baseEnv !== undefined && typeof baseEnv !== 'string'
+          const baseUrlString = typeof baseEnv === 'string' ? baseEnv : undefined
+          const overrides = resolvedNs.definition.database.appEnvOverride(
+            resolvedNs.vars,
+            baseUrlString,
+            resolvedNs.definition.database.schema(resolvedNs.vars)
+          )
+          for (const [k, v] of Object.entries(overrides)) {
+            if (k === 'DATABASE_URL') {
+              if (baseUrlIsTyped) {
+                console.warn(
+                  `[tsops] appEnvOverride for app "${appName}": dropping DATABASE_URL — ` +
+                    `the base value is a typed env reference (Secret/ConfigMap). ` +
+                    `Other returned keys still apply.`
+                )
+                continue
+              }
+              if (v === '' || v === undefined) {
+                console.warn(
+                  `[tsops] appEnvOverride for app "${appName}": dropping empty DATABASE_URL.`
+                )
+                continue
+              }
+            }
+            entry.env[k] = v
+          }
+        }
         entries.push(entry)
 
         if (sensitiveEnvConfig) {

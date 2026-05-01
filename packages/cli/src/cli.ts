@@ -379,6 +379,8 @@ async function main(): Promise<void> {
     )
     .option('--apps-from-changes', 'auto-detect apps from `git diff <base-ref>`')
     .option('--base-ref <ref>', 'git ref to diff against (default: origin/main)', 'origin/main')
+    .option('--skip-cert', 'skip the per-namespace certificate hook')
+    .option('--skip-database', 'skip the schema-per-overlay database hook')
     .option('-c, --config <path>', 'path to config file', 'tsops.config')
     .option('--dry-run', 'skip external commands, log actions only')
     .action(async (namespace: string, options) => {
@@ -432,7 +434,13 @@ async function main(): Promise<void> {
         console.log(`   include: ${include.join(', ')}`)
       }
 
-      const result = await tsops.deploy({ namespace, vars, include })
+      const result = await tsops.deploy({
+        namespace,
+        vars,
+        include,
+        skipCert: options.skipCert,
+        skipDatabase: options.skipDatabase
+      })
 
       console.log('\n✅ Deployed:')
       for (const entry of result.entries) {
@@ -446,9 +454,10 @@ async function main(): Promise<void> {
 
   program
     .command('down')
-    .description('Tear down an overlay namespace')
+    .description('Tear down an overlay namespace (runs postDestroy hooks first)')
     .argument('<namespace>', 'overlay namespace key from the config')
     .option('--var <key=value>', 'runtime variable for the overlay (repeatable)', collectVar, {})
+    .option('--keep-database', 'skip the postDestroy database hook (preserves schema)')
     .option('-c, --config <path>', 'path to config file', 'tsops.config')
     .option('--dry-run', 'skip external commands, log actions only')
     .action(async (namespace: string, options) => {
@@ -462,7 +471,11 @@ async function main(): Promise<void> {
       const vars = options.var as Record<string, string>
 
       console.log(`🗑️  Tearing down "${namespace}"`)
-      const result = await tsops.down({ namespace, vars })
+      const result = await tsops.down({
+        namespace,
+        vars,
+        keepDatabase: options.keepDatabase
+      })
 
       if (result.deleted.length === 0) {
         console.log('   nothing was deleted')

@@ -9,6 +9,8 @@ import type { ConfigResolver } from '../config/resolver.js'
 import type { Logger } from '../logger.js'
 import type { KubectlClient, SupportedManifest } from '../ports/kubectl.js'
 import type { OverlayVars, TsOpsConfig } from '../types.js'
+import { runCertbotHook } from './cert-hook.js'
+import { runDatabasePostDestroy, runDatabasePreDeploy } from './db-hook.js'
 import type { Planner } from './planner.js'
 import type {
   AppResourceChanges,
@@ -59,11 +61,14 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
       app?: string
       vars?: OverlayVars
       include?: readonly string[]
+      skipCert?: boolean
+      skipDatabase?: boolean
     } = {}
   ): Promise<DeployResult> {
     const plan = await this.planner.plan(options)
     const entries: DeployResult['entries'] = []
     const createdNamespaces = new Set<string>()
+    const overlayHooksRun = new Set<string>()
 
     for (const entry of plan.entries) {
       const applied: string[] = []
@@ -85,6 +90,43 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
         }
 
         createdNamespaces.add(entry.namespace)
+
+        // 1a. Run overlay-only pre-deploy hooks once per resolved namespace.
+        if (options.namespace && options.vars) {
+          const resolved = this.resolver.namespaces.resolve(options.namespace, options.vars)
+          if (
+            resolved.overlay &&
+            resolved.name === entry.namespace &&
+            !overlayHooksRun.has(entry.namespace)
+          ) {
+            overlayHooksRun.add(entry.namespace)
+            if (!options.skipCert && resolved.definition?.cert) {
+              const certResult = await runCertbotHook({
+                namespace: resolved.name,
+                baseNamespace: resolved.base ?? entry.namespace,
+                cert: resolved.definition.cert,
+                kubectl: this.kubectl,
+                logger: this.logger
+              })
+              if (certResult?.jobName) {
+                await this.kubectl.waitForJob(certResult.jobName, resolved.name)
+              }
+            }
+            if (!options.skipDatabase && resolved.definition?.database) {
+              const dbResult = await runDatabasePreDeploy({
+                namespace: resolved.name,
+                baseNamespace: resolved.base ?? entry.namespace,
+                vars: options.vars,
+                database: resolved.definition.database,
+                kubectl: this.kubectl,
+                logger: this.logger
+              })
+              if (dbResult?.jobName) {
+                await this.kubectl.waitForJob(dbResult.jobName, resolved.name)
+              }
+            }
+          }
+        }
       }
 
       // 1b. Apps not in --include become ExternalName proxies into fallback.
@@ -258,6 +300,8 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
   async down(options: {
     namespace: string
     vars?: OverlayVars
+    /** Skip the postDestroy DB hook so the schema is preserved. */
+    keepDatabase?: boolean
   }): Promise<{ deleted: string[] }> {
     const resolved = this.resolver.namespaces.resolve(options.namespace, options.vars)
 
@@ -270,6 +314,21 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
     }
 
     const deleted: string[] = []
+
+    if (!options.keepDatabase && resolved.definition?.database && resolved.vars) {
+      const dbResult = await runDatabasePostDestroy({
+        namespace: resolved.name,
+        baseNamespace: resolved.base ?? resolved.name,
+        vars: resolved.vars,
+        database: resolved.definition.database,
+        kubectl: this.kubectl,
+        logger: this.logger
+      })
+      // Wait synchronously: if we delete the namespace before the drop
+      // Job finishes, the Job is killed and the schema leaks behind.
+      await this.kubectl.waitForJob(dbResult.jobName, resolved.name)
+    }
+
     try {
       const ref = await this.kubectl.delete('Namespace', resolved.name, resolved.name)
       deleted.push(ref)
@@ -568,14 +627,11 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
   ): Promise<ManifestChange[]> {
     const orphaned: ManifestChange[] = []
 
-    // Collect all namespaces we should check
+    // Collect all namespaces we should check. Plan entries already carry
+    // the resolved namespace (e.g. `pr-123` for an overlay), so we don't
+    // re-derive it from `options.namespace` — that would be the template
+    // key (`preview`) and wouldn't match anything in the cluster.
     const namespacesToCheck = new Set(plan.entries.map((e) => e.namespace))
-
-    // If namespace filter is set, only check that namespace
-    if (options.namespace) {
-      namespacesToCheck.clear()
-      namespacesToCheck.add(options.namespace)
-    }
 
     // For each namespace, find orphaned app resources
     for (const namespace of namespacesToCheck) {

@@ -64,13 +64,96 @@ export type StaticNamespaceDefinition = {
 export type OverlayVars = Record<string, string>
 
 /**
+ * Custom job configuration for overlay lifecycle hooks (cert issuance,
+ * database migrations, ...). Kept generic so tsops doesn't vendor any
+ * particular tool (certbot, prisma, golang-migrate, ...).
+ */
+export interface CustomJobConfig {
+  image: string
+  command?: string[]
+  args?: string[]
+  env?: Record<string, string>
+  envFrom?: Array<{ secretName?: string; configMapName?: string }>
+}
+
+/**
+ * Per-namespace TLS strategy for overlays.
+ *
+ * - `wildcard-shared` copies an existing TLS Secret from the base namespace
+ *   into the overlay namespace at deploy time. Use this when the base
+ *   already has a wildcard cert that covers the overlay's subdomain (e.g.
+ *   `*.stage.example.com` covers `pr-123.stage.example.com`). Cheap and
+ *   provider-agnostic.
+ * - `job` delegates issuance to a user-supplied Job (typically certbot or a
+ *   cert-manager-driven flow). The Job is expected to write the resulting
+ *   TLS Secret into the overlay namespace; tsops only owns its lifecycle.
+ *   Keeps tsops out of the cert-issuer business.
+ */
+export type OverlayCertStrategy =
+  | {
+      mode: 'wildcard-shared'
+      /** Name of the TLS Secret in the base namespace to copy. */
+      secretName: string
+    }
+  | {
+      mode: 'job'
+      /**
+       * Job that issues / publishes the cert into the overlay namespace.
+       * Whatever the Job writes (typically a `kubernetes.io/tls` Secret) is
+       * the user's responsibility — tsops just runs it and waits.
+       */
+      job: CustomJobConfig
+      /**
+       * Optional explicit Job name. Defaults to `tsops-cert-<namespace>`,
+       * sanitised and hash-truncated when needed.
+       */
+      name?: string
+    }
+
+/**
+ * Schema-per-overlay PostgreSQL lifecycle.
+ *
+ * - `preDeploy` decides whether tsops just creates the schema or runs a
+ *   user-supplied migration job against it before bringing apps up.
+ * - `postDestroy` runs on `tsops down` and cleans up so the schema doesn't
+ *   leak between PR previews.
+ */
+export interface OverlayDatabase<TVars extends OverlayVars = OverlayVars> {
+  urlSecret: { name: string; key: string }
+  schema: (vars: TVars) => string
+  /**
+   * `'create-schema'` runs `CREATE SCHEMA IF NOT EXISTS <s>` and stops.
+   *
+   * For migrations, supply a `CustomJobConfig` pointing at your project's
+   * migrate image (`prisma migrate deploy`, `golang-migrate`, ...). tsops
+   * does not bundle a migration runner.
+   */
+  preDeploy: 'create-schema' | CustomJobConfig
+  postDestroy: 'drop-schema'
+  /**
+   * Extra env injected into all apps in this overlay. Useful to expose
+   * the overlay-specific schema name (e.g. `DATABASE_SCHEMA`).
+   *
+   * `baseUrl` is the app's existing `DATABASE_URL` when it's a plain string,
+   * or `undefined` when it's a SecretRef/ConfigMapRef. The callback always
+   * runs so non-`DATABASE_URL` keys (like `DATABASE_SCHEMA`) still apply
+   * for typed bindings; tsops drops any `DATABASE_URL` returned in that
+   * case so we don't silently overwrite the typed binding.
+   */
+  appEnvOverride?: (
+    vars: TVars,
+    baseUrl: string | undefined,
+    schema: string
+  ) => Record<string, string>
+}
+
+/**
  * Overlay namespace — a namespace template that inherits from a base static
  * namespace and is materialised at runtime from `--var` values supplied to
  * `tsops up`. Used for ephemeral PR preview environments.
  *
- * Subsequent layers add optional TLS and database lifecycle fields; this
- * foundation only defines naming / domain / fallback so the resolver can
- * materialise overlays into concrete namespaces.
+ * Optional `cert` and `database` fields opt into the overlay lifecycle
+ * hooks (TLS copy/issuance and per-overlay PostgreSQL schemas).
  */
 export type OverlayNamespaceDefinition<
   TBase extends string = string,
@@ -84,6 +167,10 @@ export type OverlayNamespaceDefinition<
   domain: (vars: TVars) => string
   /** Namespace ExternalName Services point at when an app isn't in --include. */
   fallback: TBase
+  /** TLS strategy. Defaults to inheriting the base namespace's ingress TLS. */
+  cert?: OverlayCertStrategy
+  /** Optional schema-per-overlay PostgreSQL lifecycle. */
+  database?: OverlayDatabase<TVars>
   runtime?: NamespaceRuntime
 } & Record<string, unknown>
 

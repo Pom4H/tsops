@@ -1,10 +1,13 @@
 export type { DockerfileBuildDefaults, TsOpsConfigWithRuntime } from '@tsops/core/config'
 export { defineConfig, defineDockerfileBuild } from '@tsops/core/config'
 export type {
+  CustomJobConfig,
   DependencyEdge,
   DependencyError,
   DependencyGraph,
   NormalizedPort,
+  OverlayCertStrategy,
+  OverlayDatabase,
   OverlayNamespaceDefinition,
   OverlayVars,
   PlanEntry,

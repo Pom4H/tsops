@@ -236,20 +236,28 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
        * fallback namespace. Only meaningful when targeting an overlay.
        */
       include?: readonly string[]
+      /** Skip the per-namespace certificate hook (cert.* in config). */
+      skipCert?: boolean
+      /** Skip the schema-per-overlay database hook (database.* in config). */
+      skipDatabase?: boolean
     } = {}
   ) {
     return this.deployer.deploy(options)
   }
 
   /**
-   * Tear down an overlay namespace. Refuses to run on static namespaces —
-   * static namespace deletion should go through `kubectl` after a human
-   * reviews it, not through tsops automation.
+   * Tear down an overlay namespace. For overlays with a configured
+   * database, this also runs the `postDestroy` hook (typically dropping
+   * the per-overlay schema) so per-PR state doesn't accumulate.
+   *
+   * Refuses to run on static namespaces — static namespace deletion
+   * should go through `kubectl` after a human reviews it, not through
+   * tsops automation.
    *
    * @example
    * await tsops.down({ namespace: 'preview', vars: { pr: '123' } })
    */
-  down(options: { namespace: string; vars?: OverlayVars }) {
+  down(options: { namespace: string; vars?: OverlayVars; keepDatabase?: boolean }) {
     return this.deployer.down(options)
   }
 }
