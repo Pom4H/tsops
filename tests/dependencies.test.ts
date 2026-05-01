@@ -1,4 +1,3 @@
-import { describe, expect, it } from 'vitest'
 import {
   buildGraph,
   createConfigResolver,
@@ -7,6 +6,7 @@ import {
   topoSort,
   validateDependencies
 } from 'tsops'
+import { describe, expect, it } from 'vitest'
 
 describe('dependency graph primitives', () => {
   it('topoSort orders dependencies before dependents', () => {
@@ -54,12 +54,7 @@ describe('dependency graph primitives', () => {
       { name: 'a', needs: ['b'] },
       { name: 'b', needs: ['a'] }
     ]
-    const errors = validateDependencies(
-      apps,
-      new Set(['a', 'b']),
-      new Set(['a', 'b']),
-      'prod'
-    )
+    const errors = validateDependencies(apps, new Set(['a', 'b']), new Set(['a', 'b']), 'prod')
     const cycle = errors.find((e) => e.kind === 'cycle')
     expect(cycle).toBeDefined()
     expect(cycle!.path).toEqual(['a', 'b', 'a'])
@@ -137,7 +132,9 @@ describe('planner + needs', () => {
       { prod: {}, stage: {} }
     )
     const planner = new Planner({ resolver: createConfigResolver(cfg), config: cfg })
-    await expect(planner.plan({ namespace: 'prod' })).rejects.toThrow(/not deployed to namespace "prod"/)
+    await expect(planner.plan({ namespace: 'prod' })).rejects.toThrow(
+      /not deployed to namespace "prod"/
+    )
   })
 
   it('omits dependencies field when no app declares needs', async () => {

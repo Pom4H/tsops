@@ -38,7 +38,7 @@ overlay namespace before public routes are applied.
 ```ts
 cert: {
   mode: 'wildcard-shared',
-  secretName: 'stage-worken-ru-wildcard-tls',
+  secretName: 'staging-wildcard-tls',
   sourceNamespace: 'kube-system',
   copyToOverlayNamespace: true,
 }
@@ -108,7 +108,7 @@ reuses it so redeploys do not rotate the app password.
 ```ts
 database: {
   lifecycleUrlSecret: {
-    name: 'stage-db-lifecycle',
+    name: 'staging-db-lifecycle',
     key: 'DATABASE_URL',
     sourceNamespace: 'kube-system',
   },

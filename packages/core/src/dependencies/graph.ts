@@ -139,9 +139,7 @@ export function validateDependencies(
  * Throws if the input graph contains a cycle — call {@link validateDependencies}
  * first to surface a friendlier error.
  */
-export function topoSort(
-  apps: Array<{ name: string; needs: readonly string[] }>
-): string[] {
+export function topoSort(apps: Array<{ name: string; needs: readonly string[] }>): string[] {
   const appNames = new Set(apps.map((a) => a.name))
   const indeg = new Map<string, number>()
   const adj = new Map<string, string[]>()

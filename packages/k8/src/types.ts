@@ -140,17 +140,17 @@ export interface ManifestBuilderContext {
 }
 
 export type {
-  PodSpec,
+  CertificateIssuerRef,
+  CertificateSpec,
   Container,
   EnvVar,
-  ServicePort,
-  IngressRule,
   HTTPIngressPath,
-  IngressTLS,
   IngressRouteMiddlewareRef,
   IngressRouteService,
   IngressRouteTLS,
-  CertificateSpec,
-  CertificateIssuerRef,
-  ObjectMeta
+  IngressRule,
+  IngressTLS,
+  ObjectMeta,
+  PodSpec,
+  ServicePort
 }

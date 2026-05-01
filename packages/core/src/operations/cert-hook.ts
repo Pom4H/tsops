@@ -38,7 +38,7 @@ function toK8sName(input: string): string {
  *   and apply an identical Secret into the overlay namespace. This is the
  *   cheap, provider-agnostic path for the common case where the base
  *   namespace already holds a wildcard cert that covers the overlay
- *   subdomain (e.g. `*.stage.example.com` → `pr-123.stage.example.com`).
+ *   subdomain (e.g. `*.staging.example.com` → `pr-123.staging.example.com`).
  *   Returns no Job to wait on.
  *
  * - `job`: apply a user-supplied Job and return its name so the caller can

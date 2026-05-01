@@ -82,7 +82,11 @@ export class Kubectl implements KubectlClient {
       return refs.map((ref) => `${ref} (dry-run)`)
     }
 
-    const serialized = `${manifests.map((manifest) => JSON.stringify(manifest)).join('\n---\n')}\n`
+    const serialized = `${JSON.stringify({
+      apiVersion: 'v1',
+      kind: 'List',
+      items: manifests
+    })}\n`
 
     await this.runner.run('kubectl', ['apply', '-f', '-'], {
       inheritStdio: false,
@@ -403,12 +407,12 @@ export class Kubectl implements KubectlClient {
 }
 
 export type {
-  NamespaceManifest,
-  SecretManifest,
+  CertificateManifest,
   ConfigMapManifest,
   DeploymentManifest,
-  ServiceManifest,
   IngressManifest,
   IngressRouteManifest,
-  CertificateManifest
+  NamespaceManifest,
+  SecretManifest,
+  ServiceManifest
 }

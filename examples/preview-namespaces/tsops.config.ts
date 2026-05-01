@@ -3,14 +3,14 @@ import { defineConfig } from 'tsops'
 /**
  * Example: PR preview namespaces (RFC 0001).
  *
- * Static `ru-stage` is the long-lived staging cluster. The `preview` overlay
+ * Static `staging` is the long-lived staging cluster. The `preview` overlay
  * is materialised at deploy time per pull request via:
  *
  *   tsops up preview --var pr=123 --var branch=feature-x \
  *     --include worken-front
  *
  * Apps not in `--include` (e.g. `api`) become Service: ExternalName entries
- * pointing at the same Service in `ru-stage`, so the preview env stays
+ * pointing at the same Service in `staging`, so the preview env stays
  * fully routable while only the changed app is freshly deployed.
  *
  * `tsops down preview --var pr=123` runs the postDestroy schema cleanup and
@@ -19,21 +19,21 @@ import { defineConfig } from 'tsops'
 const config = defineConfig({
   project: 'preview-demo',
   namespaces: {
-    'ru-stage': {
-      domain: 'stage.example.com',
+    'staging': {
+      domain: 'staging.example.com',
       region: 'ru'
     },
     preview: {
-      extends: 'ru-stage',
+      extends: 'staging',
       naming: ({ pr }) => `pr-${pr}`,
-      domain: ({ pr }) => `pr-${pr}.stage.example.com`,
-      fallback: 'ru-stage',
+      domain: ({ pr }) => `pr-${pr}.staging.example.com`,
+      fallback: 'staging',
       // Reuse the staging wildcard cert. The source lives outside the base
       // app namespace, so sourceNamespace is explicit and tsops copies the
       // secret into each preview namespace before public routes are applied.
       cert: {
         mode: 'wildcard-shared',
-        secretName: 'stage-worken-ru-wildcard-tls',
+        secretName: 'staging-wildcard-tls',
         sourceNamespace: 'kube-system',
         copyToOverlayNamespace: true
       },
@@ -84,7 +84,7 @@ const config = defineConfig({
       // },
       database: {
         lifecycleUrlSecret: {
-          name: 'stage-db-lifecycle',
+          name: 'staging-db-lifecycle',
           key: 'DATABASE_URL',
           sourceNamespace: 'kube-system'
         },
@@ -116,10 +116,10 @@ const config = defineConfig({
     }
   },
   clusters: {
-    stage: {
-      apiServer: 'https://stage.example.com:6443',
-      context: 'stage',
-      namespaces: ['ru-stage', 'preview']
+    staging: {
+      apiServer: 'https://staging.example.com:6443',
+      context: 'staging',
+      namespaces: ['staging', 'preview']
     }
   },
   images: {

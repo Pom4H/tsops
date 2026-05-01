@@ -44,9 +44,5 @@ export interface KubectlClient {
    *
    * Throws on failure or timeout. Returns silently on `Complete`.
    */
-  waitForJob(
-    name: string,
-    namespace: string,
-    options?: { timeoutSeconds?: number }
-  ): Promise<void>
+  waitForJob(name: string, namespace: string, options?: { timeoutSeconds?: number }): Promise<void>
 }

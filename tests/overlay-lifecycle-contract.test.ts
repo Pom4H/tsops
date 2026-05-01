@@ -138,14 +138,14 @@ function makePreviewConfig(previewOverrides: Record<string, unknown> = {}) {
   return defineConfig({
     project: 'worken-preview',
     namespaces: {
-      'ru-stage': {
+      staging: {
         domain: 'stage.worken.ru'
       },
       preview: {
-        extends: 'ru-stage' as const,
+        extends: 'staging' as const,
         naming: ({ pr }: { pr: string }) => `pr-${pr}`,
         domain: ({ pr }: { pr: string }) => `pr-${pr}.stage.worken.ru`,
-        fallback: 'ru-stage' as const,
+        fallback: 'staging' as const,
         ...previewOverrides
       }
     },
@@ -153,7 +153,7 @@ function makePreviewConfig(previewOverrides: Record<string, unknown> = {}) {
       stage: {
         apiServer: 'https://stage:6443',
         context: 'stage',
-        namespaces: ['ru-stage', 'preview'] as const
+        namespaces: ['staging', 'preview'] as const
       }
     },
     images: {
@@ -181,7 +181,7 @@ describe('overlay lifecycle preview contract', () => {
     const kubectl = new FakeKubectl()
     kubectl.seed(
       secret(
-        'stage-worken-ru-wildcard-tls',
+        'staging-wildcard-tls',
         'kube-system',
         { 'tls.crt': 'crt', 'tls.key': 'key' },
         'kubernetes.io/tls'
@@ -191,7 +191,7 @@ describe('overlay lifecycle preview contract', () => {
     const config = makePreviewConfig({
       cert: {
         mode: 'wildcard-shared',
-        secretName: 'stage-worken-ru-wildcard-tls',
+        secretName: 'staging-wildcard-tls',
         sourceNamespace: 'kube-system',
         copyToOverlayNamespace: true
       }
@@ -200,16 +200,16 @@ describe('overlay lifecycle preview contract', () => {
 
     expect(kubectl.getCalls).toContainEqual({
       kind: 'Secret',
-      name: 'stage-worken-ru-wildcard-tls',
+      name: 'staging-wildcard-tls',
       namespace: 'kube-system'
     })
-    const copied = applied(kubectl, 'Secret', 'stage-worken-ru-wildcard-tls')[0] as any
+    const copied = applied(kubectl, 'Secret', 'staging-wildcard-tls')[0] as any
     expect(copied.metadata.namespace).toBe('pr-857')
     expect(copied.type).toBe('kubernetes.io/tls')
 
     const copyIndex = kubectl.applied.findIndex(
       ({ manifest }) =>
-        manifest.kind === 'Secret' && manifest.metadata?.name === 'stage-worken-ru-wildcard-tls'
+        manifest.kind === 'Secret' && manifest.metadata?.name === 'staging-wildcard-tls'
     )
     const routeIndex = kubectl.applied.findIndex(({ manifest }) => manifest.kind === 'Ingress')
     expect(copyIndex).toBeGreaterThan(-1)
@@ -286,7 +286,7 @@ describe('overlay lifecycle preview contract', () => {
     const config = makePreviewConfig({
       database: {
         lifecycleUrlSecret: {
-          name: 'stage-db-lifecycle',
+          name: 'staging-db-lifecycle',
           key: 'DATABASE_URL',
           sourceNamespace: 'kube-system'
         },
@@ -320,7 +320,7 @@ describe('overlay lifecycle preview contract', () => {
   it('creates generated per-preview runtime database secret before database hooks and app rollout', async () => {
     const kubectl = new FakeKubectl()
     kubectl.seed(
-      secret('stage-db-lifecycle', 'kube-system', {
+      secret('staging-db-lifecycle', 'kube-system', {
         DATABASE_URL:
           'postgresql://stage_admin:adminpass@postgres.stage:5432/worken?sslmode=require'
       })
@@ -329,7 +329,7 @@ describe('overlay lifecycle preview contract', () => {
     const config = makePreviewConfig({
       database: {
         lifecycleUrlSecret: {
-          name: 'stage-db-lifecycle',
+          name: 'staging-db-lifecycle',
           key: 'DATABASE_URL',
           sourceNamespace: 'kube-system'
         },
@@ -399,12 +399,14 @@ describe('overlay lifecycle preview contract', () => {
 
   it('runs named job-mode database hooks with vars, generated runtime metadata, and timeout', async () => {
     const kubectl = new FakeKubectl()
-    kubectl.seed(secret('stage-db-lifecycle', 'kube-system', { DATABASE_URL: 'postgres://stage' }))
+    kubectl.seed(
+      secret('staging-db-lifecycle', 'kube-system', { DATABASE_URL: 'postgres://stage' })
+    )
 
     const config = makePreviewConfig({
       database: {
         lifecycleUrlSecret: {
-          name: 'stage-db-lifecycle',
+          name: 'staging-db-lifecycle',
           key: 'DATABASE_URL',
           sourceNamespace: 'kube-system'
         },
@@ -434,7 +436,7 @@ describe('overlay lifecycle preview contract', () => {
       vars: { pr: '857', seed: 'demo' }
     })
 
-    const copied = applied(kubectl, 'Secret', 'stage-db-lifecycle')[0] as any
+    const copied = applied(kubectl, 'Secret', 'staging-db-lifecycle')[0] as any
     expect(copied.metadata.namespace).toBe('pr-857')
     const job = applied(kubectl, 'Job', 'preview-db-prepare-pr-857')[0] as any
     const env = Object.fromEntries(
@@ -448,7 +450,7 @@ describe('overlay lifecycle preview contract', () => {
     expect(env.DATABASE_RUNTIME_SECRET_NAME).toBe('pr-857-db-app')
     expect(env.PREVIEW_SEED_MODE).toBe('demo')
     expect(env.DATABASE_URL.secretKeyRef).toEqual({
-      name: 'stage-db-lifecycle',
+      name: 'staging-db-lifecycle',
       key: 'DATABASE_URL'
     })
     expect(kubectl.waited).toContainEqual({

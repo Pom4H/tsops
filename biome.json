@@ -42,7 +42,7 @@
         "noParameterAssign": "off"
       },
       "suspicious": {
-        "noExplicitAny": "off"
+        "noExplicitAny": "error"
       }
     }
   },
@@ -53,5 +53,38 @@
       "semicolons": "asNeeded",
       "arrowParentheses": "always"
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["tests/**/*.ts"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "packages/core/src/types.ts",
+        "packages/core/src/tsops.ts",
+        "packages/core/src/runtime-config.ts",
+        "packages/core/src/config/**/*.ts",
+        "packages/core/src/operations/**/*.ts",
+        "packages/node/src/index.ts",
+        "packages/cli/src/cli.ts",
+        "packages/k8/src/builders/deployment.ts",
+        "packages/k8/src/utils.ts",
+        "packages/k8/src/scripts/generate-k8s-types.ts"
+      ],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "warn"
+          }
+        }
+      }
+    }
+  ]
 }
