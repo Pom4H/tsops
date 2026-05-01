@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import { defineDockerfileBuild } from 'tsops'
+import { describe, expect, it } from 'vitest'
 
 describe('defineDockerfileBuild', () => {
   it('produces a full DockerfileBuild for a given path', () => {

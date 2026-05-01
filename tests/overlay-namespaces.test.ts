@@ -4,19 +4,19 @@ import { describe, expect, it } from 'vitest'
 const baseConfig = {
   project: 'demo',
   namespaces: {
-    'ru-stage': { domain: 'stage.example.com', secretName: 'stage' },
+    staging: { domain: 'staging.example.com', secretName: 'stage' },
     preview: {
-      extends: 'ru-stage' as const,
+      extends: 'staging' as const,
       naming: ({ pr }: { pr: string }) => `pr-${pr}`,
-      domain: ({ pr }: { pr: string }) => `pr-${pr}.stage.example.com`,
-      fallback: 'ru-stage' as const
+      domain: ({ pr }: { pr: string }) => `pr-${pr}.staging.example.com`,
+      fallback: 'staging' as const
     }
   },
   clusters: {
     stage: {
       apiServer: 'https://stage:6443',
       context: 'stage',
-      namespaces: ['ru-stage', 'preview'] as const
+      namespaces: ['staging', 'preview'] as const
     }
   },
   images: { registry: 'ghcr.io/acme', tagStrategy: 'git-tag' as const }
@@ -45,14 +45,14 @@ function makeCfg() {
 describe('overlay namespaces (resolver)', () => {
   it('isOverlayNamespace identifies overlays vs static namespaces', () => {
     const cfg = makeCfg()
-    expect(isOverlayNamespace(cfg.namespaces['ru-stage'] as any)).toBe(false)
+    expect(isOverlayNamespace(cfg.namespaces['staging'] as any)).toBe(false)
     expect(isOverlayNamespace(cfg.namespaces.preview as any)).toBe(true)
   })
 
   it('select() omits overlays from the default deploy', () => {
     const cfg = makeCfg()
     const resolver = createConfigResolver(cfg)
-    expect(resolver.namespaces.select()).toEqual(['ru-stage'])
+    expect(resolver.namespaces.select()).toEqual(['staging'])
   })
 
   it('resolve() materialises overlay name and domain from runtime vars', () => {
@@ -61,9 +61,9 @@ describe('overlay namespaces (resolver)', () => {
     const r = resolver.namespaces.resolve('preview', { pr: '123' })
     expect(r.overlay).toBe(true)
     expect(r.name).toBe('pr-123')
-    expect(r.domain).toBe('pr-123.stage.example.com')
-    expect(r.base).toBe('ru-stage')
-    expect(r.fallback).toBe('ru-stage')
+    expect(r.domain).toBe('pr-123.staging.example.com')
+    expect(r.base).toBe('staging')
+    expect(r.fallback).toBe('staging')
   })
 
   it('resolve() throws when overlay vars are missing', () => {
@@ -78,10 +78,10 @@ describe('overlay namespaces (resolver)', () => {
       namespaces: {
         ...baseConfig.namespaces,
         bad: {
-          extends: 'ru-stage' as const,
+          extends: 'staging' as const,
           naming: () => 'NOT_VALID',
           domain: () => 'x.example.com',
-          fallback: 'ru-stage' as const
+          fallback: 'staging' as const
         }
       },
       apps: { api: { ports: [{ name: 'http', port: 80, targetPort: 3000 }] } }
@@ -98,8 +98,8 @@ describe('overlay namespaces (resolver)', () => {
         nested: {
           extends: 'preview' as const,
           naming: ({ pr }: { pr: string }) => `nested-${pr}`,
-          domain: ({ pr }: { pr: string }) => `nested-${pr}.stage.example.com`,
-          fallback: 'ru-stage' as const
+          domain: ({ pr }: { pr: string }) => `nested-${pr}.staging.example.com`,
+          fallback: 'staging' as const
         }
       },
       apps: { api: { ports: [{ name: 'http', port: 80, targetPort: 3000 }] } }
@@ -116,7 +116,7 @@ describe('overlay namespaces (resolver)', () => {
       namespaces: {
         ...baseConfig.namespaces,
         bad: {
-          extends: 'ru-stage' as const,
+          extends: 'staging' as const,
           naming: ({ pr }: { pr: string }) => `bad-${pr}`,
           domain: () => 'x.example.com',
           fallback: 'preview' as const
@@ -136,7 +136,7 @@ describe('overlay namespaces (resolver)', () => {
       namespaces: {
         ...baseConfig.namespaces,
         bad: {
-          extends: 'ru-stage' as const,
+          extends: 'staging' as const,
           naming: ({ pr }: { pr: string }) => `bad-${pr}`,
           domain: () => 'x.example.com',
           fallback: 'does-not-exist' as const
@@ -161,7 +161,7 @@ describe('overlay namespaces (resolver)', () => {
     }
     const apiEntry = plan.entries.find((e) => e.app === 'api')!
     expect(apiEntry.env.NS).toBe('pr-42')
-    expect(apiEntry.env.DOMAIN).toBe('pr-42.stage.example.com')
+    expect(apiEntry.env.DOMAIN).toBe('pr-42.staging.example.com')
   })
 
   it('createHostContext spreads overlay vars into the app context', () => {
@@ -173,7 +173,7 @@ describe('overlay namespaces (resolver)', () => {
     expect(ctx.namespace).toBe('pr-99')
     expect(ctx.pr).toBe('99')
     expect(ctx.branch).toBe('feature-x')
-    expect(ctx.domain).toBe('pr-99.stage.example.com')
+    expect(ctx.domain).toBe('pr-99.staging.example.com')
   })
 
   it('plan() with --include marks excluded apps as fallback stubs', async () => {
@@ -188,7 +188,7 @@ describe('overlay namespaces (resolver)', () => {
     const apiEntry = plan.entries.find((e) => e.app === 'api')!
     const webEntry = plan.entries.find((e) => e.app === 'web')!
     expect(apiEntry.fallback).toBeUndefined()
-    expect(webEntry.fallback).toEqual({ namespace: 'ru-stage' })
+    expect(webEntry.fallback).toEqual({ namespace: 'staging' })
   })
 
   it('createHostContext does not let --vars override reserved keys', () => {
@@ -207,19 +207,19 @@ describe('overlay namespaces (resolver)', () => {
     const ctx = resolver.namespaces.createHostContext('preview', {
       vars: { pr: '8', domain: 'evil.example.com' }
     }) as { domain: string }
-    expect(ctx.domain).toBe('pr-8.stage.example.com')
+    expect(ctx.domain).toBe('pr-8.staging.example.com')
   })
 
   it('appEnvOverride applies non-DATABASE_URL keys even when DATABASE_URL is a typed binding', async () => {
     const cfg = defineConfig({
       ...baseConfig,
       namespaces: {
-        'ru-stage': { domain: 'stage.example.com' },
+        staging: { domain: 'staging.example.com' },
         preview: {
-          extends: 'ru-stage' as const,
+          extends: 'staging' as const,
           naming: ({ pr }: { pr: string }) => `pr-${pr}`,
-          domain: ({ pr }: { pr: string }) => `pr-${pr}.stage.example.com`,
-          fallback: 'ru-stage' as const,
+          domain: ({ pr }: { pr: string }) => `pr-${pr}.staging.example.com`,
+          fallback: 'staging' as const,
           database: {
             urlSecret: { name: 'stage', key: 'DATABASE_URL' },
             schema: ({ pr }: { pr: string }) => `pr_${pr}`,
@@ -262,12 +262,12 @@ describe('overlay namespaces (resolver)', () => {
     const cfg = defineConfig({
       ...baseConfig,
       namespaces: {
-        'ru-stage': { domain: 'stage.example.com' },
+        staging: { domain: 'staging.example.com' },
         preview: {
-          extends: 'ru-stage' as const,
+          extends: 'staging' as const,
           naming: ({ pr }: { pr: string }) => `pr-${pr}`,
-          domain: ({ pr }: { pr: string }) => `pr-${pr}.stage.example.com`,
-          fallback: 'ru-stage' as const,
+          domain: ({ pr }: { pr: string }) => `pr-${pr}.staging.example.com`,
+          fallback: 'staging' as const,
           database: {
             urlSecret: { name: 'stage', key: 'DATABASE_URL' },
             schema: ({ pr }: { pr: string }) => `pr_${pr}`,
@@ -306,11 +306,11 @@ describe('overlay namespaces (resolver)', () => {
       namespaces: {
         ...baseConfig.namespaces,
         bad: {
-          extends: 'ru-stage' as const,
+          extends: 'staging' as const,
           naming: ({ pr }: { pr: string }) => `bad-${pr}`,
           // intentionally returns non-string
           domain: () => 42 as unknown as string,
-          fallback: 'ru-stage' as const
+          fallback: 'staging' as const
         }
       },
       apps: { api: { ports: [{ name: 'http', port: 80, targetPort: 3000 }] } }

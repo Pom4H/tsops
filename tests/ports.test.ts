@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
 import { normalizePort, normalizePorts, pickPort } from 'tsops'
+import { describe, expect, it } from 'vitest'
 
 describe('normalizePort', () => {
   it('splits servicePort and targetPort', () => {

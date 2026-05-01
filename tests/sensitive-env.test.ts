@@ -1,11 +1,5 @@
+import { createConfigResolver, defineConfig, Planner, scanBuildEnv, scanRuntimeEnv } from 'tsops'
 import { describe, expect, it } from 'vitest'
-import {
-  createConfigResolver,
-  defineConfig,
-  Planner,
-  scanBuildEnv,
-  scanRuntimeEnv
-} from 'tsops'
 
 describe('sensitive-env scanning', () => {
   it('flags plain-string build env with suspicious keys', () => {

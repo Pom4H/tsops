@@ -1,5 +1,5 @@
-import type { AppIngressOptions } from '../types.js'
 import type { ResolvedIngressConfig } from '@tsops/k8'
+import type { AppIngressOptions } from '../types.js'
 
 /**
  * Creates auto HTTP/HTTPS configuration.
@@ -76,4 +76,3 @@ function normalizeIngress(host: string, options?: AppIngressOptions): ResolvedIn
     tls: options?.tls ? options.tls.map((item) => ({ ...item })) : undefined
   }
 }
-

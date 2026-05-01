@@ -39,9 +39,7 @@ export function createRuntimeHelpers<
     )
   }
   const resolver = createConfigResolver(config)
-  const namespaceVars = config.namespaces[
-    namespace
-  ] as ExtractNamespaceVarsFromConfig<TConfig>
+  const namespaceVars = config.namespaces[namespace] as ExtractNamespaceVarsFromConfig<TConfig>
   const runtime = resolveRuntime(namespaceVars)
 
   type AppName = Extract<keyof TConfig['apps'], string>
@@ -159,9 +157,8 @@ export function createRuntimeHelpers<
     const protocol = options.protocol ?? 'http'
     const selected = pickPort(getPorts(app), options.port)
     const portNumber = selectPortForRuntime(selected, runtime)
-    const portStr = portNumber !== undefined && !isDefaultPort(portNumber, protocol)
-      ? `:${portNumber}`
-      : ''
+    const portStr =
+      portNumber !== undefined && !isDefaultPort(portNumber, protocol) ? `:${portNumber}` : ''
     return `${protocol}://${hostname}${portStr}`
   }
 
@@ -180,7 +177,9 @@ export function createRuntimeHelpers<
   }
 }
 
-function resolveRuntime(namespaceVars: { runtime?: NamespaceRuntime; local?: boolean } | undefined): NamespaceRuntime {
+function resolveRuntime(
+  namespaceVars: { runtime?: NamespaceRuntime; local?: boolean } | undefined
+): NamespaceRuntime {
   if (namespaceVars?.runtime) return namespaceVars.runtime
   if (namespaceVars?.local === true) return 'local'
   return 'kubernetes'

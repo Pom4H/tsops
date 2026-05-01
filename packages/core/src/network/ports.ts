@@ -47,8 +47,7 @@ export function normalizePort(input: ServicePort): NormalizedPort {
     resolvedTarget = input.targetPort ?? input.port
   }
 
-  const containerPort =
-    typeof resolvedTarget === 'number' ? resolvedTarget : servicePort
+  const containerPort = typeof resolvedTarget === 'number' ? resolvedTarget : servicePort
 
   return {
     name: input.name,
@@ -70,10 +69,7 @@ export function normalizePorts(input?: ServicePort[] | null): NormalizedPort[] {
  * first entry (tsops convention for the "primary" port). With a string
  * selector, matches by name.
  */
-export function pickPort(
-  ports: NormalizedPort[],
-  selector?: string
-): NormalizedPort | undefined {
+export function pickPort(ports: NormalizedPort[], selector?: string): NormalizedPort | undefined {
   if (ports.length === 0) return undefined
   if (!selector) return ports[0]
   return ports.find((p) => p.name === selector)

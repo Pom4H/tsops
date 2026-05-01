@@ -407,12 +407,12 @@ export class Kubectl implements KubectlClient {
 }
 
 export type {
-  NamespaceManifest,
-  SecretManifest,
+  CertificateManifest,
   ConfigMapManifest,
   DeploymentManifest,
-  ServiceManifest,
   IngressManifest,
   IngressRouteManifest,
-  CertificateManifest
+  NamespaceManifest,
+  SecretManifest,
+  ServiceManifest
 }

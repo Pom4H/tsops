@@ -1,5 +1,5 @@
-import { describe, it, expect } from 'vitest'
 import { defineConfig } from 'tsops'
+import { describe, expect, it } from 'vitest'
 
 // Create a comprehensive config using most features
 const cfg = defineConfig({

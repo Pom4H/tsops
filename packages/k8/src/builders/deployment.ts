@@ -29,9 +29,7 @@ export function buildDeployment(
       : [
           {
             containerPort:
-              typeof ctx.env.PORT === 'string'
-                ? parseInt(ctx.env.PORT, 10)
-                : DEFAULT_HTTP_PORT,
+              typeof ctx.env.PORT === 'string' ? parseInt(ctx.env.PORT, 10) : DEFAULT_HTTP_PORT,
             name: 'http',
             protocol: 'TCP' as const
           }
