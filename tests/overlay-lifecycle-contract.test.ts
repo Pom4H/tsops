@@ -677,6 +677,12 @@ describe('overlay lifecycle preview contract', () => {
 
     const job = applied(kubectl, 'Job', 'tsops-db-drop-pr-857')[0] as any
     const command = job.spec.template.spec.containers[0].args[0] as string
+    const env = Object.fromEntries(
+      job.spec.template.spec.containers[0].env.map((item: any) => [
+        item.name,
+        item.value ?? item.valueFrom
+      ])
+    )
 
     expect(command).toContain('pg_depend')
     expect(command).toContain('cross-schema dependencies')
@@ -691,6 +697,10 @@ describe('overlay lifecycle preview contract', () => {
     )
     expect(command).toContain('DROP SCHEMA IF EXISTS \\"pr_857\\" CASCADE')
     expect(command).toContain('DROP ROLE IF EXISTS \\"worken_pr_857_app\\"')
+    expect(env.DATABASE_RUNTIME_ROLE).toBe('worken_pr_857_app')
+    expect(env.DATABASE_RUNTIME_SECRET_NAME).toBe('pr-857-db-app')
+    expect(env.DATABASE_RUNTIME_URL).toBeUndefined()
+    expect(env.DATABASE_RUNTIME_PASSWORD).toBeUndefined()
     expect(kubectl.waited).toContainEqual({
       name: 'tsops-db-drop-pr-857',
       namespace: 'pr-857',
