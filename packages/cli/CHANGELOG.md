@@ -1,5 +1,15 @@
 # tsops
 
+## 2.0.2
+
+### Patch Changes
+
+- [#56](https://github.com/Pom4H/tsops/pull/56) [`2a27a35`](https://github.com/Pom4H/tsops/commit/2a27a35ce6cbe773c3ad1cc17ccc477514f6fd3f) Thanks [@arhebs](https://github.com/arhebs)! - Escape shell-sensitive SQL in built-in PostgreSQL drop-schema jobs so dollar-quoted
+  guards run correctly through `/bin/sh -c`.
+- Updated dependencies [[`2a27a35`](https://github.com/Pom4H/tsops/commit/2a27a35ce6cbe773c3ad1cc17ccc477514f6fd3f)]:
+  - @tsops/core@2.0.2
+  - @tsops/node@2.0.2
+
 ## 2.0.1
 
 ### Patch Changes
