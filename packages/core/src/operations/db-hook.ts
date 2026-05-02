@@ -238,16 +238,7 @@ function buildDropSchemaSqlSteps(
 
   const steps = [buildExternalDependencyGuard(schema)]
   if (runtimeRole) {
-    const quotedRole = quoteIdentifier(runtimeRole)
-    steps.push(
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quotedSchema} REVOKE ALL ON TABLES FROM ${quotedRole}`,
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quotedSchema} REVOKE ALL ON SEQUENCES FROM ${quotedRole}`,
-      `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quotedSchema} REVOKE ALL ON FUNCTIONS FROM ${quotedRole}`,
-      `REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA ${quotedSchema} FROM ${quotedRole}`,
-      `REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ${quotedSchema} FROM ${quotedRole}`,
-      `REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA ${quotedSchema} FROM ${quotedRole}`,
-      `REVOKE ALL PRIVILEGES ON SCHEMA ${quotedSchema} FROM ${quotedRole}`
-    )
+    steps.push(buildRuntimeRoleCleanupGuard(schema, runtimeRole))
   }
 
   steps.push(`DROP SCHEMA IF EXISTS ${quotedSchema} CASCADE`)
@@ -255,6 +246,30 @@ function buildDropSchemaSqlSteps(
     steps.push(`DROP ROLE IF EXISTS ${quoteIdentifier(runtimeRole)}`)
   }
   return steps
+}
+
+function buildRuntimeRoleCleanupGuard(schema: string, runtimeRole: string): string {
+  const quotedSchema = quoteIdentifier(schema)
+  const quotedRole = quoteIdentifier(runtimeRole)
+  const roleLiteral = sqlLiteral(runtimeRole)
+  const revokeSteps = [
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quotedSchema} REVOKE ALL ON TABLES FROM ${quotedRole}`,
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quotedSchema} REVOKE ALL ON SEQUENCES FROM ${quotedRole}`,
+    `ALTER DEFAULT PRIVILEGES IN SCHEMA ${quotedSchema} REVOKE ALL ON FUNCTIONS FROM ${quotedRole}`,
+    `REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA ${quotedSchema} FROM ${quotedRole}`,
+    `REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA ${quotedSchema} FROM ${quotedRole}`,
+    `REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA ${quotedSchema} FROM ${quotedRole}`,
+    `REVOKE ALL PRIVILEGES ON SCHEMA ${quotedSchema} FROM ${quotedRole}`
+  ]
+
+  return `
+DO $tsops$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = ${roleLiteral}) THEN
+${revokeSteps.map((step) => `    EXECUTE ${sqlLiteral(step)};`).join('\n')}
+  END IF;
+END
+$tsops$`.trim()
 }
 
 function buildExternalDependencyGuard(schema: string): string {

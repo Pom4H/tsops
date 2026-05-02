@@ -686,6 +686,7 @@ describe('overlay lifecycle preview contract', () => {
 
     expect(command).toContain('pg_depend')
     expect(command).toContain('cross-schema dependencies')
+    expect(command).toContain("pg_roles WHERE rolname = 'worken_pr_857_app'")
     expect(command).toContain('DO \\$tsops\\$')
     expect(command).not.toContain('DO $tsops$')
     expect(command.indexOf('pg_depend')).toBeLessThan(command.indexOf('DROP SCHEMA'))
