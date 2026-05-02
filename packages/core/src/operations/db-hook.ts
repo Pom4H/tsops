@@ -217,7 +217,8 @@ export async function runDatabasePostDestroy(
     lifecycleSecret,
     vars,
     schema,
-    sqlSteps: buildDropSchemaSqlSteps(database, vars, schema)
+    sqlSteps: buildDropSchemaSqlSteps(database, vars, schema),
+    includeRuntimeSecretEnv: false
   })
   await kubectl.apply(job, { namespace })
   return { jobName }
@@ -455,8 +456,18 @@ function renderPsqlJob(input: {
   vars: OverlayVars
   schema: string
   sqlSteps: string[]
+  includeRuntimeSecretEnv?: boolean
 }): SupportedManifest {
-  const { namespace, name, database, lifecycleSecret, vars, schema, sqlSteps } = input
+  const {
+    namespace,
+    name,
+    database,
+    lifecycleSecret,
+    vars,
+    schema,
+    sqlSteps,
+    includeRuntimeSecretEnv = true
+  } = input
   const sql = shellDoubleQuoted(sqlSteps.join('; '))
 
   const job = {
@@ -490,7 +501,7 @@ function renderPsqlJob(input: {
                   }
                 },
                 ...renderDatabaseMetadataEnv(database, vars, schema),
-                ...renderRuntimeSecretEnv(database, vars)
+                ...(includeRuntimeSecretEnv ? renderRuntimeSecretEnv(database, vars) : [])
               ]
             }
           ]
