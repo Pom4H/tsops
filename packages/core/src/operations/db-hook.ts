@@ -457,7 +457,7 @@ function renderPsqlJob(input: {
   sqlSteps: string[]
 }): SupportedManifest {
   const { namespace, name, database, lifecycleSecret, vars, schema, sqlSteps } = input
-  const sql = sqlSteps.map((s) => s.replace(/"/g, '\\"')).join('; ')
+  const sql = shellDoubleQuoted(sqlSteps.join('; '))
 
   const job = {
     apiVersion: 'batch/v1',
@@ -500,6 +500,14 @@ function renderPsqlJob(input: {
   }
 
   return job as unknown as SupportedManifest
+}
+
+function shellDoubleQuoted(value: string): string {
+  return value
+    .replace(/\\/g, '\\\\')
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, '\\$')
+    .replace(/`/g, '\\`')
 }
 
 function renderCustomJob(
