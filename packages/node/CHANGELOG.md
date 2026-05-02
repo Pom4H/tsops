@@ -1,5 +1,12 @@
 # @tsops/node
 
+## 2.0.3
+
+### Patch Changes
+
+- Updated dependencies [[`db07cb8`](https://github.com/Pom4H/tsops/commit/db07cb8351220afe6c6e12ae17d6e4548ed1a089)]:
+  - @tsops/core@2.0.3
+
 ## 2.0.2
 
 ### Patch Changes
