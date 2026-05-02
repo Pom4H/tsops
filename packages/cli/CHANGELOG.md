@@ -1,5 +1,15 @@
 # tsops
 
+## 2.0.4
+
+### Patch Changes
+
+- [#60](https://github.com/Pom4H/tsops/pull/60) [`a15012f`](https://github.com/Pom4H/tsops/commit/a15012fd0d8fa545feca85b29377d8f1e9347010) Thanks [@arhebs](https://github.com/arhebs)! - Make built-in drop-schema runtime role cleanup idempotent when the resolved
+  runtime role was never created.
+- Updated dependencies [[`a15012f`](https://github.com/Pom4H/tsops/commit/a15012fd0d8fa545feca85b29377d8f1e9347010)]:
+  - @tsops/core@2.0.4
+  - @tsops/node@2.0.4
+
 ## 2.0.3
 
 ### Patch Changes
