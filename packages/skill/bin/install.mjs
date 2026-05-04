@@ -1,17 +1,16 @@
 #!/usr/bin/env node
-/**
- * `tsops-skill install` — copy the bundled tsops Claude Skill into
- * either `~/.claude/skills/tsops` (user scope, default) or
- * `<cwd>/.claude/skills/tsops` (project scope, with `--project`).
- *
- * Idempotent: re-running overwrites existing files. Refuses to delete
- * unrelated content under the target directory.
- */
-import { argv, exit, cwd } from 'node:process'
+// `tsops-skill install` — copy the bundled tsops Claude Skill into
+// either `~/.claude/skills/tsops` (user scope, default) or
+// `<cwd>/.claude/skills/tsops` (project scope, with `--project`).
+//
+// Idempotent: re-running overwrites existing files. Refuses to delete
+// unrelated content under the target directory.
+
+import { cp, mkdir, readFile, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { mkdir, cp, stat, readFile } from 'node:fs/promises'
-import { fileURLToPath } from 'node:url'
 import { dirname, join, resolve } from 'node:path'
+import { argv, cwd, exit } from 'node:process'
+import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const PKG_DIR = resolve(__dirname, '..')
@@ -65,7 +64,12 @@ is picked up. Verify with: claude /skills
 }
 
 async function exists(p) {
-  try { await stat(p); return true } catch { return false }
+  try {
+    await stat(p)
+    return true
+  } catch {
+    return false
+  }
 }
 
 async function readSkillVersion() {
@@ -83,7 +87,7 @@ async function install({ scope, force }) {
     exit(2)
   }
 
-  if (await exists(dst) && !force) {
+  if ((await exists(dst)) && !force) {
     console.log(`Skill already present at ${dst}`)
     console.log(`Re-run with --force to overwrite.`)
     exit(0)
@@ -117,12 +121,15 @@ async function where({ scope }) {
 }
 
 const args = parseArgs(argv.slice(2))
-if (args.help) { help(); exit(0) }
+if (args.help) {
+  help()
+  exit(0)
+}
 
 try {
-  if (args.command === 'install')   await install(args)
+  if (args.command === 'install') await install(args)
   if (args.command === 'uninstall') await uninstall(args)
-  if (args.command === 'where')     await where(args)
+  if (args.command === 'where') await where(args)
 } catch (err) {
   console.error(err.message ?? err)
   exit(1)

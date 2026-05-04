@@ -69,6 +69,8 @@ importers:
         specifier: workspace:*
         version: link:../core
 
+  packages/skill: {}
+
   tests:
     dependencies:
       '@tsops/core':

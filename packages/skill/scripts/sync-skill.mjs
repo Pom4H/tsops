@@ -19,7 +19,14 @@ const REPO_ROOT = resolve(PKG_DIR, '..', '..')
 const SRC = join(REPO_ROOT, 'skills', 'tsops')
 const DST = join(PKG_DIR, 'skill')
 
-async function exists(p) { try { await stat(p); return true } catch { return false } }
+async function exists(p) {
+  try {
+    await stat(p)
+    return true
+  } catch {
+    return false
+  }
+}
 
 if (!(await exists(SRC))) {
   console.error(`Source skill missing: ${SRC}`)
