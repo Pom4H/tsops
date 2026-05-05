@@ -1,16 +1,21 @@
 import {
   NullEnvironmentProvider,
   TsOps,
+  createConfigResolver,
   defineConfig,
   type DockerClient,
   type DockerfileBuild
 } from '@tsops/core'
+import { createHash } from 'node:crypto'
 import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
-import { join } from 'node:path'
+import { createRequire } from 'node:module'
 import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { Docker } from '@tsops/node'
 import { describe, expect, it } from 'vitest'
 
+const require = createRequire(import.meta.url)
+const nodePackage = require('../packages/node/package.json') as { version: string }
 const digest = `sha256:${'a'.repeat(64)}`
 const digestRef = `ghcr.io/acme/api@${digest}`
 
@@ -139,6 +144,66 @@ describe('Node Docker source-key computation', () => {
     expect(afterIncludedChange).not.toBe(first)
   })
 
+  it('includes .dockerignore content in the source key', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'tsops-dockerignore-key-'))
+    await writeFile(join(root, 'Dockerfile'), 'FROM scratch\n')
+    await writeFile(join(root, '.dockerignore'), 'ignored.txt\n')
+    await writeFile(join(root, 'ignored.txt'), 'ignored v1\n')
+    await writeFile(join(root, 'app.ts'), 'console.log("v1")\n')
+
+    const docker = new Docker({
+      runner: { run: async () => '' },
+      logger: silentLogger,
+      dryRun: true
+    })
+    const build: DockerfileBuild = {
+      type: 'dockerfile',
+      context: root,
+      dockerfile: join(root, 'Dockerfile'),
+      inputs: ['app.ts']
+    }
+
+    const first = await docker.sourceKey('api', build, {})
+    await writeFile(
+      join(root, '.dockerignore'),
+      '# same matcher, different file content\nignored.txt\n'
+    )
+    const afterDockerIgnoreChange = await docker.sourceKey('api', build, {})
+
+    expect(afterDockerIgnoreChange).not.toBe(first)
+  })
+
+  it('includes the Node adapter package version in custom source keys', async () => {
+    const docker = new Docker({
+      runner: { run: async () => '' },
+      logger: silentLogger,
+      dryRun: true
+    })
+
+    const actual = await docker.sourceKey(
+      'api',
+      {
+        type: 'dockerfile',
+        context: '.',
+        dockerfile: 'Dockerfile',
+        sourceKey: 'custom-key'
+      },
+      {}
+    )
+    const expected = createHash('sha256')
+      .update('tsops-source-key-v1\0')
+      .update('api')
+      .update('\0')
+      .update('@tsops/node\0')
+      .update(nodePackage.version)
+      .update('\0')
+      .update('custom\0')
+      .update('custom-key')
+      .digest('hex')
+
+    expect(actual).toBe(expected)
+  })
+
   it('resolves a repo-relative Dockerfile path under the build context', async () => {
     const root = await mkdtemp(join(tmpdir(), 'tsops-repo-key-'))
     const previousCwd = process.cwd()
@@ -236,6 +301,56 @@ describe('digest image overrides', () => {
         imageOverrides: { api: 'ghcr.io/acme/api:mutable' }
       })
     ).rejects.toThrow('must be an immutable digest ref')
+  })
+})
+
+describe('source-key input changed-file selection', () => {
+  it('uses build.inputs instead of the widened Docker context when selecting affected apps', () => {
+    const config = defineConfig({
+      project: 'demo',
+      namespaces: {
+        prod: { domain: 'example.com' }
+      },
+      clusters: {
+        prod: {
+          apiServer: 'https://example.invalid',
+          context: 'prod',
+          namespaces: ['prod']
+        }
+      },
+      images: {
+        registry: 'ghcr.io/acme',
+        tagStrategy: 'git-sha'
+      },
+      apps: {
+        backend: {
+          build: {
+            type: 'dockerfile',
+            context: 'examples/monorepo',
+            dockerfile: 'examples/monorepo/apps/backend/Dockerfile',
+            inputs: ['apps/backend/**', 'package.json', 'pnpm-lock.yaml']
+          }
+        },
+        frontend: {
+          build: {
+            type: 'dockerfile',
+            context: 'examples/monorepo',
+            dockerfile: 'examples/monorepo/apps/frontend/Dockerfile',
+            inputs: ['apps/frontend/**', 'package.json', 'pnpm-lock.yaml']
+          }
+        }
+      }
+    })
+    const resolver = createConfigResolver(config)
+
+    expect(
+      resolver.apps
+        .selectByChangedFiles(['examples/monorepo/apps/backend/src/index.ts'])
+        .map(([name]) => name)
+    ).toEqual(['backend'])
+    expect(
+      resolver.apps.selectByChangedFiles(['examples/monorepo/pnpm-lock.yaml']).map(([name]) => name)
+    ).toEqual(['backend', 'frontend'])
   })
 })
 

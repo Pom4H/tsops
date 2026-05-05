@@ -307,9 +307,20 @@ interface DockerfileBuild {
   args?: Record<string, string>
   target?: string
   inputs?: readonly string[]
-  sourceKey?: boolean | string | ((ctx: AppBuildContext) => string | Promise<string>)
+  sourceKey?: BuildSourceKeyConfig
   cache?: { type: 'registry'; ref?: string; mode?: 'min' | 'max' }
 }
+
+type BuildSourceKeyConfig =
+  | boolean
+  | string
+  | ((ctx: AppBuildContext) => string | Promise<string>)
+  | { mode?: 'context' }
+  | { mode: 'inputs'; inputs: readonly string[] }
+  | {
+      mode: 'custom'
+      value: string | ((ctx: AppBuildContext) => string | Promise<string>)
+    }
 ```
 
 When `inputs` or `sourceKey` is set, `tsops build` checks for a `source-<hash>`

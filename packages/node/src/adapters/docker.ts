@@ -11,6 +11,8 @@ export type DockerBuildContext = AppBuildContext
 
 const require = createRequire(import.meta.url)
 const createIgnore = require('ignore') as typeof import('ignore').default
+const packageJson = require('../../package.json') as { version?: string }
+const adapterVersion = packageJson.version ?? 'unknown'
 
 export interface DockerServiceOptions {
   runner: CommandRunner
@@ -152,6 +154,9 @@ export class Docker {
     hash.update('tsops-source-key-v1\0')
     hash.update(appName)
     hash.update('\0')
+    hash.update('@tsops/node\0')
+    hash.update(adapterVersion)
+    hash.update('\0')
 
     if (custom !== undefined) {
       hash.update('custom\0')
@@ -178,6 +183,7 @@ export class Docker {
     for (const extra of await findExistingCommonInputs(contextRoot)) {
       if (!dockerIgnore.ignores(extra)) normalizedFiles.add(extra)
     }
+    await addExistingInput(normalizedFiles, contextRoot, '.dockerignore')
 
     const dockerfile = normalizePath(relative(contextRoot, resolve(build.dockerfile)))
     if (dockerfile && !dockerIgnore.ignores(dockerfile)) normalizedFiles.add(dockerfile)
@@ -317,6 +323,19 @@ async function findExistingCommonInputs(contextRoot: string): Promise<string[]> 
     }
   }
   return existing
+}
+
+async function addExistingInput(
+  files: Set<string>,
+  contextRoot: string,
+  file: string
+): Promise<void> {
+  try {
+    await readFile(join(contextRoot, file))
+    files.add(file)
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
+  }
 }
 
 async function resolveCustomSourceKey(

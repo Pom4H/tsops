@@ -155,7 +155,8 @@ env:
    ```
 
 2. **App Matching**
-   - tsops compares changed files with `build.context` in config
+   - tsops compares changed files with `build.inputs` when configured
+   - Apps without `build.inputs` fall back to matching `build.context`
    - Only apps with matching paths are selected
 
 3. **Docker Build**
@@ -240,6 +241,7 @@ manifests.
 
 Using `--filter` in monorepos provides:
 - Build only changed applications
+- Keep broad Docker contexts while narrowing app selection with `build.inputs`
 - Reduce Docker registry bandwidth usage
 - Lower CI compute costs
 - Faster feedback for developers
@@ -251,7 +253,7 @@ Using `--filter` in monorepos provides:
 **Issue:** `--filter HEAD^1` returns "No apps affected by changed files"
 
 **Causes:**
-1. Changes are outside any `build.context` directory
+1. Changes are outside any configured `build.inputs` or `build.context` path
 2. `fetch-depth: 0` missing in checkout action
 3. Comparing against wrong git reference
 
@@ -267,8 +269,9 @@ Using `--filter` in monorepos provides:
 **Issue:** Cache is not working, builds all apps
 
 **Causes:**
-1. `build.context` paths don't match actual file paths
-2. Config changes force rebuild (expected behavior)
+1. `build.inputs` or `build.context` paths don't match actual file paths
+2. Apps intentionally share the same root context without narrower `build.inputs`
+3. Config changes force rebuild (expected behavior)
 
 **Solution:**
 Check your tsops.config.ts:
@@ -276,8 +279,9 @@ Check your tsops.config.ts:
 apps: {
   api: {
     build: {
-      context: './packages/api',  // ← Must match actual path
-      dockerfile: './packages/api/Dockerfile'
+      context: '.',
+      dockerfile: './packages/api/Dockerfile',
+      inputs: ['packages/api/**', 'packages/shared/**']
     }
   }
 }

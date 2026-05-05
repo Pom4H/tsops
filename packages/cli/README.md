@@ -72,7 +72,7 @@ tsops build --filter origin/main
 tsops build --force
 ```
 
-The `--filter` flag compares changed files against the specified git reference and builds only applications whose `build.context` directory contains changed files. This is especially useful in CI/CD pipelines for monorepo projects where you want to build only what changed.
+The `--filter` flag compares changed files against the specified git reference and builds only affected applications. Apps with `build.inputs` or `sourceKey: { mode: 'inputs' }` use those patterns relative to `build.context`; other apps fall back to matching the full `build.context` directory. This is especially useful in CI/CD pipelines for monorepo projects where you want to build only what changed.
 
 **Source-key image reuse:**
 
