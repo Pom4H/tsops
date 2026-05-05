@@ -8,7 +8,13 @@ export interface DockerLoginOptions {
 
 export interface DockerClient {
   login(options?: DockerLoginOptions): Promise<void>
+  sourceKey?(appName: string, build: DockerfileBuild, ctx: AppBuildContext): Promise<string>
   imageExists(imageRef: string): Promise<boolean>
-  build(imageRef: string, build: DockerfileBuild, ctx: AppBuildContext): Promise<void>
+  resolveDigest?(imageRef: string): Promise<string | null>
+  build(
+    imageRef: string,
+    build: DockerfileBuild,
+    ctx: AppBuildContext
+  ): Promise<{ digest?: string; pushed?: boolean } | void>
   push(imageRef: string): Promise<void>
 }

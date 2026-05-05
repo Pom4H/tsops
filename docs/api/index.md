@@ -127,6 +127,7 @@ tsops build [options]
 - `-n, --namespace <name>` - Use namespace context (influences env functions)
 - `-c, --config <path>` - Config file path
 - `--dry-run` - Log Docker commands without executing
+- `--source-key` - Reuse Docker images by hashing source inputs and build metadata
 
 ### deploy
 
@@ -141,6 +142,7 @@ tsops deploy [options]
 - `--app <name>` - Target a single app
 - `-c, --config <path>` - Config file path
 - `--dry-run` - Log kubectl actions without executing
+- `--image-digests <json-or-file>` - Override app images with immutable digest refs
 
 ## Context Helpers
 
@@ -291,6 +293,49 @@ interface AppDefinition {
   volumeMounts?: VolumeMount[]
   args?: string[]
 }
+```
+
+`DockerfileBuild` supports content-addressed image reuse:
+
+```typescript
+interface DockerfileBuild {
+  type: 'dockerfile'
+  context: string
+  dockerfile: string
+  platform?: string | ((ctx: AppBuildContext) => string)
+  env?: Record<string, string>
+  args?: Record<string, string>
+  target?: string
+  inputs?: readonly string[]
+  sourceKey?: BuildSourceKeyConfig
+  cache?: { type: 'registry'; ref?: string; mode?: 'min' | 'max' }
+}
+
+type BuildSourceKeyConfig =
+  | boolean
+  | string
+  | ((ctx: AppBuildContext) => string | Promise<string>)
+  | { mode?: 'context' }
+  | { mode: 'inputs'; inputs: readonly string[] }
+  | {
+      mode: 'custom'
+      value: string | ((ctx: AppBuildContext) => string | Promise<string>)
+    }
+```
+
+When `inputs` or `sourceKey` is set, `tsops build` checks for a `source-<hash>`
+image tag before building. The build result carries the immutable digest ref
+when the Docker adapter can resolve one.
+
+Programmatic deploy calls can pass the same digest handoff used by the CLI:
+
+```typescript
+await tsops.deploy({
+  namespace: 'preview',
+  imageOverrides: {
+    api: 'ghcr.io/acme/api@sha256:abcd...'
+  }
+})
 ```
 
 The `ingress` field uses a simple object format:

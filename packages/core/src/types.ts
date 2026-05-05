@@ -318,6 +318,23 @@ export type ImagesConfig = {
  */
 export type AppBuildContext = Record<string, unknown>
 
+export type BuildSourceKeyConfig =
+  | boolean
+  | string
+  | ((ctx: AppBuildContext) => string | Promise<string>)
+  | { mode?: 'context' }
+  | { mode: 'inputs'; inputs: readonly string[] }
+  | {
+      mode: 'custom'
+      value: string | ((ctx: AppBuildContext) => string | Promise<string>)
+    }
+
+export type DockerBuildCacheConfig = {
+  type: 'registry'
+  ref?: string
+  mode?: 'min' | 'max'
+}
+
 export type DockerfileBuild = {
   type: 'dockerfile'
   context: string
@@ -326,6 +343,12 @@ export type DockerfileBuild = {
   env?: Record<string, string>
   args?: Record<string, string>
   target?: string
+  /** Explicit file/glob inputs used for content-addressed image reuse. */
+  inputs?: readonly string[]
+  /** Enables or customizes source-key image reuse for this build. */
+  sourceKey?: BuildSourceKeyConfig
+  /** Optional Docker BuildKit cache configuration. */
+  cache?: DockerBuildCacheConfig
 } & Record<string, unknown>
 
 export type GenericBuild = Record<string, unknown>

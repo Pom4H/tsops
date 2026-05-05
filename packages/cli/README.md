@@ -53,6 +53,7 @@ Builds and pushes Docker images for configured apps.
 tsops build
 tsops build --app api
 tsops build --app api --namespace prod  # Determines dev/prod platform
+tsops build --source-key                # Reuse image tags derived from build inputs
 ```
 
 **Incremental builds (monorepo optimization):**
@@ -71,7 +72,27 @@ tsops build --filter origin/main
 tsops build --force
 ```
 
-The `--filter` flag compares changed files against the specified git reference and builds only applications whose `build.context` directory contains changed files. This is especially useful in CI/CD pipelines for monorepo projects where you want to build only what changed.
+The `--filter` flag compares changed files against the specified git reference and builds only affected applications. Apps with `build.inputs` or `sourceKey: { mode: 'inputs' }` use those patterns relative to `build.context`; other apps fall back to matching the full `build.context` directory. This is especially useful in CI/CD pipelines for monorepo projects where you want to build only what changed.
+
+**Source-key image reuse:**
+
+Use `build.inputs` in `tsops.config.ts` or pass `--source-key` to tag images as `source-<hash>` before checking the registry. The hash includes selected file contents, the Dockerfile, common lock/config files when present, and build metadata such as args, env, target, platform, source-key settings, and cache settings. When the tag already exists, tsops skips the Docker build and resolves the immutable digest ref for deployment handoff.
+
+```typescript
+apps: {
+  api: {
+    build: {
+      type: 'dockerfile',
+      context: '.',
+      dockerfile: 'apps/api/Dockerfile',
+      inputs: ['apps/api/**', 'packages/shared/**', 'package.json', 'pnpm-lock.yaml'],
+      cache: { type: 'registry', mode: 'max' }
+    }
+  }
+}
+```
+
+`cache: { type: 'registry' }` makes the Node Docker adapter use BuildKit registry cache flags. If `cache.ref` is omitted, tsops uses the image repository with a `:cache` tag.
 
 **Output example:**
 ```
@@ -79,7 +100,7 @@ The `--filter` flag compares changed files against the specified git reference a
 Building 1 affected app(s): api
 
 ✅ Built images:
-   • api: ghcr.io/org/api:abc123
+   • api: ghcr.io/org/api@sha256:abcd... [tag: ghcr.io/org/api:source-feedface] (reused)
 ```
 
 #### `deploy`
@@ -91,7 +112,18 @@ tsops deploy
 tsops deploy --namespace prod
 tsops deploy --app api
 tsops deploy --namespace prod --app api
+tsops deploy --namespace prod --image-digests @images.json
 ```
+
+`--image-digests` accepts either an inline JSON object or an `@file` path mapping app names to immutable image digest refs:
+
+```json
+{
+  "api": "ghcr.io/org/api@sha256:abcd..."
+}
+```
+
+Unknown app names and mutable tags are rejected before manifests are applied.
 
 **Output example:**
 ```
@@ -115,6 +147,11 @@ Build-specific options:
 
 - **`--filter <ref>`** – Build only apps affected by changes compared to git ref (e.g., `HEAD^1`, `main`, `origin/main`)
 - **`-f, --force`** – Force rebuild even if image already exists in registry
+- **`--source-key`** – Reuse image tags derived from source inputs and build metadata
+
+Deploy/up-specific options:
+
+- **`--image-digests <json-or-file>`** – Override app images with immutable digest refs, using inline JSON or an `@file` path
 
 ### Help
 
@@ -338,4 +375,3 @@ The CLI binary is defined in `package.json`:
   }
 }
 ```
-

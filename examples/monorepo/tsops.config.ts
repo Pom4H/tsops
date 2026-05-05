@@ -32,8 +32,17 @@ const config = defineConfig({
     backend: {
       build: {
         type: 'dockerfile',
-        context: 'examples/monorepo/apps/backend',
+        context: 'examples/monorepo',
         dockerfile: 'examples/monorepo/apps/backend/Dockerfile',
+        inputs: [
+          'apps/backend/**',
+          'package.json',
+          'pnpm-lock.yaml',
+          'pnpm-workspace.yaml',
+          'turbo.json',
+          'tsconfig.base.json'
+        ],
+        cache: { type: 'registry', mode: 'max' },
         env: { DOCKER_BUILDKIT: '1' },
         args: {
           PACKAGE_NAME: '@monorepo/backend',
@@ -54,8 +63,17 @@ const config = defineConfig({
     frontend: {
       build: {
         type: 'dockerfile',
-        context: 'examples/monorepo/apps/frontend',
+        context: 'examples/monorepo',
         dockerfile: 'examples/monorepo/apps/frontend/Dockerfile',
+        inputs: [
+          'apps/frontend/**',
+          'package.json',
+          'pnpm-lock.yaml',
+          'pnpm-workspace.yaml',
+          'turbo.json',
+          'tsconfig.base.json'
+        ],
+        cache: { type: 'registry', mode: 'max' },
         env: { DOCKER_BUILDKIT: '1' },
         args: {
           PACKAGE_NAME: '@monorepo/frontend',

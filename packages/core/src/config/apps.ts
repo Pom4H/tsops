@@ -117,8 +117,11 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
   }
 
   /**
-   * Selects apps that have changed files in their build context.
-   * Useful for incremental builds in monorepo scenarios.
+   * Selects apps that have changed files in their build inputs or context.
+   * Useful for incremental builds in monorepo scenarios. When `build.inputs`
+   * or `sourceKey: { mode: "inputs" }` is configured, those patterns are
+   * evaluated relative to `build.context` before falling back to the whole
+   * context directory.
    *
    * @param changedFiles - Array of changed file paths relative to repository root
    * @returns Array of [appName, appDefinition] tuples for affected apps
@@ -127,7 +130,7 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
    * ```typescript
    * const changedFiles = ['packages/api/src/index.ts', 'packages/frontend/app/page.tsx']
    * const affectedApps = resolver.apps.selectByChangedFiles(changedFiles)
-   * // Returns apps with build.context that matches changed files
+   * // Returns apps with build.inputs/build.context that match changed files
    * ```
    */
   function selectByChangedFiles(changedFiles: string[]): AppEntry<TConfig>[] {
@@ -137,26 +140,16 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     const affected: AppEntry<TConfig>[] = []
 
     for (const [appName, app] of entries) {
-      const build = app.build
-      if (!build || typeof build !== 'object' || !('context' in build)) {
-        continue
-      }
+      const build = getSelectableBuild(app.build)
+      if (!build) continue
 
-      const context = (build as { context: string }).context
-
-      // Normalize context path (remove trailing slash)
-      const normalizedContext = context.replace(/\/$/, '')
-
-      // Check if any changed file is within this app's build context
-      const isAffected = changedFiles.some((file) => {
-        // Normalize file path
-        const normalizedFile = file.replace(/\/$/, '')
-
-        // Check if file is within the app's context directory
-        return (
-          normalizedFile === normalizedContext || normalizedFile.startsWith(`${normalizedContext}/`)
-        )
-      })
+      const inputPatterns = getBuildInputPatterns(build)
+      const isAffected =
+        inputPatterns.length > 0
+          ? changedFiles.some((file) =>
+              changedFileMatchesInputs(file, build.context, inputPatterns)
+            )
+          : changedFiles.some((file) => changedFileMatchesContext(file, build.context))
 
       if (isAffected) {
         affected.push([appName, app])
@@ -164,6 +157,104 @@ export function createAppsResolver<TConfig extends TsOpsConfig<any, any, any, an
     }
 
     return affected
+  }
+
+  type SelectableBuild = {
+    context: string
+    inputs?: readonly string[]
+    sourceKey?: unknown
+  }
+
+  function getSelectableBuild(build: unknown): SelectableBuild | undefined {
+    if (!isRecord(build) || typeof build.context !== 'string') return undefined
+    const inputs = isStringArray(build.inputs) ? build.inputs : undefined
+    return {
+      context: build.context,
+      ...(inputs ? { inputs } : {}),
+      sourceKey: build.sourceKey
+    }
+  }
+
+  function getBuildInputPatterns(build: SelectableBuild): readonly string[] {
+    if (build.inputs && build.inputs.length > 0) return build.inputs
+    const sourceKey = build.sourceKey
+    if (
+      isRecord(sourceKey) &&
+      sourceKey.mode === 'inputs' &&
+      isStringArray(sourceKey.inputs) &&
+      sourceKey.inputs.length > 0
+    ) {
+      return sourceKey.inputs
+    }
+    return []
+  }
+
+  function changedFileMatchesInputs(
+    changedFile: string,
+    context: string,
+    inputPatterns: readonly string[]
+  ): boolean {
+    const relativeFile = relativeToContext(changedFile, context)
+    if (relativeFile === undefined) return false
+    return inputPatterns.some((pattern) => matchesInputPattern(relativeFile, pattern))
+  }
+
+  function changedFileMatchesContext(changedFile: string, context: string): boolean {
+    return relativeToContext(changedFile, context) !== undefined
+  }
+
+  function relativeToContext(changedFile: string, context: string): string | undefined {
+    const normalizedFile = normalizeConfigPath(changedFile)
+    const normalizedContext = normalizeConfigPath(context)
+    if (normalizedContext === '.' || normalizedContext === '') return normalizedFile
+    if (normalizedFile === normalizedContext) return ''
+    const contextPrefix = `${normalizedContext}/`
+    return normalizedFile.startsWith(contextPrefix)
+      ? normalizedFile.slice(contextPrefix.length)
+      : undefined
+  }
+
+  function matchesInputPattern(changedFile: string, pattern: string): boolean {
+    const normalizedFile = normalizeConfigPath(changedFile)
+    const normalizedPattern = normalizeConfigPath(pattern)
+    if (normalizedPattern === '**' || normalizedPattern === '**/*') return true
+    if (!hasGlob(normalizedPattern)) {
+      return (
+        normalizedFile === normalizedPattern ||
+        normalizedFile.startsWith(`${normalizedPattern.replace(/\/$/, '')}/`)
+      )
+    }
+    if (normalizedPattern.endsWith('/**')) {
+      const prefix = normalizedPattern.slice(0, -3)
+      return normalizedFile === prefix || normalizedFile.startsWith(`${prefix}/`)
+    }
+    return globToRegExp(normalizedPattern).test(normalizedFile)
+  }
+
+  function normalizeConfigPath(path: string): string {
+    return path.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+  }
+
+  function hasGlob(pattern: string): boolean {
+    return /[*?]/.test(pattern)
+  }
+
+  function globToRegExp(pattern: string): RegExp {
+    const escaped = pattern
+      .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+      .replace(/\*\*/g, '\0')
+      .replace(/\*/g, '[^/]*')
+      .replace(/\?/g, '[^/]')
+      .replace(/\0/g, '.*')
+    return new RegExp(`^${escaped}$`)
+  }
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value)
+  }
+
+  function isStringArray(value: unknown): value is readonly string[] {
+    return Array.isArray(value) && value.every((item) => typeof item === 'string')
   }
 
   /**

@@ -24,6 +24,24 @@ describe('defineDockerfileBuild', () => {
     expect(build).toMatchObject({ target: 'production', platform: 'linux/arm64', context: '.' })
   })
 
+  it('carries source-key inputs and registry cache defaults into each build', () => {
+    const dockerfile = defineDockerfileBuild({
+      context: '.',
+      inputs: ['apps/api/**', 'packages/shared/**'],
+      sourceKey: { mode: 'inputs', inputs: ['apps/api/**'] },
+      cache: { type: 'registry', ref: 'ghcr.io/acme/api:cache', mode: 'max' }
+    })
+
+    expect(dockerfile('Dockerfile')).toMatchObject({
+      type: 'dockerfile',
+      context: '.',
+      dockerfile: 'Dockerfile',
+      inputs: ['apps/api/**', 'packages/shared/**'],
+      sourceKey: { mode: 'inputs', inputs: ['apps/api/**'] },
+      cache: { type: 'registry', ref: 'ghcr.io/acme/api:cache', mode: 'max' }
+    })
+  })
+
   it('shallow-merges env and args across defaults and overrides', () => {
     const dockerfile = defineDockerfileBuild({
       env: { A: '1', B: '2' },

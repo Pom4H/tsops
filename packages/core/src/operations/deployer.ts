@@ -14,6 +14,7 @@ import { runCertbotHook } from './cert-hook.js'
 import { runDatabasePostDestroy, runDatabasePreDeploy } from './db-hook.js'
 import type { Planner } from './planner.js'
 import type {
+  ImageDigestOverrides,
   AppResourceChanges,
   DeployResult,
   ManifestChange,
@@ -62,6 +63,7 @@ export class Deployer<TConfig extends TsOpsConfig<any, any, any, any, any, any>>
       app?: string
       vars?: OverlayVars
       include?: readonly string[]
+      imageOverrides?: ImageDigestOverrides
       skipCert?: boolean
       skipDatabase?: boolean
     } = {}

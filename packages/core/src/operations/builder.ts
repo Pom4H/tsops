@@ -25,7 +25,13 @@ export class Builder<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
   }
 
   async build(
-    options: { app?: string; namespace?: string; force?: boolean; changedFiles?: string[] } = {}
+    options: {
+      app?: string
+      namespace?: string
+      force?: boolean
+      changedFiles?: string[]
+      sourceKey?: boolean
+    } = {}
   ): Promise<BuildResult> {
     // Login to Docker registry before building (reads from env vars)
     await this.docker.login()
@@ -63,7 +69,8 @@ export class Builder<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         continue
       }
 
-      const imageRef = this.resolver.images.buildRef(appName)
+      let imageRef = this.resolver.images.buildRef(appName)
+      let sourceKey: string | undefined
       if (!isDockerfileBuild(build)) {
         this.logger.warn('Skipping unsupported build configuration. Expected type "dockerfile".', {
           app: appName
@@ -71,15 +78,33 @@ export class Builder<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         continue
       }
 
+      if (shouldUseSourceKey(build, options.sourceKey)) {
+        if (!this.docker.sourceKey) {
+          throw new Error(
+            `Docker adapter does not support source-key image reuse for app "${appName}"`
+          )
+        }
+        sourceKey = normalizeSourceKey(await this.docker.sourceKey(appName, build, {}), appName)
+        imageRef = this.resolver.images.buildRef(appName, { tag: `source-${sourceKey}` })
+      }
+
       // Check if image already exists in registry (unless force rebuild is requested)
       if (!options.force) {
         const exists = await this.docker.imageExists(imageRef)
         if (exists) {
+          const digest = await this.resolveDigest(imageRef)
           this.logger.info('Image already exists in registry. Skipping build.', {
             app: appName,
             image: imageRef
           })
-          results.push({ app: appName, image: imageRef })
+          results.push({
+            app: appName,
+            image: toDeployImageRef(imageRef, digest),
+            tag: imageRef,
+            digest,
+            sourceKey,
+            reused: true
+          })
           continue
         }
       } else {
@@ -90,14 +115,28 @@ export class Builder<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       }
 
       // Build context can be extended with namespace variables if needed
-      await this.docker.build(imageRef, build, {})
-      if (!this.dryRun) {
+      const buildResult = await this.docker.build(imageRef, build, {})
+      if (!this.dryRun && !buildResult?.pushed) {
         await this.docker.push(imageRef)
       }
-      results.push({ app: appName, image: imageRef })
+      const digest = buildResult?.digest ?? (await this.resolveDigest(imageRef))
+      results.push({
+        app: appName,
+        image: toDeployImageRef(imageRef, digest),
+        tag: imageRef,
+        digest,
+        sourceKey,
+        reused: false
+      })
     }
 
     return { images: results }
+  }
+
+  private async resolveDigest(imageRef: string): Promise<string | undefined> {
+    if (!this.docker.resolveDigest) return undefined
+    const digest = await this.docker.resolveDigest(imageRef)
+    return digest ?? undefined
   }
 }
 
@@ -110,4 +149,31 @@ function isDockerfileBuild(build: BuildDefinition): build is DockerfileBuild {
     typeof candidate.context === 'string' &&
     typeof candidate.dockerfile === 'string'
   )
+}
+
+function shouldUseSourceKey(build: DockerfileBuild, option?: boolean): boolean {
+  if (build.sourceKey === false) return false
+  if (option) return true
+  if (build.inputs && build.inputs.length > 0) return true
+  return build.sourceKey !== undefined
+}
+
+function normalizeSourceKey(sourceKey: string, appName: string): string {
+  const normalized = sourceKey
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_.-]+/g, '-')
+    .replace(/^-+/, '')
+    .slice(0, 100)
+  if (!normalized) throw new Error(`Invalid empty source key for app "${appName}"`)
+  return normalized
+}
+
+function toDeployImageRef(imageRef: string, digest: string | undefined): string {
+  if (!digest) return imageRef
+  if (imageRef.includes('@')) return imageRef
+  const tagSeparator = imageRef.lastIndexOf(':')
+  const pathSeparator = imageRef.lastIndexOf('/')
+  const repository = tagSeparator > pathSeparator ? imageRef.slice(0, tagSeparator) : imageRef
+  return `${repository}@${digest}`
 }

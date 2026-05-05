@@ -155,7 +155,8 @@ env:
    ```
 
 2. **App Matching**
-   - tsops compares changed files with `build.context` in config
+   - tsops compares changed files with `build.inputs` when configured
+   - Apps without `build.inputs` fall back to matching `build.context`
    - Only apps with matching paths are selected
 
 3. **Docker Build**
@@ -169,6 +170,53 @@ env:
    pnpm tsops deploy --namespace prod
    # Deploys all apps (or use --app to deploy specific ones)
    ```
+
+### Source-Key Image Reuse
+
+For preview environments, combine `build.inputs` with `tsops build --source-key`
+so CI can skip Docker builds when an equivalent image already exists in the
+registry. The source key hashes the selected input files plus Docker build
+metadata and tags the image as `source-<hash>`.
+
+```typescript
+apps: {
+  api: {
+    build: {
+      type: 'dockerfile',
+      context: '.',
+      dockerfile: 'apps/api/Dockerfile',
+      inputs: ['apps/api/**', 'packages/shared/**', 'package.json', 'pnpm-lock.yaml'],
+      cache: { type: 'registry', mode: 'max' }
+    }
+  }
+}
+```
+
+```bash
+pnpm tsops build --app api --source-key
+```
+
+When `cache: { type: 'registry' }` is set, the Node adapter uses Docker BuildKit
+registry cache flags. If `cache.ref` is omitted, the default cache image is the
+same repository with a `:cache` tag.
+
+### Immutable Preview Handoff
+
+Pass the digest refs produced by CI back into the preview deploy. This keeps the
+deployment tied to the exact image that was built or reused:
+
+```bash
+cat > preview-images.json <<'JSON'
+{
+  "api": "ghcr.io/acme/api@sha256:abcd..."
+}
+JSON
+
+pnpm tsops up preview --var pr=857 --image-digests @preview-images.json
+```
+
+`--image-digests` rejects unknown app names and mutable tags before applying
+manifests.
 
 ### Git Reference Options
 
@@ -193,6 +241,7 @@ env:
 
 Using `--filter` in monorepos provides:
 - Build only changed applications
+- Keep broad Docker contexts while narrowing app selection with `build.inputs`
 - Reduce Docker registry bandwidth usage
 - Lower CI compute costs
 - Faster feedback for developers
@@ -204,7 +253,7 @@ Using `--filter` in monorepos provides:
 **Issue:** `--filter HEAD^1` returns "No apps affected by changed files"
 
 **Causes:**
-1. Changes are outside any `build.context` directory
+1. Changes are outside any configured `build.inputs` or `build.context` path
 2. `fetch-depth: 0` missing in checkout action
 3. Comparing against wrong git reference
 
@@ -220,8 +269,9 @@ Using `--filter` in monorepos provides:
 **Issue:** Cache is not working, builds all apps
 
 **Causes:**
-1. `build.context` paths don't match actual file paths
-2. Config changes force rebuild (expected behavior)
+1. `build.inputs` or `build.context` paths don't match actual file paths
+2. Apps intentionally share the same root context without narrower `build.inputs`
+3. Config changes force rebuild (expected behavior)
 
 **Solution:**
 Check your tsops.config.ts:
@@ -229,8 +279,9 @@ Check your tsops.config.ts:
 apps: {
   api: {
     build: {
-      context: './packages/api',  // ← Must match actual path
-      dockerfile: './packages/api/Dockerfile'
+      context: '.',
+      dockerfile: './packages/api/Dockerfile',
+      inputs: ['packages/api/**', 'packages/shared/**']
     }
   }
 }
