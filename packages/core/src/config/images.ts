@@ -12,7 +12,7 @@ export interface ImagesResolver<TConfig extends TsOpsConfig<any, any, any, any, 
    * @param appName - The application name
    * @returns Full image reference (e.g., "ghcr.io/org/app:abc123")
    */
-  buildRef(appName: string): string
+  buildRef(appName: string, options?: { tag?: string }): string
 }
 
 export function createImagesResolver<TConfig extends TsOpsConfig<any, any, any, any, any, any>>(
@@ -61,9 +61,9 @@ export function createImagesResolver<TConfig extends TsOpsConfig<any, any, any, 
     return 'latest'
   }
 
-  function buildRef(appName: string): string {
+  function buildRef(appName: string, options: { tag?: string } = {}): string {
     const base = resolveRepository(appName)
-    const tag = resolveTag()
+    const tag = options.tag ?? resolveTag()
     return `${base}:${tag}`
   }
 

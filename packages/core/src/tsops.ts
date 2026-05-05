@@ -5,6 +5,7 @@ import { ConsoleLogger, type Logger } from './logger.js'
 import { Builder } from './operations/builder.js'
 import { Deployer } from './operations/deployer.js'
 import { Planner } from './operations/planner.js'
+import type { ImageDigestOverrides } from './operations/types.js'
 import type { DockerClient } from './ports/docker.js'
 import type { KubectlClient } from './ports/kubectl.js'
 import type { OverlayVars, TsOpsConfig } from './types.js'
@@ -130,6 +131,8 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
        * when `namespace` targets an overlay.
        */
       vars?: OverlayVars
+      /** Immutable image refs keyed by app name. */
+      imageOverrides?: ImageDigestOverrides
     } = {}
   ) {
     return this.planner.plan(options)
@@ -205,7 +208,13 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
    * ```
    */
   build(
-    options: { app?: string; namespace?: string; force?: boolean; changedFiles?: string[] } = {}
+    options: {
+      app?: string
+      namespace?: string
+      force?: boolean
+      changedFiles?: string[]
+      sourceKey?: boolean
+    } = {}
   ) {
     return this.builder.build(options)
   }
@@ -236,6 +245,8 @@ export class TsOps<TConfig extends TsOpsConfig<any, any, any, any, any, any, any
        * fallback namespace. Only meaningful when targeting an overlay.
        */
       include?: readonly string[]
+      /** Immutable image refs keyed by app name. */
+      imageOverrides?: ImageDigestOverrides
       /** Skip the per-namespace certificate hook (cert.* in config). */
       skipCert?: boolean
       /** Skip the schema-per-overlay database hook (database.* in config). */

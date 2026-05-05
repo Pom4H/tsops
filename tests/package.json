@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@tsops/core": "workspace:*",
+    "@tsops/node": "workspace:*",
     "tsops": "workspace:*"
   },
   "devDependencies": {

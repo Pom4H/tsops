@@ -1,6 +1,8 @@
 import type { ResolvedNetworkConfig } from '@tsops/k8'
 import type { ConfigMapRef, EnvValue, SecretRef } from '../types.js'
 
+export type ImageDigestOverrides = Record<string, string>
+
 export interface PlanEntry {
   namespace: string
   app: string
@@ -78,7 +80,16 @@ export interface PlanResult {
 }
 
 export interface BuildResult {
-  images: { app: string; image: string }[]
+  images: Array<{
+    app: string
+    /** Immutable digest ref when available; otherwise the mutable tag ref. */
+    image: string
+    /** Mutable tag used as the build/reuse index. */
+    tag?: string
+    digest?: string
+    sourceKey?: string
+    reused?: boolean
+  }>
 }
 
 export interface DeployResult {

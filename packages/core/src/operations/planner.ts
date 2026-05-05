@@ -13,7 +13,9 @@ import {
   scanBuildEnv,
   scanRuntimeEnv
 } from '../validation/sensitive-env.js'
-import type { PlanEntry, PlanResult } from './types.js'
+import type { ImageDigestOverrides, PlanEntry, PlanResult } from './types.js'
+
+const immutableDigestRefPattern = /^.+@sha256:[a-f0-9]{64}$/
 
 /**
  * Dependencies required by Planner.
@@ -66,12 +68,15 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       vars?: OverlayVars
       /** When set, only these apps deploy normally; others fall back via ExternalName. */
       include?: readonly string[]
+      /** Immutable image refs keyed by app name. */
+      imageOverrides?: ImageDigestOverrides
     } = {}
   ): Promise<PlanResult> {
     const namespaces = this.resolver.namespaces.select(options.namespace, options.vars)
     const apps = this.resolver.apps.select(options.app)
     const allAppsForDeps = this.resolver.apps.select()
     const knownAppNames = new Set(allAppsForDeps.map(([name]) => name))
+    validateImageOverrides(options.imageOverrides, knownAppNames)
     const entries: PlanEntry[] = []
     const includeSet = options.include ? new Set(options.include) : undefined
 
@@ -111,7 +116,8 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
         const secrets = this.resolver.apps.resolveSecrets(app, namespace, context)
         const configMaps = this.resolver.apps.resolveConfigMaps(app, namespace, context)
         // Use app.image if provided (for external images), otherwise build from registry
-        const image = app.image || this.resolver.images.buildRef(appName)
+        const image =
+          options.imageOverrides?.[appName] ?? app.image ?? this.resolver.images.buildRef(appName)
         const { network, host } = this.resolver.apps.resolveNetwork(appName, app, context)
 
         const resolveParam = <T>(
@@ -323,6 +329,21 @@ export class Planner<TConfig extends TsOpsConfig<any, any, any, any, any, any>> 
       entries,
       warnings: findings,
       dependencies: hasAnyDeps ? dependencies : undefined
+    }
+  }
+}
+
+function validateImageOverrides(
+  overrides: ImageDigestOverrides | undefined,
+  knownAppNames: ReadonlySet<string>
+): void {
+  if (!overrides) return
+  for (const [app, image] of Object.entries(overrides)) {
+    if (!knownAppNames.has(app)) {
+      throw new Error(`Unknown image override app "${app}"`)
+    }
+    if (!immutableDigestRefPattern.test(image)) {
+      throw new Error(`Image override for app "${app}" must be an immutable digest ref`)
     }
   }
 }

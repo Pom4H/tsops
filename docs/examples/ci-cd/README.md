@@ -170,6 +170,53 @@ env:
    # Deploys all apps (or use --app to deploy specific ones)
    ```
 
+### Source-Key Image Reuse
+
+For preview environments, combine `build.inputs` with `tsops build --source-key`
+so CI can skip Docker builds when an equivalent image already exists in the
+registry. The source key hashes the selected input files plus Docker build
+metadata and tags the image as `source-<hash>`.
+
+```typescript
+apps: {
+  api: {
+    build: {
+      type: 'dockerfile',
+      context: '.',
+      dockerfile: 'apps/api/Dockerfile',
+      inputs: ['apps/api/**', 'packages/shared/**', 'package.json', 'pnpm-lock.yaml'],
+      cache: { type: 'registry', mode: 'max' }
+    }
+  }
+}
+```
+
+```bash
+pnpm tsops build --app api --source-key
+```
+
+When `cache: { type: 'registry' }` is set, the Node adapter uses Docker BuildKit
+registry cache flags. If `cache.ref` is omitted, the default cache image is the
+same repository with a `:cache` tag.
+
+### Immutable Preview Handoff
+
+Pass the digest refs produced by CI back into the preview deploy. This keeps the
+deployment tied to the exact image that was built or reused:
+
+```bash
+cat > preview-images.json <<'JSON'
+{
+  "api": "ghcr.io/acme/api@sha256:abcd..."
+}
+JSON
+
+pnpm tsops up preview --var pr=857 --image-digests @preview-images.json
+```
+
+`--image-digests` rejects unknown app names and mutable tags before applying
+manifests.
+
 ### Git Reference Options
 
 ```bash

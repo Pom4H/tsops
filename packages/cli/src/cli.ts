@@ -305,6 +305,7 @@ async function main(): Promise<void> {
     .option('-c, --config <path>', 'path to config file', 'tsops.config')
     .option('--dry-run', 'skip external commands, log actions only')
     .option('-f, --force', 'force rebuild even if image already exists in registry')
+    .option('--source-key', 'reuse images by content-addressed source key')
     .option(
       '--filter <ref>',
       'build only apps affected by changes compared to git ref (e.g., HEAD^1, main, origin/main)'
@@ -337,7 +338,8 @@ async function main(): Promise<void> {
         namespace: options.namespace,
         app: options.app,
         force: options.force,
-        changedFiles
+        changedFiles,
+        sourceKey: options.sourceKey
       })
 
       if (result.images.length === 0) {
@@ -347,7 +349,9 @@ async function main(): Promise<void> {
 
       console.log('\n✅ Built images:')
       for (const item of result.images) {
-        console.log(`   • ${item.app}: ${item.image}`)
+        const reuse = item.reused ? ' (reused)' : ''
+        const tag = item.tag && item.tag !== item.image ? ` [tag: ${item.tag}]` : ''
+        console.log(`   • ${item.app}: ${item.image}${tag}${reuse}`)
       }
     })
 
@@ -358,13 +362,21 @@ async function main(): Promise<void> {
     .option('--app <name>', 'target a single app')
     .option('-c, --config <path>', 'path to config file', 'tsops.config')
     .option('--dry-run', 'skip external commands, log actions only')
+    .option(
+      '--image-digests <json-or-file>',
+      'JSON object or @file mapping app names to immutable image digest refs'
+    )
     .action(async (options) => {
       const config = await loadConfig(options.config)
       const tsops = createNodeTsOps(config, {
         dryRun: options.dryRun,
         env: new GitEnvironmentProvider(new ProcessEnvironmentProvider())
       })
-      const result = await tsops.deploy({ namespace: options.namespace, app: options.app })
+      const result = await tsops.deploy({
+        namespace: options.namespace,
+        app: options.app,
+        imageOverrides: readImageDigestOverrides(options.imageDigests)
+      })
 
       console.log('✅ Deployed applications:')
       for (const entry of result.entries) {
@@ -395,6 +407,10 @@ async function main(): Promise<void> {
     .option('--base-ref <ref>', 'git ref to diff against (default: origin/main)', 'origin/main')
     .option('--skip-cert', 'skip the per-namespace certificate hook')
     .option('--skip-database', 'skip the schema-per-overlay database hook')
+    .option(
+      '--image-digests <json-or-file>',
+      'JSON object or @file mapping app names to immutable image digest refs'
+    )
     .option('-c, --config <path>', 'path to config file', 'tsops.config')
     .option('--dry-run', 'skip external commands, log actions only')
     .action(async (namespace: string, options) => {
@@ -407,6 +423,7 @@ async function main(): Promise<void> {
       })
 
       const vars = options.var as Record<string, string>
+      const imageOverrides = readImageDigestOverrides(options.imageDigests)
       let include: string[] | undefined
 
       if (options.include) {
@@ -447,11 +464,15 @@ async function main(): Promise<void> {
       if (include && include.length > 0) {
         console.log(`   include: ${include.join(', ')}`)
       }
+      if (imageOverrides) {
+        console.log(`   image digests: ${Object.keys(imageOverrides).join(', ')}`)
+      }
 
       const result = await tsops.deploy({
         namespace,
         vars,
         include,
+        imageOverrides,
         skipCert: options.skipCert,
         skipDatabase: options.skipDatabase
       })
@@ -535,6 +556,23 @@ function collectVar(value: string, previous: Record<string, string>): Record<str
   const val = value.slice(eq + 1)
   if (!key) throw new Error(`Invalid --var "${value}": empty key`)
   return { ...previous, [key]: val }
+}
+
+function readImageDigestOverrides(input: string | undefined): Record<string, string> | undefined {
+  if (!input) return undefined
+  const raw = input.startsWith('@') ? fs.readFileSync(input.slice(1), 'utf8') : input
+  const parsed = JSON.parse(raw) as unknown
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new Error('--image-digests must be a JSON object mapping app names to image refs')
+  }
+  const overrides: Record<string, string> = {}
+  for (const [app, image] of Object.entries(parsed)) {
+    if (typeof image !== 'string') {
+      throw new Error(`--image-digests value for "${app}" must be a string`)
+    }
+    overrides[app] = image
+  }
+  return overrides
 }
 
 async function loadConfig(configPath: string): Promise<any> {

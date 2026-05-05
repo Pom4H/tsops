@@ -8,12 +8,24 @@ the fixture in `examples/preview-namespaces/tsops.config.ts`.
 
 ```bash
 tsops up preview --var pr=857
+tsops up preview --var pr=857 --image-digests @preview-images.json
 tsops down preview --var pr=857
 tsops down preview --var pr=857 --keep-database
 ```
 
 `tsops up` supports `--skip-cert` and `--skip-database` for operator debugging.
 Product orchestration should not use those flags for normal previews.
+
+Use `--image-digests` when CI has already built preview images and should deploy
+exactly those immutable refs. The file is a JSON object keyed by tsops app name:
+
+```json
+{
+  "api": "ghcr.io/example/api@sha256:abcd..."
+}
+```
+
+tsops rejects unknown app keys and mutable tags before planning the rollout.
 
 ## Hook Order
 
