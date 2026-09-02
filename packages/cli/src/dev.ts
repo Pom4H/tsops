@@ -71,7 +71,9 @@ export function buildRouteName(project: string, app: string): string {
 export function createDevPlan(config: DevConfig, options: DevOptions = {}): DevPlan {
   const root = path.resolve(options.cwd ?? process.cwd())
   const namespace = selectLocalNamespace(config, options.namespace)
-  const selected = options.app ? [[options.app, config.apps[options.app]]] : Object.entries(config.apps)
+  const selected: Array<[string, RecordLike | undefined]> = options.app
+    ? [[options.app, config.apps[options.app]]]
+    : Object.entries(config.apps)
 
   if (options.app && !config.apps[options.app]) {
     throw new Error(`Unknown app: ${options.app}`)
@@ -120,12 +122,12 @@ export function resolveDevUrls(plan: DevPlan, cwd = process.cwd()): Record<strin
       env: process.env
     })
     if (result.status !== 0) {
-      const detail = result.stderr?.trim()
+      const detail = (result.stderr ?? '').trim()
       throw new Error(
         `Could not resolve Portless URL for ${entry.app}.${detail ? ` ${detail}` : ''}`
       )
     }
-    const url = result.stdout.trim()
+    const url = (result.stdout ?? '').trim()
     try {
       new URL(url)
     } catch {
@@ -183,8 +185,7 @@ function resolveDevCommand(app: RecordLike, root: string): DevCommand | null {
   }
 
   if (isRecord(dev)) {
-    const cwd =
-      typeof dev.cwd === 'string' ? path.resolve(root, dev.cwd) : defaultCwd
+    const cwd = typeof dev.cwd === 'string' ? path.resolve(root, dev.cwd) : defaultCwd
 
     if (typeof dev.command === 'string') {
       const args = Array.isArray(dev.args)
