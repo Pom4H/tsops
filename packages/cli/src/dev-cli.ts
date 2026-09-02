@@ -8,6 +8,8 @@ import { runDev } from './dev.js'
 
 const CONFIG_EXTENSION_ORDER = ['', '.ts', '.mts', '.cts', '.js', '.mjs', '.cjs'] as const
 
+type LoadedDevConfig = Parameters<typeof runDev>[0]
+
 async function main(): Promise<void> {
   const program = new Command()
     .name('tsops dev')
@@ -26,15 +28,15 @@ async function main(): Promise<void> {
   process.exitCode = code
 }
 
-async function loadConfig(configPath: string): Promise<any> {
+async function loadConfig(configPath: string): Promise<LoadedDevConfig> {
   const resolvedPath = resolveConfigPath(configPath)
   try {
     const module = await import(pathToFileURL(resolvedPath).href)
     const exported = module.default ?? (module as { config?: unknown }).config ?? module
-    if (!exported) {
+    if (!exported || typeof exported !== 'object') {
       throw new Error(`Config module at ${resolvedPath} does not export a configuration object.`)
     }
-    return exported
+    return exported as LoadedDevConfig
   } catch (error) {
     if (isTypeScriptFile(resolvedPath) && isUnsupportedExtensionError(error)) {
       throw new Error(
