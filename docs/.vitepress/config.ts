@@ -3,11 +3,11 @@ import cliPkg from '../../packages/cli/package.json' with { type: 'json' }
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
-  title: "tsops",
-  description: "TypeScript-first toolkit for Kubernetes deployments",
+  title: 'tsops',
+  description: 'TypeScript-first toolkit for Kubernetes deployments',
   base: '/tsops/',
   ignoreDeadLinks: true,
-  
+
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/tsops/favicon.svg' }],
     ['link', { rel: 'apple-touch-icon', href: '/tsops/logo.svg' }],
@@ -15,22 +15,28 @@ export default defineConfig({
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:locale', content: 'en' }],
     ['meta', { property: 'og:title', content: 'tsops | TypeScript-first Kubernetes toolkit' }],
-    ['meta', { property: 'og:description', content: 'Deploy to Kubernetes with confidence using type-safe TypeScript configuration' }],
+    [
+      'meta',
+      {
+        property: 'og:description',
+        content: 'Deploy to Kubernetes with confidence using type-safe TypeScript configuration'
+      }
+    ],
     ['meta', { property: 'og:site_name', content: 'tsops' }],
     ['meta', { property: 'og:image', content: '/tsops/og-image.svg' }],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-    ['meta', { name: 'twitter:image', content: '/tsops/og-image.svg' }],
+    ['meta', { name: 'twitter:image', content: '/tsops/og-image.svg' }]
   ],
 
   themeConfig: {
     logo: '/logo.svg',
-    
+
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'Examples', link: '/examples/' },
       { text: 'API', link: '/api/' },
-      { 
-        text: `v${cliPkg.version}`, 
+      {
+        text: `v${cliPkg.version}`,
         items: [
           { text: 'Changelog', link: 'https://github.com/Pom4H/tsops/blob/main/CHANGELOG.md' },
           { text: 'Contributing', link: '/guide/contributing' }
@@ -45,17 +51,18 @@ export default defineConfig({
           items: [
             { text: 'What is tsops?', link: '/guide/what-is-tsops' },
             { text: 'Getting Started', link: '/guide/getting-started' },
-            { text: 'Quick Start', link: '/guide/quick-start' },
+            { text: 'Quick Start', link: '/guide/quick-start' }
           ]
         },
         {
           text: 'Core Concepts',
           items: [
             { text: 'Configuration', link: '/guide/configuration' },
+            { text: 'Local Development', link: '/guide/local-development' },
             { text: 'Context Helpers', link: '/guide/context-helpers' },
             { text: 'Secrets & ConfigMaps', link: '/guide/secrets' },
             { text: 'Networking', link: '/guide/networking' },
-            { text: 'Building Images', link: '/guide/building' },
+            { text: 'Building Images', link: '/guide/building' }
           ]
         },
         {
@@ -64,7 +71,7 @@ export default defineConfig({
             { text: 'Secret Validation', link: '/guide/secret-validation' },
             { text: 'Multi-Environment', link: '/guide/multi-environment' },
             { text: 'Monorepo Setup', link: '/guide/monorepo' },
-            { text: 'CI/CD Integration', link: '/guide/cicd' },
+            { text: 'CI/CD Integration', link: '/guide/cicd' }
           ]
         }
       ],
@@ -75,7 +82,7 @@ export default defineConfig({
             { text: 'Overview', link: '/examples/' },
             { text: 'Full-Stack App', link: '/examples/fullstack' },
             { text: 'Monitoring (OTEL + Loki + Grafana)', link: '/examples/monitoring' },
-            { text: 'Monorepo', link: '/examples/monorepo' },
+            { text: 'Monorepo', link: '/examples/monorepo' }
           ]
         }
       ],
@@ -86,15 +93,13 @@ export default defineConfig({
             { text: 'Overview', link: '/api/' },
             { text: 'defineConfig', link: '/api/define-config' },
             { text: 'Context Helpers', link: '/api/context-helpers' },
-            { text: 'CLI Commands', link: '/api/cli' },
+            { text: 'CLI Commands', link: '/api/cli' }
           ]
         }
       ]
     },
 
-    socialLinks: [
-      { icon: 'github', link: 'https://github.com/Pom4H/tsops' }
-    ],
+    socialLinks: [{ icon: 'github', link: 'https://github.com/Pom4H/tsops' }],
 
     footer: {
       message: 'Released under the MIT License.',
@@ -110,4 +115,3 @@ export default defineConfig({
     }
   }
 })
-
