@@ -1,377 +1,146 @@
-# CI/CD Examples for tsops
+# CI/CD examples
 
-This directory contains example GitHub Actions workflows demonstrating how to use tsops with incremental builds in monorepo scenarios.
+This directory contains GitHub Actions templates for TypeScript monorepos that use tsops.
 
-## Examples
+- [`build-changed-apps.yml`](./build-changed-apps.yml) demonstrates verification, affected image builds, selective pull-request previews, cleanup on close, and production delivery.
+- [`turborepo-integration.yml`](./turborepo-integration.yml) shows how Turborepo package tasks and tsops application-image selection complement each other.
 
-### 1. `build-changed-apps.yml`
+The files are templates, not drop-in production credentials. Copy one into `.github/workflows/`, then adapt repository paths, registry authentication, Kubernetes authentication, namespaces, and GitHub environments.
 
-**Basic incremental build workflow** that builds only apps affected by changes.
+## Requirements
 
-**Features:**
-- Detects changed files using git diff
-- Builds only affected apps with `--filter` flag
-- Separate deployments for staging (PRs) and production (main branch)
-- Includes dry-run preview job
+- Node.js 24 and Corepack;
+- full Git history through `actions/checkout` with `fetch-depth: 0`;
+- registry credentials for `tsops build`;
+- a configured Kubernetes context for real plan, preview, and deploy jobs;
+- protected GitHub environments for preview and production cluster credentials.
 
-**When to use:**
-- Simple monorepo setups
-- Projects without Turborepo
-- When you want minimal CI/CD configuration
+Prefer short-lived OIDC credentials over a long-lived kubeconfig stored as a repository Secret.
 
-**Copy to your project:**
-```bash
-cp docs/examples/ci-cd/build-changed-apps.yml .github/workflows/
-```
+## Affected application selection
 
-### 2. `turborepo-integration.yml`
-
-**Advanced workflow** combining Turborepo and tsops for maximum efficiency.
-
-**Features:**
-- Turborepo orchestrates TypeScript package builds
-- Remote caching support (Vercel or custom)
-- Parallel execution of tests and builds
-- tsops builds only Docker images for changed apps
-- Cache statistics reporting
-
-**When to use:**
-- Large monorepos with many packages
-- When you use Turborepo already
-- When you want remote caching for both TS builds and Docker images
-- Teams that need CI/CD analytics
-
-**Copy to your project:**
-```bash
-cp docs/examples/ci-cd/turborepo-integration.yml .github/workflows/
-```
-
-## Setup Instructions
-
-### Prerequisites
-
-1. **GitHub Actions enabled** in your repository
-2. **Docker registry access** (e.g., GitHub Container Registry)
-3. **Kubernetes cluster** with kubectl context configured
-4. **Git history** available (set `fetch-depth: 0` in checkout action)
-
-### Configuration
-
-#### 1. Docker Registry Authentication
-
-For GitHub Container Registry (recommended):
-
-```yaml
-- name: Log in to GitHub Container Registry
-  uses: docker/login-action@v3
-  with:
-    registry: ghcr.io
-    username: ${{ github.actor }}
-    password: ${{ secrets.GITHUB_TOKEN }}
-```
-
-For other registries (Docker Hub, AWS ECR, etc.):
-
-```yaml
-- name: Log in to Docker Hub
-  uses: docker/login-action@v3
-  with:
-    username: ${{ secrets.DOCKER_USERNAME }}
-    password: ${{ secrets.DOCKER_PASSWORD }}
-```
-
-#### 2. Environment Variables
-
-Configure in your workflow or repository secrets:
-
-```yaml
-env:
-  GIT_SHA: ${{ github.sha }}
-  DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
-  # Add other env vars your apps need
-```
-
-#### 3. Kubernetes Access
-
-Add kubectl configuration as repository secret:
+`tsops build --filter <git-ref>` compares changed files with each application's `build.inputs`. When explicit inputs are absent, selection falls back to the build context.
 
 ```bash
-# Get your kubeconfig
-kubectl config view --flatten --minify
-
-# Add as secret: KUBE_CONFIG
+pnpm tsops build --filter origin/main --source-key
 ```
 
-In workflow:
-```yaml
-- name: Setup kubectl
-  uses: azure/k8s-set-context@v3
-  with:
-    kubeconfig: ${{ secrets.KUBE_CONFIG }}
-```
+This has two independent optimization layers:
 
-### Turborepo Remote Cache Setup (Optional)
+1. affected-app filtering skips applications whose owned inputs did not change;
+2. source-key reuse skips an exact Docker build when an equivalent image already exists.
 
-For `turborepo-integration.yml`, set up remote caching:
+BuildKit registry cache can still accelerate a build that is necessary.
 
-**Option 1: Vercel (easiest)**
+A precise application definition might look like:
 
-```bash
-# Link to Vercel
-turbo link
-
-# Get token and team ID
-# Add as secrets: TURBO_TOKEN, TURBO_TEAM
-```
-
-**Option 2: Custom S3/HTTP cache**
-
-```json
-// turbo.json
-{
-  "remoteCache": {
-    "signature": true
-  }
-}
-```
-
-Environment variables:
-```yaml
-env:
-  TURBO_API: "https://your-cache-server.com"
-  TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
-  TURBO_TEAM: "your-team"
-```
-
-## How It Works
-
-### Incremental Build Process
-
-1. **Git Diff Analysis**
-   ```bash
-   git diff --name-only HEAD^1
-   # Output: packages/api/src/index.ts
-   #         packages/frontend/app/page.tsx
-   ```
-
-2. **App Matching**
-   - tsops compares changed files with `build.inputs` when configured
-   - Apps without `build.inputs` fall back to matching `build.context`
-   - Only apps with matching paths are selected
-
-3. **Docker Build**
-   ```bash
-   pnpm tsops build --filter HEAD^1
-   # Only builds: api, frontend (not database, worker, etc.)
-   ```
-
-4. **Deploy**
-   ```bash
-   pnpm tsops deploy --namespace prod
-   # Deploys all apps (or use --app to deploy specific ones)
-   ```
-
-### Source-Key Image Reuse
-
-For preview environments, combine `build.inputs` with `tsops build --source-key`
-so CI can skip Docker builds when an equivalent image already exists in the
-registry. The source key hashes the selected input files plus Docker build
-metadata and tags the image as `source-<hash>`.
-
-```typescript
+```ts
 apps: {
   api: {
     build: {
       type: 'dockerfile',
-      context: '.',
+      context: 'apps/api',
       dockerfile: 'apps/api/Dockerfile',
-      inputs: ['apps/api/**', 'packages/shared/**', 'package.json', 'pnpm-lock.yaml'],
+      inputs: [
+        'apps/api/**',
+        'packages/shared/**',
+        'pnpm-lock.yaml'
+      ],
+      sourceKey: true,
       cache: { type: 'registry', mode: 'max' }
     }
   }
 }
 ```
 
-```bash
-pnpm tsops build --app api --source-key
+## Choosing the comparison ref
+
+For pull requests, compare with the exact base SHA:
+
+```text
+${{ github.event.pull_request.base.sha }}
 ```
 
-When `cache: { type: 'registry' }` is set, the Node adapter uses Docker BuildKit
-registry cache flags. If `cache.ref` is omitted, the default cache image is the
-same repository with a `:cache` tag.
+For pushes, compare with the previous event SHA:
 
-### Immutable Preview Handoff
+```text
+${{ github.event.before }}
+```
 
-Pass the digest refs produced by CI back into the preview deploy. This keeps the
-deployment tied to the exact image that was built or reused:
+The templates resolve this once and pass it to both build selection and selective preview deployment.
+
+## Pull-request previews
+
+A preview job can materialise an overlay and deploy only affected applications:
 
 ```bash
-cat > preview-images.json <<'JSON'
+pnpm tsops up preview \
+  --var pr=${{ github.event.pull_request.number }} \
+  --apps-from-changes \
+  --base-ref ${{ github.event.pull_request.base.sha }}
+```
+
+The corresponding `pull_request.closed` job should always attempt cleanup:
+
+```bash
+pnpm tsops down preview \
+  --var pr=${{ github.event.pull_request.number }}
+```
+
+Use a concurrency group keyed by pull-request number so a newer update cancels an obsolete preview job.
+
+## Immutable build-to-deploy handoff
+
+The preferred CI boundary is an application-to-digest JSON artifact:
+
+```json
 {
-  "api": "ghcr.io/acme/api@sha256:abcd..."
+  "api": "ghcr.io/acme/orchard/api@sha256:abcd...",
+  "web": "ghcr.io/acme/orchard/web@sha256:ef01..."
 }
-JSON
-
-pnpm tsops up preview --var pr=857 --image-digests @preview-images.json
 ```
 
-`--image-digests` rejects unknown app names and mutable tags before applying
-manifests.
-
-### Git Reference Options
+An authorized deployment job consumes it with:
 
 ```bash
-# Compare against previous commit (default for push events)
---filter HEAD^1
-
-# Compare against PR base (for pull requests)
---filter ${{ github.event.pull_request.base.sha }}
-
-# Compare against main branch
---filter main
-
-# Compare against remote main
---filter origin/main
-
-# Compare against specific commit
---filter abc123
+pnpm tsops deploy \
+  --namespace production \
+  --image-digests @images.json
 ```
 
-## Benefits
+Unknown application names and mutable tags are rejected before apply. Version 2.1 exposes the digest override input; first-class structured build-result output is a roadmap priority.
 
-Using `--filter` in monorepos provides:
-- Build only changed applications
-- Keep broad Docker contexts while narrowing app selection with `build.inputs`
-- Reduce Docker registry bandwidth usage
-- Lower CI compute costs
-- Faster feedback for developers
+## Turborepo integration
 
-## Troubleshooting
+Turborepo and tsops operate at different layers:
 
-### No apps detected as changed
+```text
+Turborepo
+  package task graph, task cache, TypeScript build and test work
 
-**Issue:** `--filter HEAD^1` returns "No apps affected by changed files"
-
-**Causes:**
-1. Changes are outside any configured `build.inputs` or `build.context` path
-2. `fetch-depth: 0` missing in checkout action
-3. Comparing against wrong git reference
-
-**Solution:**
-```yaml
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0  # ← Make sure this is set!
+tsops
+  application graph, container build inputs, image reuse, previews and deploy
 ```
 
-### All apps build every time
+Both can use the same Git comparison ref without maintaining a second application ownership matrix.
 
-**Issue:** Cache is not working, builds all apps
+## Validate a copied workflow
 
-**Causes:**
-1. `build.inputs` or `build.context` paths don't match actual file paths
-2. Apps intentionally share the same root context without narrower `build.inputs`
-3. Config changes force rebuild (expected behavior)
+Before granting cluster credentials, keep operations side-effect free:
 
-**Solution:**
-Check your tsops.config.ts:
-```typescript
-apps: {
-  api: {
-    build: {
-      context: '.',
-      dockerfile: './packages/api/Dockerfile',
-      inputs: ['packages/api/**', 'packages/shared/**']
-    }
-  }
-}
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm docs:build
+pnpm tsops plan --namespace production --dry-run
 ```
 
-### Git diff fails in CI
+Then configure registry and cluster authentication in protected GitHub environments and run a real `tsops plan` before enabling deploy.
 
-**Issue:** `fatal: bad revision 'HEAD^1'`
+## Related documentation
 
-**Cause:** Shallow clone (fetch-depth not 0)
-
-**Solution:**
-```yaml
-- uses: actions/checkout@v4
-  with:
-    fetch-depth: 0
-```
-
-## Advanced Patterns
-
-### Matrix Builds
-
-Build different apps in parallel jobs:
-
-```yaml
-jobs:
-  detect-changes:
-    outputs:
-      apps: ${{ steps.changed.outputs.apps }}
-    steps:
-      - id: changed
-        run: |
-          # Detect changed apps, output as JSON array
-          echo "apps=[\"api\",\"frontend\"]" >> $GITHUB_OUTPUT
-
-  build:
-    needs: detect-changes
-    strategy:
-      matrix:
-        app: ${{ fromJson(needs.detect-changes.outputs.apps) }}
-    steps:
-      - run: pnpm tsops build --app ${{ matrix.app }}
-```
-
-### Conditional Deployment
-
-Deploy only if specific apps changed:
-
-```yaml
-- name: Deploy API
-  if: contains(steps.changed-files.outputs.files, 'packages/api/')
-  run: pnpm tsops deploy --namespace prod --app api
-```
-
-### Multi-Environment Workflow
-
-```yaml
-jobs:
-  build-changed:
-    # ... build logic ...
-
-  deploy-dev:
-    needs: build-changed
-    if: github.event_name == 'push' && github.ref == 'refs/heads/develop'
-    runs-on: ubuntu-latest
-    steps:
-      - run: pnpm tsops deploy --namespace dev
-
-  deploy-staging:
-    needs: build-changed
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - run: pnpm tsops deploy --namespace staging
-
-  deploy-prod:
-    needs: build-changed
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-latest
-    steps:
-      - run: pnpm tsops deploy --namespace prod
-```
-
-## Resources
-
-- [tsops CLI Documentation](../../packages/cli/README.md)
-- [Monorepo Example](../monorepo.md)
-- [Turborepo Documentation](https://turborepo.com/docs)
-- [GitHub Actions Caching](https://docs.github.com/en/actions/using-workflows/caching-dependencies-to-speed-up-workflows)
-
-## Contributing
-
-Have a useful CI/CD pattern? Submit a PR with your workflow example!
+- [Getting started](../../guide/getting-started.md)
+- [Preview environments](../../guide/preview-overlays.md)
+- [Monorepo example](../monorepo.md)
+- [CLI package reference](../../../packages/cli/README.md)
