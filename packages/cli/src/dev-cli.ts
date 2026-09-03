@@ -64,7 +64,9 @@ function resolveConfigPath(inputPath: string): string {
     if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate
   }
 
-  const supportedExtensions = CONFIG_EXTENSION_ORDER.filter((extension) => extension !== '').join(', ')
+  const supportedExtensions = CONFIG_EXTENSION_ORDER.filter((extension) => extension !== '').join(
+    ', '
+  )
   const triedMessage = candidates.map((candidate) => `  - ${candidate}`).join('\n')
   const hint = hasExplicitExtension
     ? 'Ensure the path is correct and points to a file.'
