@@ -1,157 +1,213 @@
-# tsops Architecture
+# tsops architecture
 
-This document explains how the tsops monorepo is organised today. It is meant to be machine-friendly (LLM agents) while still useful for humans.
+This document describes the repository as of **tsops 2.1**. It is written for maintainers and coding agents; public product concepts live in [`docs/guide/what-is-tsops.md`](docs/guide/what-is-tsops.md).
 
-## 1. High-Level View
+## Product boundary
 
-```
-┌───────────────────── CLI (`packages/cli`) ─────────────────────┐
-│  Commander program `tsops`                                     │
-│  • loads user config (tsops.config.*)                          │
-│  • instantiates `TsOps` (from @tsops/core)                     │
-│  • exposes commands: plan | build | deploy                     │
-└──────────────────────────────┬─────────────────────────────────┘
-                               │ options
-                               ▼
-┌────────────────────── Core Orchestrator (`TsOps`) ─────────────┐
-│  wires dependencies once:                                      │
-│   - ConfigResolver (project/namespaces/images/apps)            │
-│   - Operations: Planner • Builder • Deployer                   │
-│   - Ports: DockerClient • KubectlClient                        │
-│   - Logger & env providers (platform-neutral)                  │
-│   - Runtime config helpers (env/dns/url)                       │
-└─────────────┬─────────────────────┬────────────────────────────┘
-              │                     │
-     ┌────────▼────────┐   ┌────────▼────────┐
-     │ Planner.plan()  │   │ Builder.build() │   ...
-     │ • resolve apps  │   │ • docker build  │
-     │ • merge context │   │ • push images   │
-     └────────┬────────┘   └────────┬────────┘
-              │                     │
-      ┌───────▼────────┐   ┌────────▼─────────┐
-      │ Deployer.deploy│   │ Deployer.plan…   │
-      │ • `planWithChanges` (diff)             │
-      │ • namespace secrets/configMaps checks │
-      │ • manifest batches via ManifestBuilder│
-      │ • orphan cleanup through Kubectl      │
-      └───────────────────────────────────────┘
+tsops owns the **containerized application graph** of a TypeScript monorepo:
+
+- application identity and dependencies;
+- build contexts, inputs, image naming, and immutable handoff;
+- namespace runtime and endpoint resolution;
+- Kubernetes workload generation, planning, and application;
+- local process topology;
+- parameterized preview environments and their lifecycle policy.
+
+It does not provision clusters, cloud accounts, networks, or arbitrary provider resources. Those are upstream infrastructure concerns.
+
+## Repository map
+
+```text
+.
+├── packages/
+│   ├── core/       typed domain model, resolvers, operations, ports
+│   ├── node/       Node.js implementations for Git, Docker, kubectl, commands
+│   ├── k8/         pure Kubernetes manifest builders and resource types
+│   └── cli/        published `tsops` package and command-line UX
+├── tests/           cross-package behavior and type-focused tests
+├── examples/        maintained application-graph fixtures
+├── docs/            VitePress documentation
+├── tsops.config.ts  repository fixture
+└── .changeset/      release intent
 ```
 
-## 2. Packages at a Glance
+The workspace uses pnpm and Turborepo. TypeScript 6 is compiled through project references; Biome owns repository linting and formatting.
 
-| Package | Purpose | Entry Point |
-| --- | --- | --- |
-| `packages/cli` (`tsops`) | Commander CLI. Wraps TsOps and provides UX, diff formatting, Git-aware env provider. | `src/index.ts` |
-| `packages/core` (`@tsops/core`) | Configuration resolvers, runtime helpers, planner/builder/deployer, platform-neutral ports (`DockerClient`, `KubectlClient`). | `src/tsops.ts` |
-| `packages/node` (`@tsops/node`) | Node-specific adapters: command runner, Docker/Kubectl implementations, Git env provider, `createNodeTsOps`. | `src/index.ts` |
-| `packages/k8` (`@tsops/k8`) | Manifest builders for Deployments, Services, Ingress, Traefik IngressRoute, Certificates. | `src/manifest-builder.ts` |
-| `tests` | Vitest suite verifying runtime helpers, config inference. | `config.test.ts` |
+## Dependency direction
 
-The monorepo is managed with **pnpm workspaces + Turborepo** (`turbo.json`). Global scripts such as `pnpm build`, `pnpm lint`, and `pnpm test` map to `turbo run <task>` across packages.
+```text
+@tsops/k8  <──  @tsops/core  <──  @tsops/node  <──  tsops CLI
+                      ▲
+                      └──────── public defineConfig/runtime API
+```
 
-## 3. Config & Resolver Layer
+`core` may depend on Kubernetes data types and pure builders, but it must not depend on Node.js process, filesystem, Docker, or `kubectl` implementations. External effects enter through ports and are wired by `@tsops/node`.
 
-`createConfigResolver(config, { env })` composes specialised resolvers. Each resolver is a pure abstraction so the rest of the system stays declarative.
+The CLI owns presentation and process exit behavior. It must not become the only place where a domain rule exists.
 
-- **ProjectResolver** — naming helpers (`${project}-${app}`), service names.
-- **NamespaceResolver** — namespace iteration/filtering, helper context creation (exposes `label`, `resource`, `secret`, `configMap`, `env`, `template`, namespace vars, cluster metadata).
-- **ImagesResolver** — builds deterministic image refs. Supports strategies: `'git-sha' | 'git-tag' | 'timestamp' | string | { kind: string; … }`. The Node bundle layers in `GitEnvironmentProvider(ProcessEnvironmentProvider)` so Git metadata is available by default.
-- **AppsResolver** — resolves app definitions per namespace: build info, env (with Secret/ConfigMap refs), secrets/configMaps data, ingress configuration. Ingress accepts only object format `{ domain: string, protocol?: 'http' | 'https' }` or function returning it. Delegates to `config/ingress.ts` to materialise ingress manifests with automatic protocol detection (http for local domains like `*.localtest.me`, `localhost`, `*.local`; https for production) and to `images` resolver for defaults.
+## The configuration contract
 
-`defineConfig` (in `config/definer.ts`) reuses the same resolver stack lazily to provide runtime helpers (`env`, `dns`, `url`). Runtime resolution respects `TSOPS_NAMESPACE` or defaults to the first namespace.
+`defineConfig` preserves literal application and namespace keys while constructing the resolver stack lazily. The same returned object exposes runtime helpers such as:
 
-## 4. Operations Layer
+```ts
+config.url('api', 'service')
+config.url('api', 'cluster')
+config.url('api', 'ingress')
+config.dns('api', 'service')
+config.servicePort('api')
+config.targetPort('api')
+config.listenPort('api')
+```
 
-### Planner (`operations/planner.ts`)
-- Selects namespaces/apps respecting `deploy` filters (`'all'`, allow/deny lists).
-- Builds plan entries containing env, secrets, configMaps, network, ports, volumes and image references.
+Application configuration callbacks receive namespace variables plus helpers for endpoints, Secrets, ConfigMaps, resource names, and environment lookup.
 
-### Builder (`operations/builder.ts`)
-- For each selected app, runs Docker builds/pushes (unless `dryRun`).
-- Uses image resolver to compute registry repo/tag (optionally includes project prefix).
+### Runtime shapes
 
-### Deployer (`operations/deployer.ts`)
-- Central entry for `deploy()` and `planWithChanges()`.
-- `deploy()` batches manifests:
-  1. Ensure namespace (idempotent).
-  2. Validate secrets (checks for placeholders/missing env values, reuses cluster secrets when possible).
-  3. Apply secrets/configMaps atomically.
-  4. Build full manifest set via `@tsops/k8` and apply as a batch.
-  5. Detect and delete orphaned resources labelled `tsops/managed=true` but absent from plan.
-- `planWithChanges()` reuses the planner, but instead of applying it:
-  - Generates dry manifest objects for namespaces/secrets/configMaps/apps.
-  - Asks Kubectl adapter to diff (client-side unless namespace already exists).
-  - Produces a structured summary used by the CLI to display global/app/orphan sections.
+A static namespace may declare:
 
-## 5. Adapter & Infrastructure Layer
+- `runtime: 'local'` — endpoints resolve to the local process topology;
+- `runtime: 'docker'` — endpoints resolve on a shared Docker network;
+- `runtime: 'kubernetes'` — the default, using Services and cluster DNS.
 
-- **Logger / ConsoleLogger** (core) — structured logging used by Builder/Deployer; CLI adds user-facing formatting.
-- **Environment providers** — `GlobalEnvironmentProvider` lives in core; the Node bundle ships `ProcessEnvironmentProvider` + `GitEnvironmentProvider` to enrich Git metadata.
-- **Node adapters (`@tsops/node`)** — `DefaultCommandRunner`, `Docker`, and `Kubectl` wrap CLI tools and honour `dryRun`. They implement the core ports (`DockerClient`, `KubectlClient`) and are composed by `createNodeTsOps`.
+`TSOPS_NAMESPACE` selects the active runtime. Under `tsops dev`, `TSOPS_DEV_URLS` supplies the complete Portless route map and takes precedence for service URL resolution.
 
-## 6. Manifest Generation (`@tsops/k8`)
+### Overlay namespaces
 
-`ManifestBuilder.build(appName, context)` returns:
-- Deployment manifest (with envFrom/valueFrom expansions, volumes, args, annotations, probes TBD).
-- Service manifest (ports as declared in app config).
-- Optional Ingress manifest (default HTTP/TLS).
-- Optional Traefik IngressRoute manifest when custom routing is defined.
-- Optional Certificate manifest (cert-manager) when TLS requested.
+An overlay definition is a template, not a long-lived namespace. It declares:
 
-Individual builders live under `packages/k8/src/builders/` and are side-effect free. Utilities in `packages/k8/src/utils.ts` handle label/name generation consistent with project resolver.
+- `extends` — base namespace whose variables it inherits;
+- `naming(vars)` and `domain(vars)` — resolved namespace and public host;
+- `fallback` — base namespace for applications not deployed into the overlay;
+- optional TLS, access, app-secret, namespace-policy, and database hooks;
+- optional `validateVars` for fail-closed policy.
 
-## 7. Data Flows
+At runtime, `tsops up` materialises a static view that normal planning and deployment can consume.
 
-### CLI `plan`
-1. CLI parses flags → loads config via dynamic `import()` + extension search; throws actionable errors when TypeScript module cannot load without transpilation.
-2. Instantiate `const tsops = createNodeTsOps(config, { dryRun?, env: GitEnvironmentProvider(ProcessEnvironmentProvider) })`.
-3. Call `tsops.planWithChanges(filters)`.
-4. Deployer builds plan, validates global artifacts once, calls Kubectl to diff.
-5. CLI groups output: Global Resources (namespaces / secrets / configMaps), Application Resources (create/update/unchanged/errors), Orphaned resources scheduled for deletion. Exits non-zero if validation failed.
+## Command flows
 
-### CLI `deploy`
-1. CLI resolves config and flags (same as `plan`).
-2. Instantiate or reuse `const tsops = createNodeTsOps(config, { dryRun?, env: ... })`.
-3. `tsops.deploy(filters)` obtains plan from Planner.
-4. Returns applied manifest references + deleted orphans. CLI prints summary; warnings emitted if secrets used cluster fallbacks.
+### `tsops dev`
 
-### Runtime helpers
-1. Application code `import config from './tsops.config.js'` (compiled to ESM).
-2. Runtime helpers for service discovery:
-   - `config.url('api', 'service')` — short DNS (http://api)
-   - `config.url('api', 'cluster')` — full cluster DNS (http://api.prod.svc.cluster.local)
-   - `config.url('api', 'ingress')` — public URL (https://api.example.com)
-   - `config.env('api', 'NODE_ENV')` — environment variables
-3. Triggers lazy runtime config creation for the current namespace, reusing resolvers to evaluate env/secrets/configMaps/ingress.
-4. Helpers cache until `TSOPS_NAMESPACE` changes.
-5. **Important**: Use runtime helpers (`config.url()`) for service-to-service communication, not ENV variables.
+1. Load the config and select exactly one `runtime: 'local'` namespace, unless explicitly specified.
+2. Select applications with local dev commands.
+3. Resolve each command from `apps.<name>.dev` or the `dev` script under its build context.
+4. Derive a deterministic Portless route from `{project, app}`.
+5. Resolve all URLs before spawning children.
+6. Start each process through `portless run` with shared `TSOPS_NAMESPACE` and `TSOPS_DEV_URLS`.
+7. Forward termination signals and fail when a child exits unexpectedly.
 
-## 8. Versioning & Release Notes
+Git-worktree isolation is delegated to Portless; tsops contributes the stable application route names and the complete typed topology.
 
-- Source of truth: `CHANGELOG.md` (Keep a Changelog format). Latest release `tsops` 1.5.0 / `@tsops/core` 0.6.0 introduced simplified ingress definition (single object format), protocol auto-detection, comprehensive service discovery documentation with `config.url()` patterns, and platform-agnostic documentation.
-- Release process uses Changesets: run `pnpm changeset`, `pnpm changeset:version`, `pnpm release:publish` (builds all packages, publishes with `--no-git-checks`).
-- Workspace protocol is `workspace:*`; ensure internal versions remain compatible before publishing.
+### `tsops plan`
 
-## 9. Design Principles Recap
+1. Resolve selected namespaces and applications.
+2. Validate dependencies, Secrets, ConfigMaps, routes, images, and namespace policy.
+3. Build deterministic namespace and application manifests.
+4. ask the `KubectlClient` for per-resource diffs;
+5. detect resources labelled as managed by tsops but absent from the desired graph;
+6. return structured creates, updates, unchanged resources, errors, and orphans;
+7. let the CLI format the result and choose an exit code.
 
-- **Dependency Injection everywhere** (constructors take interfaces, enabling deterministic tests and alternative adapters).
-- **Pure data transformations** in resolvers/manifest builders (no IO).
-- **Diff-first UX**: plan before deploy, detect drifts, clean orphans.
-- **Runtime reuse of config**: same TypeScript definition powers deployment and app runtime env.
-- **Type-safe configuration**: single, unified formats (e.g., ingress as object only) for better type safety and maintainability.
-- **Service Discovery pattern**: use runtime helpers (`config.url()`) in application code, not ENV variables for internal services.
-- **Platform-agnostic abstractions**: documentation and APIs prepared for multi-platform support beyond Kubernetes.
-- **LLM-friendly layout**: short files, clear naming, rich documentation in `docs/` with consistent stories.
+Planning must never hide a validation failure behind presentation logic.
 
-## 10. Useful Links
+### `tsops build`
 
-- CLI implementation: `packages/cli/src/index.ts`
-- TsOps orchestrator: `packages/core/src/tsops.ts`
-- Resolvers: `packages/core/src/config/`
-- Operations: `packages/core/src/operations/`
-- Runtime helpers: `packages/core/src/config/definer.ts`
-- Manifest builder: `packages/k8/src/manifest-builder.ts`
-- Docs homepage: `docs/index.md`
-- Comprehensive config test: `tests/config.test.ts`
+1. Select applications directly or from files changed against `--filter`.
+2. Resolve image repository and tag strategy.
+3. When source-key reuse is enabled, hash selected inputs plus build metadata.
+4. Check whether that content-derived image already exists.
+5. Reuse its immutable digest on an exact match, otherwise run the Docker build.
+6. Apply optional BuildKit registry cache settings.
+7. return both human-readable tags and immutable digest references when available.
 
-Stay aligned with this document when introducing new operations, resolvers, or adapters—update the relevant sections as part of feature PRs.
+Source-key reuse and BuildKit cache solve different problems: the former skips an exact build, while the latter accelerates a necessary build.
+
+### `tsops deploy`
+
+1. Resolve a plan for the target namespace and applications.
+2. Validate optional digest overrides; unknown apps and mutable references fail before apply.
+3. Ensure namespace-level resources.
+4. Validate and apply Secrets and ConfigMaps.
+5. Apply application manifests in dependency order.
+6. Delete managed orphans.
+7. return every applied and deleted resource reference.
+
+Dependency order is topological, but tsops does not currently wait for each application to become ready before applying dependants.
+
+### `tsops up`
+
+1. Validate overlay variables before cluster mutation.
+2. Resolve the overlay namespace and selected application set.
+3. Render namespace policy.
+4. Run TLS, access, database, and app-secret preparation in contract order.
+5. Deploy included applications.
+6. Render `ExternalName` fallback Services for excluded dependencies.
+7. Return the resolved preview topology.
+
+`--apps-from-changes` reuses Git and build-context knowledge so preview selection does not require a second ownership map.
+
+### `tsops down`
+
+1. Resolve the same overlay identity from runtime variables.
+2. Run post-destroy database cleanup unless explicitly retained.
+3. Delete the namespace.
+4. Report cleanup failures without pretending the environment is gone.
+
+## Core modules
+
+### Configuration resolvers
+
+Resolvers turn the generic config into deterministic names, applications, builds, environments, endpoints, Secrets, ConfigMaps, and namespace metadata. They should be pure for a fixed environment provider.
+
+### Planner
+
+The planner selects and topologically orders applications, expands configuration callbacks, and produces an operation-level graph independent of CLI formatting.
+
+### Builder
+
+The builder owns image selection and delegates registry inspection and Docker effects to adapters.
+
+### Deployer
+
+The deployer composes validation, manifest construction, diffing, apply, overlay hooks, and orphan cleanup. New cluster mutations must remain observable through returned data.
+
+### Kubernetes builders
+
+`@tsops/k8` contains side-effect-free builders for Deployments, Services, Ingress, Traefik IngressRoute and Middleware resources, Certificates, Jobs, quotas, limits, and related objects. Naming stays consistent with the project resolver.
+
+### Node adapters
+
+`@tsops/node` provides command execution, Git metadata and diff access, Docker/registry operations, and `kubectl` integration. Core behavior must be testable against fake ports without invoking these tools.
+
+## Invariants
+
+- Names derive deterministically from project, namespace, application, and explicit variables.
+- Application keys remain literal through public helpers and dependency declarations.
+- Secrets are modeled and referenced; unresolved or placeholder values block unsafe operations.
+- Image promotion uses immutable digests at the deploy boundary.
+- Local, Docker, and Kubernetes endpoints share one semantic lookup API.
+- Overlay variable validation runs before side effects.
+- Managed-resource cleanup is label-scoped and visible in the plan.
+- Domain decisions return structured data before the CLI formats them.
+- A new workflow must not require a second topology file.
+
+## Testing and release
+
+The required repository checks are:
+
+```bash
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm docs:build
+```
+
+Public behavior changes need tests, an updated example or guide, and a Changeset. Releases are produced from Changesets; package changelogs and versions are generated rather than edited ad hoc.
+
+## Current architectural priorities
+
+1. A stable machine-readable resolved graph for CI, IDEs, and agents.
+2. Stronger readiness, retry, and structured-result semantics for preview lifecycle.
+3. First-class build provenance and digest output.
+4. Executable documentation and examples.
+
+See [`ROADMAP.md`](ROADMAP.md) for the product rationale and explicit non-goals.
