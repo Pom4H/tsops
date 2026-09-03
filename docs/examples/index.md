@@ -1,289 +1,73 @@
 # Examples
 
-Real-world examples of tsops in action.
+The repository keeps runnable or type-checked examples under [`examples/`](https://github.com/Pom4H/tsops/tree/main/examples). They are the source of truth; this page intentionally avoids copying large configurations that would drift.
 
-## Simple Web App
+## Full-stack application
 
-Basic Node.js app with Docker build and container deployment.
+[`examples/fullstack`](https://github.com/Pom4H/tsops/tree/main/examples/fullstack) contains a Hono backend, a Next.js frontend, Dockerfiles, ports, ingress, and a complete `tsops.config.ts`.
 
-```typescript
-import { defineConfig } from 'tsops'
-
-export default defineConfig({
-  project: 'my-app',
-  domain: { prod: 'example.com' },
-  
-  namespaces: {
-    production: { region: 'prod' }
-  },
-  
-  apps: {
-    web: {
-      build: {
-        type: 'dockerfile',
-        context: './web',
-        dockerfile: './web/Dockerfile'
-      },
-      
-      ingress: ({ domain }) => ({ domain: `www.${domain}` }),
-      
-      env: ({ production }) => ({
-        NODE_ENV: production ? 'production' : 'development',
-        PORT: '3000'
-      })
-    }
-  }
-})
+```bash
+pnpm tsops plan --config examples/fullstack/tsops.config.ts --dry-run
 ```
 
-[Full Example →](/examples/fullstack)
+Read the [full-stack notes](/examples/fullstack).
 
-## Full-Stack Application
+## Preview namespaces
 
-Frontend + Backend + Database with secrets and service discovery.
+[`examples/preview-namespaces`](https://github.com/Pom4H/tsops/tree/main/examples/preview-namespaces) demonstrates the complete overlay contract:
 
-```typescript
-export default defineConfig({
-  apps: {
-    frontend: {
-      ingress: ({ domain }) => ({ domain: `app.${domain}` }),
-      env: () => ({
-        // ✅ In your app: config.url('backend', 'service')
-      })
-    },
-    
-    backend: {
-      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
-      env: ({ secret, production }) => {
-        if (production) {
-          return secret('backend-secrets')
-        }
-        return {
-          // ✅ In your app: config.url('postgres', 'service')
-          // ✅ In your app: config.url('redis', 'service')
-        }
-      },
-      
-      secrets: ({ production }) => ({
-        'backend-secrets': {
-          JWT_SECRET: production ? process.env.PROD_JWT! : 'dev-jwt'
-          // ✅ For internal services, use config.url() in app code
-        }
-      })
-    },
-    
-    postgres: {
-      image: 'postgres:16-alpine',
-      env: () => ({
-        POSTGRES_DB: 'myapp',
-        POSTGRES_USER: 'user',
-        POSTGRES_PASSWORD: process.env.DB_PASSWORD || 'dev-password'
-      })
-    }
-  }
-})
+- a stable staging namespace;
+- runtime `pr` variables;
+- selective application deployment;
+- fallback Services for untouched applications;
+- wildcard TLS reuse;
+- a fail-closed access gate;
+- `ResourceQuota` and `LimitRange` policy;
+- generated per-preview database credentials and schema lifecycle.
+
+```bash
+pnpm tsops up preview \
+  --config examples/preview-namespaces/tsops.config.ts \
+  --var pr=42 \
+  --include worken-front \
+  --dry-run
 ```
 
-[Full Example →](/examples/fullstack)
-
-## Microservices
-
-Multiple services with shared configuration.
-
-```typescript
-export default defineConfig({
-  apps: {
-    gateway: {
-      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
-      env: () => ({
-        // ✅ In your app:
-        // config.url('auth', 'service')
-        // config.url('users', 'service')
-        // config.url('orders', 'service')
-      })
-    },
-    
-    auth: {
-      env: ({ secret }) => ({
-        ...secret('auth-secrets')
-        // ✅ In your app: config.url('postgres', 'service')
-      })
-    },
-    
-    users: {
-      env: ({ secret }) => ({
-        ...secret('users-secrets')
-        // ✅ In app: config.url('postgres'/'redis', 'service')
-      })
-    },
-    
-    orders: {
-      env: ({ secret }) => ({
-        ...secret('orders-secrets')
-        // ✅ In app: config.url('postgres'/'payments', 'service')
-      })
-    }
-  }
-})
-```
-
-[Full Example →](/examples/monitoring)
-
-## With Monitoring
-
-Add Prometheus, Grafana, and Loki.
-
-```typescript
-export default defineConfig({
-  apps: {
-    api: {
-      env: () => ({
-        // ✅ In your app: config.url('otel-collector', 'service')
-      })
-    },
-    
-    'otel-collector': {
-      image: 'otel/opentelemetry-collector-contrib:0.100.0',
-      env: () => ({
-        // ✅ In app: config.url('prometheus'/'loki', 'service')
-      })
-    },
-    
-    prometheus: {
-      image: 'prom/prometheus:latest',
-      ingress: ({ domain }) => ({ domain: `prometheus.${domain}` })
-    },
-    
-    grafana: {
-      image: 'grafana/grafana:latest',
-      ingress: ({ domain }) => ({ domain: `grafana.${domain}` }),
-      env: () => ({
-        // ✅ In your app: config.url('postgres'/'prometheus'/'loki', 'service')
-      })
-    },
-    
-    loki: {
-      image: 'grafana/loki:latest'
-    }
-  }
-})
-```
-
-## Multi-Environment
-
-Dev, staging, and production with different configurations.
-
-```typescript
-export default defineConfig({
-  domain: {
-    dev: 'dev.example.com',
-    staging: 'staging.example.com',
-    prod: 'example.com'
-  },
-  
-  namespaces: {
-    development: { region: 'dev' },
-    staging: { region: 'staging' },
-    production: { region: 'prod' }
-  },
-  
-  apps: {
-    api: {
-      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
-      
-      env: ({ production, dev, secret }) => {
-        if (production) {
-          return secret('api-secrets')
-        }
-        
-        return {
-          NODE_ENV: dev ? 'development' : 'staging',
-          LOG_LEVEL: dev ? 'debug' : 'info'
-          // ✅ In your app: config.url('postgres', 'service')
-        }
-      },
-      
-      secrets: ({ production, dev }) => {
-        if (production) {
-          return {
-            'api-secrets': {
-              JWT_SECRET: process.env.PROD_JWT!,
-              DB_PASSWORD: process.env.PROD_DB_PWD!
-            }
-          }
-        }
-        
-        return {
-          'api-secrets': {
-            JWT_SECRET: dev ? 'dev-jwt' : 'staging-jwt',
-            DB_PASSWORD: dev ? 'dev-pwd' : 'staging-pwd'
-          }
-        }
-      }
-    }
-  }
-})
-```
+The authoritative field-by-field explanation is the [Preview environments contract](/guide/preview-overlays).
 
 ## Monorepo
 
-Multiple apps in a monorepo with shared types.
-
-```typescript
-// packages/shared/types.ts
-export interface AppConfig {
-  database: string
-  redis: string
-}
-
-// tsops.config.ts
-import { defineConfig } from 'tsops'
-import type { AppConfig } from './packages/shared/types'
-
-export default defineConfig({
-  apps: {
-    api: {
-      build: {
-        type: 'dockerfile',
-        context: './packages/api',
-        dockerfile: './packages/api/Dockerfile'
-      },
-      env: (): AppConfig => ({
-        // ✅ In your app: config.url('postgres'/'redis', 'service')
-      })
-    },
-    
-    worker: {
-      build: {
-        type: 'dockerfile',
-        context: './packages/worker',
-        dockerfile: './packages/worker/Dockerfile'
-      },
-      env: (): AppConfig => ({
-        // ✅ In your app: config.url('postgres'/'redis', 'service')
-      })
-    }
-  }
-})
-```
-
-[Full Example →](/examples/monorepo)
-
-## Browse All Examples
-
-- [Full-Stack](/examples/fullstack) - Complete application
-- [Monitoring](/examples/monitoring) - Observability stack
-- [Monorepo](/examples/monorepo) - Multi-app repo
-
-## Example Repository
-
-All examples are available in the [tsops-examples](https://github.com/yourusername/tsops-examples) repository.
+[`examples/monorepo`](https://github.com/Pom4H/tsops/tree/main/examples/monorepo) shows multiple application build contexts and the configuration shape used for affected-build filtering.
 
 ```bash
-git clone https://github.com/yourusername/tsops-examples
-cd tsops-examples/simple-app
-pnpm install
-pnpm tsops plan
+pnpm tsops build \
+  --config examples/monorepo/tsops.config.ts \
+  --filter origin/main \
+  --dry-run
 ```
 
+Read the [monorepo notes](/examples/monorepo).
 
+## OpenTelemetry stack
+
+[`examples/otel`](https://github.com/Pom4H/tsops/tree/main/examples/otel) models an application together with OpenTelemetry Collector, Loki, and Grafana services. It is useful for service discovery, environment composition, and ingress examples.
+
+Read the [monitoring notes](/examples/monitoring).
+
+## Direct methods
+
+[`examples/direct-methods`](https://github.com/Pom4H/tsops/tree/main/examples/direct-methods) exercises the programmatic API without depending on the CLI presentation layer. Use it when integrating `@tsops/core` or `@tsops/node` into another tool.
+
+## CI examples
+
+The [`docs/examples/ci-cd`](https://github.com/Pom4H/tsops/tree/main/docs/examples/ci-cd) directory contains workflow fragments for affected Docker builds and Turborepo integration. They are templates: registry authentication, cluster credentials, namespaces, and promotion policy must be adapted to the target repository.
+
+## Keeping examples honest
+
+Examples should satisfy three rules:
+
+1. Reference only current public types and CLI flags.
+2. Link to repository files rather than duplicating long configurations in documentation.
+3. Use `--dry-run` in copy-paste validation commands unless the section explicitly explains cluster side effects.
+
+A public feature is not complete until at least one maintained example demonstrates it.
