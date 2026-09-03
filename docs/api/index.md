@@ -7,28 +7,37 @@ import {
   defineConfig,
   defineDockerfileBuild,
   buildGraph,
-  topoSort,
   validateDependencies,
+  topoSort,
   normalizePort,
-  normalizePorts
+  normalizePorts,
+  pickPort
 } from 'tsops'
 ```
 
-Most projects only need `defineConfig` and the returned runtime helpers.
+Most projects only need `defineConfig` and the runtime helpers attached to its return value.
 
 ## `defineConfig(config)`
 
-Preserves literal project, namespace, application, Secret, and ConfigMap keys while attaching runtime helpers to the configuration.
+`defineConfig` preserves literal project, namespace, application, Secret, and ConfigMap keys while attaching runtime methods that use `TSOPS_NAMESPACE`.
 
 ```ts
 import { defineConfig } from 'tsops'
 
 const config = defineConfig({
   project: 'orchard',
+
   namespaces: {
-    local: { runtime: 'local', domain: 'orchard.localhost' },
-    production: { runtime: 'kubernetes', domain: 'orchard.example.com' }
+    local: {
+      runtime: 'local',
+      domain: 'orchard.localhost'
+    },
+    production: {
+      runtime: 'kubernetes',
+      domain: 'orchard.example.com'
+    }
   },
+
   clusters: {
     production: {
       apiServer: 'https://kubernetes.example.com:6443',
@@ -36,10 +45,18 @@ const config = defineConfig({
       namespaces: ['production']
     }
   },
+
   images: {
     registry: 'ghcr.io/acme/orchard',
     tagStrategy: 'git-sha'
   },
+
+  secrets: {
+    database: {
+      DATABASE_URL: process.env.DATABASE_URL ?? ''
+    }
+  },
+
   apps: {
     api: {
       ports: [{ name: 'http', port: 80, targetPort: 3000 }]
@@ -54,14 +71,14 @@ export default config
 
 | Field | Purpose |
 | --- | --- |
-| `project` | Stable project identifier used in deterministic names and local routes |
+| `project` | Stable project identity used in deterministic names and local routes |
 | `namespaces` | Static runtime environments and parameterized overlay templates |
-| `clusters` | Mapping from namespaces to `kubectl` contexts and API servers |
+| `clusters` | Kubernetes API servers, contexts, and the namespaces they own |
 | `images` | Registry, repository layout, and tag strategy |
-| `apps` | Application builds, ports, dependencies, env, routes, and deploy selection |
-| `secrets` | Named Secret definitions or namespace-aware resolver functions |
-| `configMaps` | Named ConfigMap definitions or namespace-aware resolver functions |
-| `validation` | Optional validation policy, currently including sensitive-env scanning |
+| `apps` | Application builds, local commands, dependencies, ports, env, and routes |
+| `secrets` | Named Secret data or namespace-aware resolver functions |
+| `configMaps` | Named ConfigMap data or namespace-aware resolver functions |
+| `validation` | Optional safety policy, including sensitive environment scanning |
 
 ## Namespace runtimes
 
@@ -69,9 +86,9 @@ export default config
 runtime: 'local' | 'docker' | 'kubernetes'
 ```
 
-`kubernetes` is the default. The selected runtime changes endpoint resolution, not application identity.
+`kubernetes` is the default. The selected runtime changes how endpoints resolve, not the application keys used to request them.
 
-A static namespace may contain arbitrary product variables as long as reserved helper names are avoided. Static namespaces in one config should keep the same variable shape.
+A static namespace may contain custom product variables. All static namespaces in one config should keep a compatible variable shape, and custom fields cannot collide with reserved context-helper names.
 
 ```ts
 namespaces: {
@@ -88,9 +105,9 @@ namespaces: {
 }
 ```
 
-## Overlay namespace
+## Overlay namespaces
 
-An overlay is resolved from runtime variables by `tsops up` and `tsops down`:
+An overlay is materialized from runtime variables by `tsops up` and resolved again by `tsops down`:
 
 ```ts
 preview: {
@@ -101,29 +118,26 @@ preview: {
 }
 ```
 
-Core fields:
-
 | Field | Purpose |
 | --- | --- |
 | `extends` | Base static namespace whose variables are inherited |
-| `naming(vars)` | Kubernetes namespace name |
-| `domain(vars)` | External domain for the resolved overlay |
-| `fallback` | Namespace used by generated fallback Services |
-| `cert` | Wildcard Secret reuse or custom certificate Job |
+| `naming(vars)` | Resolved Kubernetes namespace name |
+| `domain(vars)` | Resolved public domain |
+| `fallback` | Namespace used by fallback Services for excluded applications |
+| `cert` | Wildcard Secret reuse or a custom certificate Job |
 | `access` | Optional fail-closed Traefik BasicAuth gate |
 | `appSecrets` | Explicit Secrets copied for included applications |
 | `namespacePolicy` | ResourceQuota and LimitRange settings |
 | `database` | Optional schema-per-overlay lifecycle |
-| `validateVars` | Pre-side-effect variable policy |
+| `validateVars` | Variable validation that runs before side effects |
 
-See [Preview environments](/guide/preview-overlays) for the complete contract.
+See [Preview environments](/guide/preview-overlays) for the full lifecycle contract.
 
-## Application definition
+## Application definitions
 
 ```ts
 apps: {
   api: {
-    image: 'ghcr.io/acme/api@sha256:...',
     build: {
       type: 'dockerfile',
       context: 'apps/api',
@@ -131,9 +145,9 @@ apps: {
     },
     dev: ['bun', 'run', 'dev'],
     needs: ['database-proxy'],
-    env: ({ url, secretKey }) => ({
+    env: ({ url, secret }) => ({
       UI_URL: url('web', 'service'),
-      DATABASE_URL: secretKey('database', 'DATABASE_URL')
+      DATABASE_URL: secret('database', 'DATABASE_URL')
     }),
     ports: [{ name: 'http', port: 80, targetPort: 3000 }],
     ingress: ({ domain }) => ({ domain: `api.${domain}` }),
@@ -147,16 +161,16 @@ Frequently used fields:
 | Field | Purpose |
 | --- | --- |
 | `image` | Explicit image when tsops does not build it |
-| `build` | Dockerfile build context and reproducibility settings |
+| `build` | Dockerfile context and reproducibility settings |
 | `dev` | Local command, package script, command object, or `false` |
-| `needs` | Typed application dependency edges and deploy order |
-| `env` | One source or an ordered array of static/resolved env sources |
-| `ports` | Service, target, and optional local ports |
+| `needs` | Typed application dependency edges and deployment order |
+| `env` | One source or an ordered array of static and resolved env sources |
+| `ports` | Service, target, and optional localhost fallback ports |
 | `ingress` | Public domain and optional protocol |
 | `deploy` | Namespace inclusion or exclusion policy |
 | `volumes`, `volumeMounts`, `args`, `podAnnotations` | Workload-specific Kubernetes settings |
 
-`AppDefinition` is open to additional fields for adapters, but unknown data has no effect unless an operation explicitly consumes it.
+`AppDefinition` accepts additional adapter data, but unknown fields do nothing until an operation explicitly consumes them.
 
 ## Dockerfile builds
 
@@ -166,10 +180,13 @@ build: {
   context: 'apps/api',
   dockerfile: 'apps/api/Dockerfile',
   inputs: ['apps/api/**', 'packages/shared/**', 'pnpm-lock.yaml'],
-  sourceKey: { mode: 'inputs', inputs: ['apps/api/**', 'packages/shared/**'] },
+  sourceKey: {
+    mode: 'inputs',
+    inputs: ['apps/api/**', 'packages/shared/**', 'pnpm-lock.yaml']
+  },
   cache: {
     type: 'registry',
-    ref: 'ghcr.io/acme/api:buildcache',
+    ref: 'ghcr.io/acme/orchard/api:buildcache',
     mode: 'max'
   },
   target: 'production',
@@ -178,15 +195,15 @@ build: {
 }
 ```
 
-`sourceKey` may be:
+`sourceKey` accepts:
 
-- `true` or `{ mode: 'context' }` for a context-derived key;
-- a string;
+- `true` or `{ mode: 'context' }`;
+- a fixed string;
 - a resolver function;
 - `{ mode: 'inputs', inputs: [...] }`;
 - `{ mode: 'custom', value: ... }`.
 
-`build.inputs` also defines affected-application matching for `tsops build --filter`.
+`build.inputs` also drives affected-application matching for `tsops build --filter`.
 
 ## Ports
 
@@ -203,61 +220,65 @@ ports: [
 ```
 
 - `port` is the Kubernetes Service port.
-- `targetPort` is the container or process-facing port.
+- `targetPort` is the container or local process port.
 - `localPort` is an optional localhost fallback outside the Portless URL map.
 
-The public `normalizePort`, `normalizePorts`, and `pickPort` helpers expose the same normalization rules used internally.
+The package exports `normalizePort`, `normalizePorts`, and `pickPort` with the same normalization rules used internally.
 
-## Context helpers
+## Application callback context
 
-Application callbacks receive namespace variables plus the helpers below. Literal application and resource names are inferred from the config.
+Application callbacks receive namespace variables plus metadata and helper functions.
 
-### `url(app, type, options?)`
+### Metadata
+
+```ts
+project
+namespace
+appName
+cluster
+```
+
+### Endpoints
 
 ```ts
 url('api', 'service')
 url('api', 'cluster')
 url('api', 'ingress')
 url('metrics', 'service', { port: 'prometheus' })
-```
 
-Returns a reachable URL for the active namespace runtime.
+dns('api', 'service')
+dns('api', 'cluster')
+dns('api', 'ingress')
 
-### `dns(app, type, options?)`
-
-Returns a host name without a scheme by default. Options can add protocol, port, headless-pod selection, external handling, or a custom cluster domain.
-
-### Port helpers
-
-```ts
 servicePort('api')
 targetPort('api')
 listenPort('api')
 ```
 
-Select a named port by passing the port name where supported.
+`url` accepts optional `{ protocol, port }`. `dns` accepts only the application and endpoint type.
 
-### Resource helpers
+### Secrets and ConfigMaps
 
 ```ts
 secret('database')
-secretKey('database', 'DATABASE_URL')
+secret('database', 'DATABASE_URL')
+
 configMap('api-settings')
-configMapKey('api-settings', 'LOG_LEVEL')
-resource('secret', 'database')
-serviceName('api')
+configMap('api-settings', 'LOG_LEVEL')
 ```
 
-Whole-Secret and whole-ConfigMap references become `envFrom`; key references become Kubernetes `valueFrom` bindings.
+A whole-resource reference becomes `envFrom`. A keyed reference becomes a Kubernetes `valueFrom` binding. Names and keys are inferred from declared resources where possible.
 
-### Utilities
+### Names and utilities
 
 ```ts
+label('component', 'backend')
+resource('secret', 'database')
 env('LOG_LEVEL', 'info')
 template('https://{host}/api', { host: 'example.com' })
 ```
 
-Read the [Context helpers guide](/guide/context-helpers) for examples and behavior details.
+Read [Context helpers](/guide/context-helpers) for usage patterns.
 
 ## Environment composition
 
@@ -272,9 +293,9 @@ env: [
 ]
 ```
 
-Later explicit keys override earlier keys. Whole resource references remain separate `envFrom` entries.
+Later explicit keys override earlier keys. Whole Secret and ConfigMap references remain separate `envFrom` entries.
 
-## Sensitive-env validation
+## Sensitive-environment validation
 
 ```ts
 validation: {
@@ -288,19 +309,34 @@ validation: {
 }
 ```
 
-Build-time environment values are especially important because they can become part of image layers.
+Build-time values deserve particular scrutiny because they can be persisted in image layers.
 
-## Runtime helpers
+## Runtime config methods
 
-The object returned by `defineConfig` may be imported by application code:
+The value returned by `defineConfig` may be imported by application code:
 
 ```ts
 import config from '../../tsops.config.js'
 
-process.env.API_URL = config.url('api', 'service')
+const apiUrl = config.url('api', 'service')
+const apiHost = config.dns('api', 'service')
+const apiPort = config.targetPort('api')
+const nodeEnv = config.env('api', 'NODE_ENV')
 ```
 
-Resolution uses `TSOPS_NAMESPACE`. Under `tsops dev`, `TSOPS_DEV_URLS` supplies the Portless routes generated for the complete local graph.
+Available methods are:
+
+```ts
+config.env(app, key)
+config.dns(app, type)
+config.url(app, type, options?)
+config.port(app, portName?)
+config.servicePort(app, portName?)
+config.targetPort(app, portName?)
+config.listenPort(app, portName?)
+```
+
+`TSOPS_NAMESPACE` selects the active namespace. Under `tsops dev`, `TSOPS_DEV_URLS` supplies the Portless route map used by service URL resolution.
 
 ## Graph utilities
 
@@ -312,11 +348,11 @@ validateDependencies(...)
 topoSort(...)
 ```
 
-These functions expose dependency validation and deterministic ordering without requiring CLI output parsing.
+These expose dependency validation and deterministic ordering without parsing CLI output.
 
 ## Programmatic operations
 
-Use `@tsops/node` when an integration needs the configured planner, builder, or deployer with standard Node.js adapters:
+Use `@tsops/node` for the configured planner, builder, and deployer with standard Node.js adapters:
 
 ```ts
 import config from './tsops.config.js'
@@ -326,7 +362,7 @@ const tsops = createNodeTsOps(config)
 const plan = await tsops.planWithChanges({ namespace: 'production' })
 ```
 
-Use `@tsops/core` directly when supplying custom Docker, Kubernetes, command, environment, or logging ports.
+Use `@tsops/core` directly only when supplying custom Docker, Kubernetes, command, environment, or logging ports.
 
 ## CLI
 
