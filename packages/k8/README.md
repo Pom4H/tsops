@@ -1,150 +1,60 @@
 # @tsops/k8
 
-Kubernetes manifest builders and type definitions for tsops.
+Deterministic Kubernetes resource builders and generated API types used by tsops.
 
-## Features
+Most projects should use the `tsops` package and its application graph. Use `@tsops/k8` directly only when extending or testing the manifest layer.
 
-- **Type-safe manifest builders** for Deployment, Service, Ingress, IngressRoute (Traefik), and Certificate (cert-manager)
-- **Generated Kubernetes API types** from OpenAPI spec
-- **Builder pattern** for composing manifests with sensible defaults
+## Responsibilities
 
-## Architecture
+- build Kubernetes objects from already resolved application and namespace data;
+- keep names, labels, selectors, ports, and ownership metadata consistent;
+- provide typed resource shapes without performing external I/O;
+- expose pure builders that can be tested without a cluster.
 
-### Manifest Builders (`builders/`)
+## Resource coverage
 
-Each builder is a pure function that generates a specific Kubernetes resource:
+The package contains builders and related types for resources used by the current delivery workflows, including:
 
-- **`deployment.ts`** – Creates Deployment manifests with configurable containers, env vars, and labels
-- **`service.ts`** – Creates Service manifests with standard port configuration
-- **`ingress.ts`** – Creates standard Ingress resources
-- **`ingress-route.ts`** – Creates Traefik IngressRoute resources
-- **`certificate.ts`** – Creates cert-manager Certificate resources
+- Deployments;
+- Services and `ExternalName` fallback Services;
+- standard Ingress resources;
+- Traefik IngressRoute and Middleware resources;
+- cert-manager Certificates;
+- Jobs used by overlay lifecycle hooks;
+- ResourceQuota and LimitRange policy;
+- supporting Secret and ConfigMap shapes.
 
-### Main Builder
+`ManifestBuilder` composes application resources, while focused builders handle lifecycle and namespace-level objects.
 
-**`manifest-builder.ts`** – The `ManifestBuilder` class that coordinates all builders:
+## Purity contract
 
-```typescript
-class ManifestBuilder<TConfig> {
-  build(appName: string, ctx: ManifestBuilderContext): ManifestSet {
-    // Returns: { deployment, service, ingress?, ingressRoute?, certificate? }
-  }
-}
+Builders must not invoke `kubectl`, read environment variables, inspect a registry, or decide product policy. They receive resolved data and return serializable Kubernetes objects.
+
+```ts
+const resources = manifestBuilder.build(appName, resolvedContext)
 ```
 
-## Usage
+For equal inputs, the result must be equal. Cluster diff and apply behavior belongs to `@tsops/node`; selection and policy belong to `@tsops/core`.
 
-### Direct Usage
+## Generated Kubernetes types
 
-```typescript
-import { ManifestBuilder } from '@tsops/k8'
+The package generates TypeScript declarations from the Kubernetes OpenAPI schema. The generation script is intentionally separate from normal builds:
 
-const builder = new ManifestBuilder({ project: 'myapp' })
-
-const manifests = builder.build('api', {
-  namespace: 'prod',
-  serviceName: 'myapp-api',
-  image: 'ghcr.io/org/api:v1.0.0',
-  host: 'api.example.com',
-  env: { NODE_ENV: 'production' },
-  network: {
-    ingress: { className: 'nginx' },
-    certificate: {
-      issuerRef: { kind: 'ClusterIssuer', name: 'letsencrypt' },
-      dnsNames: ['api.example.com']
-    }
-  }
-})
-
-console.log(manifests.deployment)
-console.log(manifests.service)
-console.log(manifests.ingress)
-console.log(manifests.certificate)
+```bash
+pnpm --filter @tsops/k8 build
+pnpm --filter @tsops/k8 generate:k8s-types
 ```
 
-### Network Configuration
-
-The `network` field in the context supports:
-
-#### Ingress (Standard Kubernetes)
-
-```typescript
-network: {
-  ingress: {
-    className: 'nginx',
-    annotations: { 'nginx.ingress.kubernetes.io/rewrite-target': '/' },
-    path: '/api',
-    pathType: 'Prefix',
-    tls: [{ secretName: 'api-tls', hosts: ['api.example.com'] }]
-  }
-}
-```
-
-#### IngressRoute (Traefik)
-
-```typescript
-network: {
-  ingressRoute: {
-    entryPoints: ['websecure'],
-    routes: [
-      {
-        match: 'Host(`api.example.com`)',
-        middlewares: [{ name: 'redirect-https' }],
-        services: [{ name: 'api', port: 8080 }]
-      }
-    ],
-    tls: { certResolver: 'letsencrypt' }
-  }
-}
-```
-
-#### Certificate (cert-manager)
-
-```typescript
-network: {
-  certificate: {
-    secretName: 'api-tls',
-    issuerRef: { kind: 'ClusterIssuer', name: 'letsencrypt-prod' },
-    dnsNames: ['api.example.com', 'www.api.example.com'],
-    duration: '2160h', // 90 days
-    renewBefore: '360h' // 15 days
-  }
-}
-```
-
-## Types
-
-### Generated Types
-
-Kubernetes API types are generated from the official OpenAPI spec and live in `generated/k8s-openapi.d.ts`.
-
-### Builder Types
-
-The package exports several type definitions:
-
-- **`ManifestSet`** – Collection of all possible manifests for an app
-- **`ManifestBuilderContext`** – Input context for building manifests
-- **`ResolvedNetworkConfig`** – Network configuration after resolution
-- **`ResolvedIngressConfig`**, **`ResolvedIngressRouteConfig`**, **`ResolvedCertificateConfig`** – Individual network component configs
-
-## Constants
-
-```typescript
-import { DEFAULT_HTTP_PORT } from '@tsops/k8'
-
-console.log(DEFAULT_HTTP_PORT) // 8080
-```
+Review generated diffs and compatibility before committing a schema refresh.
 
 ## Development
 
+From the repository root:
+
 ```bash
-pnpm build       # Compile TypeScript
+pnpm lint
+pnpm typecheck
+pnpm test
 ```
 
-To regenerate Kubernetes types from OpenAPI spec, see the scripts directory in the legacy package (this is typically done once per Kubernetes version update).
-
-## Related Packages
-
-- **@tsops/core** – Core orchestration and configuration
-- **tsops** – Command-line interface
-
+See the root [`ARCHITECTURE.md`](../../ARCHITECTURE.md) for dependency direction and the public [API overview](../../docs/api/index.md) for application-level configuration.
