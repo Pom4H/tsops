@@ -1,8 +1,8 @@
 ---
-"tsops": major
-"@tsops/core": major
-"@tsops/node": major
-"@tsops/k8": major
+"tsops": minor
+"@tsops/core": minor
+"@tsops/node": minor
+"@tsops/k8": minor
 ---
 
 Add `tsops dev` with Portless-backed stable local URLs and worktree isolation. Local runtime helpers now consume `TSOPS_DEV_URLS` when present, while keeping the existing localhost fallback outside `tsops dev`.
