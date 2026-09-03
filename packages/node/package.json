@@ -1,7 +1,7 @@
 {
   "name": "@tsops/node",
   "version": "2.1.0",
-  "description": "Node-specific adapters and helpers for tsops",
+  "description": "Node.js adapters for tsops Git, Docker, kubectl, and process operations",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -19,7 +19,7 @@
     "build": "tsc -b .",
     "dev": "tsc -b --watch",
     "clean": "rm -rf dist",
-    "lint": "pnpm -w exec eslint ."
+    "lint": "pnpm -w exec biome check packages/node"
   },
   "dependencies": {
     "@tsops/core": "workspace:*",

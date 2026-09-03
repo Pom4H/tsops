@@ -1,7 +1,7 @@
 {
   "name": "tsops",
   "version": "2.1.0",
-  "description": "TypeScript-first toolkit for planning, building, and deploying to Kubernetes",
+  "description": "Typed application delivery for TypeScript monorepos on Kubernetes",
   "type": "module",
   "bin": {
     "tsops": "./bin/tsops.js"
@@ -27,7 +27,7 @@
     "build": "tsc -b .",
     "dev": "tsc -b --watch",
     "clean": "rm -rf dist",
-    "lint": "pnpm -w exec eslint .",
+    "lint": "pnpm -w exec biome check packages/cli",
     "prepare": "tsc -b ."
   },
   "dependencies": {
@@ -38,12 +38,13 @@
   "keywords": [
     "kubernetes",
     "k8s",
-    "devops",
-    "deployment",
-    "docker",
     "typescript",
-    "ci-cd",
-    "infrastructure"
+    "monorepo",
+    "application-delivery",
+    "preview-environments",
+    "local-development",
+    "docker",
+    "ci-cd"
   ],
   "repository": {
     "type": "git",

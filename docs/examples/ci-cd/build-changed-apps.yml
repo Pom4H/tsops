@@ -1,98 +1,141 @@
-name: Build Changed Apps (Monorepo Optimization)
+name: tsops delivery
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: tsops-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  build-changed:
-    name: Build Only Changed Applications
+  verify:
+    if: github.event.action != 'closed'
     runs-on: ubuntu-latest
-    
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
-          fetch-depth: 0  # Required for git diff to work
-      
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
         with:
-          version: 10
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm docs:build
+
+  build:
+    if: github.event.action != 'closed'
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
         with:
-          node-version: '20'
-          cache: 'pnpm'
-      
-      - name: Install dependencies
-        run: pnpm install
-      
-      - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v3
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      - uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      
-      - name: Determine base reference for comparison
-        id: git-base
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            echo "base=${{ github.event.pull_request.base.sha }}" >> $GITHUB_OUTPUT
-          else
-            echo "base=HEAD^1" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Build changed applications
-        env:
-          GIT_SHA: ${{ github.sha }}
-          DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
-        run: |
-          echo "🔍 Comparing changes against: ${{ steps.git-base.outputs.base }}"
-          
-          # Build only apps affected by changes
-          pnpm tsops build --filter ${{ steps.git-base.outputs.base }}
-          
-          # Exit with success even if no apps changed
-          exit 0
-      
-      - name: Deploy to staging (PRs only)
-        if: github.event_name == 'pull_request'
-        run: |
-          pnpm tsops deploy --namespace staging
-      
-      - name: Deploy to production (main branch only)
-        if: github.ref == 'refs/heads/main'
-        run: |
-          pnpm tsops deploy --namespace prod
 
-  # Optional: Show what would be built without actually building
-  dry-run-plan:
-    name: Preview Changes (Dry Run)
+      - name: Resolve comparison base
+        id: base
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "ref=${{ github.event.pull_request.base.sha }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "ref=${{ github.event.before }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build affected applications
+        run: >-
+          pnpm tsops build
+          --filter "${{ steps.base.outputs.ref }}"
+          --source-key
+
+  preview:
+    if: github.event_name == 'pull_request' && github.event.action != 'closed'
+    needs: build
     runs-on: ubuntu-latest
-    
+    environment: preview
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      
-      - uses: pnpm/action-setup@v2
+
+      - uses: actions/setup-node@v6
         with:
-          version: 10
-      
-      - uses: actions/setup-node@v4
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      # Configure the preview cluster context here. Prefer short-lived OIDC
+      # credentials over a long-lived kubeconfig Secret.
+      - name: Deploy selective preview
+        run: >-
+          pnpm tsops up preview
+          --var pr=${{ github.event.pull_request.number }}
+          --apps-from-changes
+          --base-ref ${{ github.event.pull_request.base.sha }}
+
+  destroy-preview:
+    if: github.event_name == 'pull_request' && github.event.action == 'closed'
+    runs-on: ubuntu-latest
+    environment: preview
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
         with:
-          node-version: '20'
-          cache: 'pnpm'
-      
-      - run: pnpm install
-      
-      - name: Show affected apps
-        run: |
-          BASE_REF="${{ github.event.pull_request.base.sha || 'HEAD^1' }}"
-          echo "📋 Apps that would be built:"
-          pnpm tsops build --filter $BASE_REF --dry-run
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      # Configure the same preview cluster context used by the preview job.
+      - name: Destroy preview
+        run: >-
+          pnpm tsops down preview
+          --var pr=${{ github.event.pull_request.number }}
+
+  production:
+    if: github.event_name == 'push'
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+
+      - run: corepack enable
+      - run: pnpm install --frozen-lockfile
+
+      # Configure the production cluster context here.
+      - run: pnpm tsops plan --namespace production
+      - run: pnpm tsops deploy --namespace production

@@ -1,25 +1,27 @@
 ---
-title: Full-Stack Example
+title: Full-stack example
 ---
 
-## Full-Stack Example
+# Full-stack example
 
-This example deploys a simple frontend (Next.js) and backend (Hono) with internal networking and ingress routing.
+[`examples/fullstack`](https://github.com/Pom4H/tsops/tree/main/examples/fullstack) contains a Hono backend, a Next.js frontend, Dockerfiles, Service ports, and ingress configuration.
 
-- Project files live in `examples/fullstack/`
-- Config is defined in `examples/fullstack/tsops.config.ts`
-
-### How to run
+## Inspect the graph
 
 ```bash
-pnpm install
-pnpm tsops plan --config examples/fullstack/tsops.config.ts
+pnpm tsops plan \
+  --config examples/fullstack/tsops.config.ts \
+  --dry-run
 ```
 
-### Config Highlights
+Remove `--dry-run` only after the configured Kubernetes context and namespace are appropriate for your machine.
 
-- frontend exposes HTTP on port 80 (container 3000)
-- backend exposes HTTP on port 8080 and is reachable from frontend via `config.url('backend', 'service')`
-- uses `ingress` to set external host for the frontend
+## What to inspect
 
+- Each application has its own build context.
+- Service and target ports are distinct.
+- The frontend and backend share one namespace model.
+- The same application keys can be used by `config.url()` from runtime code.
+- Ingress is derived from namespace domain data rather than copied into a separate values file.
 
+For a production project, add a `runtime: 'local'` namespace and install Portless to run the package-level `dev` scripts through `tsops dev`.

@@ -1,225 +1,200 @@
-# Getting Started
+# Getting started
 
-Get up and running with tsops in minutes.
+This guide creates one application graph for local development and Kubernetes delivery.
 
-## Prerequisites
+## Requirements
 
-- Node.js 18+ or 20+
-- Docker (for building images)
-- kubectl configured with cluster access
-- TypeScript knowledge
+- Node.js 24 or newer
+- a project with at least one package-level `dev` script
+- Portless for `tsops dev`
+- Docker for image builds
+- `kubectl` with a configured context for plan and deploy
 
-## Installation
+Portless, Docker, and `kubectl` are only required for the commands that use them.
 
-::: code-group
+## Install
 
-```bash [npm]
-npm install tsops
+```bash
+pnpm add -D tsops portless
 ```
 
-```bash [pnpm]
-pnpm add tsops
-```
+The tsops repository uses pnpm, but local application commands may use Bun, pnpm, Yarn, or npm. `tsops dev` detects the nearest lockfile for each application.
 
-```bash [yarn]
-yarn add tsops
-```
+## Create the application graph
 
-:::
+Add `tsops.config.ts` at the repository root:
 
-## Create Configuration
-
-Create `tsops.config.ts` in your project root:
-
-```typescript
+```ts
 import { defineConfig } from 'tsops'
 
-export default defineConfig({
-  project: 'my-app',
-  
+const config = defineConfig({
+  project: 'orchard',
+
   namespaces: {
-    production: {
-      domain: 'example.com',
-      production: true,
-      replicas: 3
+    local: {
+      runtime: 'local',
+      domain: 'orchard.localhost'
     },
-    dev: {
-      domain: 'dev.example.com',
-      production: false,
-      replicas: 1
+    production: {
+      runtime: 'kubernetes',
+      domain: 'orchard.example.com'
     }
   },
-  
+
   clusters: {
     production: {
-      apiServer: 'https://your-k8s-api.com:6443',
+      apiServer: 'https://kubernetes.example.com:6443',
       context: 'production',
-      namespaces: ['production', 'dev']
+      namespaces: ['production']
     }
   },
-  
+
   images: {
-    registry: 'ghcr.io/yourorg',
+    registry: 'ghcr.io/acme/orchard',
     tagStrategy: 'git-sha'
   },
-  
+
   apps: {
     api: {
       build: {
         type: 'dockerfile',
-        context: './api',
-        dockerfile: './api/Dockerfile'
+        context: 'apps/api',
+        dockerfile: 'apps/api/Dockerfile',
+        inputs: ['apps/api/**', 'packages/shared/**', 'pnpm-lock.yaml'],
+        sourceKey: true,
+        cache: { type: 'registry', mode: 'max' }
       },
-      
-      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
-      
-      ports: [{ name: 'http', port: 80, targetPort: 8080 }],
-      
-      env: ({ production }) => ({
-        NODE_ENV: production ? 'production' : 'development'
-        // ✅ In your app: config.url('postgres', 'service')
-      })
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+    },
+
+    web: {
+      build: {
+        type: 'dockerfile',
+        context: 'apps/web',
+        dockerfile: 'apps/web/Dockerfile'
+      },
+      needs: ['api'],
+      ingress: ({ domain }) => ({ domain }),
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }]
     }
   }
 })
+
+export default config
 ```
 
-## Add Scripts
+Each build context should contain a `package.json` with a `dev` script. For unusual layouts, declare the command explicitly:
 
-Add to your `package.json`:
-
-```json
-{
-  "scripts": {
-    "deploy": "tsops deploy",
-    "deploy:prod": "tsops deploy --namespace production",
-    "plan": "tsops plan",
-    "build": "tsops build"
+```ts
+apps: {
+  worker: {
+    dev: ['bun', 'run', 'worker'],
+    // ...image or build configuration
   }
 }
 ```
 
-## Deploy Your App
+## Use the graph from application code
 
-### Step 1: Plan
+Import the config from TypeScript application code and ask for a semantic endpoint:
 
-See what will be deployed:
+```ts
+import config from '../../tsops.config.js'
+
+const apiUrl = config.url('api', 'service')
+const response = await fetch(`${apiUrl}/health`)
+```
+
+Under `tsops dev`, the helper consumes `TSOPS_DEV_URLS` and returns the Portless URL. In Kubernetes it returns the Service URL for the selected namespace. Application code does not need separate local and cluster host-name constants.
+
+## Run locally
 
 ```bash
-pnpm tsops plan
+pnpm tsops dev
 ```
 
-Sample output:
-```
-📋 Generating deployment plan and validating manifests...
+Because the config contains exactly one namespace with `runtime: 'local'`, tsops selects it automatically. It discovers each package's `dev` script and prints stable routes such as:
 
-🌐 Global Resources
-
-   ➕ Namespaces to create:
-      • production
-
-────────────────────────────────────────────
-
-📦 Application Resources
-
-   api @ production (api.example.com)
-   Image: ghcr.io/yourorg/api:abc123
-
-      ➕ Will create:
-         • Deployment/my-app-api
-         • Service/my-app-api
-         • Ingress/my-app-api
-
-────────────────────────────────────────────
-✅ Validation passed. Run "tsops deploy" to apply these changes.
+```text
+https://api.orchard.localhost
+https://web.orchard.localhost
 ```
 
-Tip: add `--dry-run` to preview the plan without contacting Docker or kubectl.
-
-### Step 2: Build
-
-Build Docker images:
+Use a subset when needed:
 
 ```bash
-pnpm tsops build
+pnpm tsops dev --app api
 ```
 
-### Step 3: Deploy
+See [Local development](/guide/local-development) for explicit commands, worktree behavior, and URL discovery.
 
-Deploy applications:
+## Review a cluster rollout
+
+Start without external side effects:
+
+```bash
+pnpm tsops plan --namespace production --dry-run
+```
+
+Then run a real cluster diff:
+
+```bash
+pnpm tsops plan --namespace production
+```
+
+The plan groups namespace-level resources, application resources, validation failures, and managed orphans. Treat this output as the required review step before deploy.
+
+## Build images
+
+Authenticate to the configured registry, then run:
+
+```bash
+pnpm tsops build --namespace production --source-key
+```
+
+`--source-key` hashes selected source files and build metadata. If the resulting image already exists, tsops skips the Docker build and resolves its immutable digest. Registry-backed BuildKit cache remains available for builds that are not exact matches.
+
+For a monorepo diff, combine it with filtering:
+
+```bash
+pnpm tsops build --namespace production --filter origin/main --source-key
+```
+
+## Deploy
 
 ```bash
 pnpm tsops deploy --namespace production
 ```
 
-Sample output:
+CI can separate build and deploy by writing digest references to a JSON file:
+
+```json
+{
+  "api": "ghcr.io/acme/orchard/api@sha256:abcd...",
+  "web": "ghcr.io/acme/orchard/web@sha256:ef01..."
+}
 ```
-✅ Deployed applications:
-
-- api @ production
-  • Namespace/production
-  • Secret/api-secrets
-  • Deployment/my-app-api
-  • Service/my-app-api
-  • Ingress/my-app-api
-```
-
-## Verify Deployment
-
-Check your deployment:
 
 ```bash
-kubectl get pods -n production
+pnpm tsops deploy --namespace production --image-digests @images.json
 ```
 
-```
-NAME                          READY   STATUS    RESTARTS   AGE
-my-app-api-7d8f9c5b6d-xyz12   1/1     Running   0          30s
-```
+Mutable tags and unknown application names are rejected before resources are applied.
 
-## What's Next?
+## Add pull-request previews
 
-### [🎯 Quick Start](/guide/quick-start)
-Deploy a complete demo in five minutes
-
-### [✨ Context Helpers](/guide/context-helpers)
-Master the helper functions available inside app definitions
-
-### [🔒 Secrets & ConfigMaps](/guide/secrets)
-Secure secret management with automatic validation
-
-### [📖 What is tsops?](/guide/what-is-tsops)
-Understand the architecture and problem space
-
-## Common Issues
-
-### kubectl not found
-
-Make sure kubectl is installed and in PATH:
+A preview is an overlay namespace that inherits from a stable base namespace. It can deploy only affected applications while routing the rest back to the base through generated `ExternalName` Services.
 
 ```bash
-kubectl version --client
+pnpm tsops up preview --var pr=42 --apps-from-changes --base-ref origin/main
+pnpm tsops down preview --var pr=42
 ```
 
-### Docker not running
+Continue with the [Preview environments contract](/guide/preview-overlays) and the runnable [`examples/preview-namespaces`](https://github.com/Pom4H/tsops/tree/main/examples/preview-namespaces) configuration.
 
-Start Docker:
+## Get help
 
-```bash
-docker ps
-```
-
-### TypeScript errors
-
-Make sure TypeScript is installed:
-
-```bash
-pnpm add -D typescript
-```
-
-## Getting Help
-
-- 📖 [Documentation](/guide/what-is-tsops)
-- 💬 [GitHub Discussions](https://github.com/yourusername/tsops/discussions)
-- 🐛 [Report Bug](https://github.com/yourusername/tsops/issues)
-- 💡 [Feature Request](https://github.com/yourusername/tsops/issues/new?template=feature_request.md)
+- [Documentation home](/)
+- [How tsops compares](/guide/comparison)
+- [GitHub Discussions](https://github.com/Pom4H/tsops/discussions)
+- [Report an issue](https://github.com/Pom4H/tsops/issues/new)

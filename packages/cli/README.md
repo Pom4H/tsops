@@ -1,377 +1,203 @@
 # tsops
 
-TypeScript-first toolkit for planning, building, and deploying to Kubernetes.
+**One typed application graph from localhost to Kubernetes.**
 
-## Installation
+tsops is an application delivery toolkit for TypeScript monorepos. A single `tsops.config.ts` drives local processes, affected container builds, Kubernetes plans and deploys, selective pull-request environments, and runtime service discovery.
 
-```bash
-npm install -D tsops
-# or
-pnpm add -D tsops
-# or
-yarn add -D tsops
-```
+## Requirements
 
-Or install globally:
+- Node.js 24+
+- Docker for image builds
+- `kubectl` for Kubernetes plan and deploy
+- Portless for `tsops dev`
 
-```bash
-npm install -g tsops
-# or
-pnpm add -g tsops
-```
-
-## Usage
+## Install
 
 ```bash
-tsops <command> [options]
+pnpm add -D tsops portless
 ```
 
-### Commands
+Portless is optional when local process orchestration is not used.
 
-#### `plan`
+## Minimal configuration
 
-Resolves the configuration into a deployment plan and prints the results.
-
-```bash
-tsops plan
-tsops plan --namespace prod
-tsops plan --app api
-tsops plan --namespace prod --app api
-```
-
-**Output example:**
-```
-- api @ prod (us) -> ghcr.io/org/api:abc123, host=api.example.com
-- frontend @ prod (us) -> ghcr.io/org/frontend:abc123
-```
-
-#### `build`
-
-Builds and pushes Docker images for configured apps.
-
-```bash
-tsops build
-tsops build --app api
-tsops build --app api --namespace prod  # Determines dev/prod platform
-tsops build --source-key                # Reuse image tags derived from build inputs
-```
-
-**Incremental builds (monorepo optimization):**
-
-```bash
-# Build only apps affected by changes since last commit
-tsops build --filter HEAD^1
-
-# Build only apps affected by changes compared to main branch
-tsops build --filter main
-
-# Build only apps affected by changes compared to origin/main
-tsops build --filter origin/main
-
-# Force rebuild even if image exists in registry
-tsops build --force
-```
-
-The `--filter` flag compares changed files against the specified git reference and builds only affected applications. Apps with `build.inputs` or `sourceKey: { mode: 'inputs' }` use those patterns relative to `build.context`; other apps fall back to matching the full `build.context` directory. This is especially useful in CI/CD pipelines for monorepo projects where you want to build only what changed.
-
-**Source-key image reuse:**
-
-Use `build.inputs` in `tsops.config.ts` or pass `--source-key` to tag images as `source-<hash>` before checking the registry. The hash includes selected file contents, the Dockerfile, common lock/config files when present, and build metadata such as args, env, target, platform, source-key settings, and cache settings. When the tag already exists, tsops skips the Docker build and resolves the immutable digest ref for deployment handoff.
-
-```typescript
-apps: {
-  api: {
-    build: {
-      type: 'dockerfile',
-      context: '.',
-      dockerfile: 'apps/api/Dockerfile',
-      inputs: ['apps/api/**', 'packages/shared/**', 'package.json', 'pnpm-lock.yaml'],
-      cache: { type: 'registry', mode: 'max' }
-    }
-  }
-}
-```
-
-`cache: { type: 'registry' }` makes the Node Docker adapter use BuildKit registry cache flags. If `cache.ref` is omitted, tsops uses the image repository with a `:cache` tag.
-
-**Output example:**
-```
-📊 Detected 3 changed file(s) compared to HEAD^1
-Building 1 affected app(s): api
-
-✅ Built images:
-   • api: ghcr.io/org/api@sha256:abcd... [tag: ghcr.io/org/api:source-feedface] (reused)
-```
-
-#### `deploy`
-
-Generates Kubernetes manifests and applies them using `kubectl`.
-
-```bash
-tsops deploy
-tsops deploy --namespace prod
-tsops deploy --app api
-tsops deploy --namespace prod --app api
-tsops deploy --namespace prod --image-digests @images.json
-```
-
-`--image-digests` accepts either an inline JSON object or an `@file` path mapping app names to immutable image digest refs:
-
-```json
-{
-  "api": "ghcr.io/org/api@sha256:abcd..."
-}
-```
-
-Unknown app names and mutable tags are rejected before manifests are applied.
-
-**Output example:**
-```
-- api @ prod
-  • Deployment/api
-  • Service/api
-  • Ingress/api
-  • Certificate/api-tls
-```
-
-### Options
-
-All commands support:
-
-- **`-n, --namespace <name>`** – Target a single namespace
-- **`--app <name>`** – Target a single app
-- **`-c, --config <path>`** – Path to config file (default: `tsops.config`)
-- **`--dry-run`** – Log actions without executing external commands
-
-Build-specific options:
-
-- **`--filter <ref>`** – Build only apps affected by changes compared to git ref (e.g., `HEAD^1`, `main`, `origin/main`)
-- **`-f, --force`** – Force rebuild even if image already exists in registry
-- **`--source-key`** – Reuse image tags derived from source inputs and build metadata
-
-Deploy/up-specific options:
-
-- **`--image-digests <json-or-file>`** – Override app images with immutable digest refs, using inline JSON or an `@file` path
-
-### Help
-
-```bash
-tsops --help
-tsops plan --help
-tsops build --help
-tsops deploy --help
-```
-
-## Configuration Files
-
-The CLI looks for configuration files in this order:
-
-1. Specified path via `--config`
-2. `tsops.config` (tries `.ts`, `.mts`, `.cts`, `.js`, `.mjs`, `.cjs` extensions)
-
-### TypeScript Configs
-
-For TypeScript configs, you need a runtime that can execute them:
-
-```bash
-# Using tsx
-pnpm tsx node_modules/.bin/tsops plan --config tsops.config.ts
-
-# Or if you have tsx globally
-tsops plan  # Will work with tsops.config.ts
-```
-
-Alternatively, compile your config to JavaScript first:
-
-```bash
-tsc tsops.config.ts
-tsops plan --config tsops.config.js
-```
-
-## Environment Variables
-
-Some tag strategies require environment variables:
-
-- **`GIT_SHA`** – Used by `tagStrategy: 'git-sha'`
-- **`GIT_TAG`** – Used by `tagStrategy: 'git-tag'`
-
-Example:
-
-```bash
-export GIT_SHA=$(git rev-parse HEAD)
-tsops build --app api
-```
-
-## Examples
-
-### Full Workflow
-
-```bash
-# 1. Plan what will be deployed
-tsops plan --namespace prod
-
-# 2. Build images for production
-export GIT_SHA=$(git rev-parse HEAD)
-tsops build
-
-# 3. Deploy to production
-tsops deploy --namespace prod
-
-# 4. Deploy only API to staging (with dry-run)
-tsops deploy --namespace staging --app api --dry-run
-```
-
-### CI/CD Integration
-
-**Basic workflow:**
-
-```yaml
-# .github/workflows/deploy.yml
-- name: Deploy to production
-  env:
-    GIT_SHA: ${{ github.sha }}
-  run: |
-    pnpm tsops build --app api
-    pnpm tsops deploy --namespace prod --app api
-```
-
-**Optimized monorepo workflow (build only changed apps):**
-
-```yaml
-# .github/workflows/build-changed.yml
-name: Build Changed Apps
-
-on:
-  push:
-    branches: [main]
-  pull_request:
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0  # Required for git diff
-      
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v2
-      
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'pnpm'
-      
-      - name: Install dependencies
-        run: pnpm install
-      
-      - name: Build changed apps
-        env:
-          GIT_SHA: ${{ github.sha }}
-          DOCKER_REGISTRY: ghcr.io/${{ github.repository_owner }}
-          DOCKER_USERNAME: ${{ github.actor }}
-          DOCKER_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          # Build only apps affected by changes in this PR/commit
-          pnpm tsops build --filter ${{ github.event.pull_request.base.sha || 'HEAD^1' }}
-      
-      - name: Deploy changed apps
-        if: github.ref == 'refs/heads/main'
-        run: |
-          pnpm tsops deploy --namespace prod
-```
-
-**Using with Turborepo (recommended for monorepos):**
-
-```json
-// turbo.json
-{
-  "tasks": {
-    "tsops:build": {
-      "dependsOn": ["^build"],
-      "inputs": ["src/**", "Dockerfile", "$DOCKER_REGISTRY"],
-      "cache": false  // Docker builds have side effects
-    }
-  }
-}
-```
-
-```bash
-# In CI: Build only packages/apps affected by changes
-turbo run build --filter=[HEAD^1]
-
-# Then build Docker images for changed apps
-pnpm tsops build --filter HEAD^1
-```
-
-## Configuration Example
-
-```typescript
+```ts
 // tsops.config.ts
 import { defineConfig } from 'tsops'
 
-export default defineConfig({
-  project: 'myapp',
-  
+const config = defineConfig({
+  project: 'orchard',
+
   namespaces: {
-    dev: {
-      domain: 'dev.myapp.com',
-      replicas: 1
+    local: {
+      runtime: 'local',
+      domain: 'orchard.localhost'
     },
-    prod: {
-      domain: 'myapp.com',
-      replicas: 3
+    production: {
+      runtime: 'kubernetes',
+      domain: 'orchard.example.com'
     }
   },
-  
+
   clusters: {
-    'us-cluster': {
-      apiServer: 'https://k8s.us.example.com',
-      context: 'us-k8s',
-      namespaces: ['dev', 'prod']
+    production: {
+      apiServer: 'https://kubernetes.example.com:6443',
+      context: 'production',
+      namespaces: ['production']
     }
   },
-  
+
   images: {
-    registry: 'ghcr.io/myorg',
+    registry: 'ghcr.io/acme/orchard',
     tagStrategy: 'git-sha'
   },
-  
+
   apps: {
     api: {
-      ingress: ({ domain }) => `api.${domain}`,
       build: {
         type: 'dockerfile',
-        context: '.',
-        dockerfile: 'Dockerfile'
+        context: 'apps/api',
+        dockerfile: 'apps/api/Dockerfile',
+        inputs: ['apps/api/**', 'packages/shared/**', 'pnpm-lock.yaml'],
+        sourceKey: true,
+        cache: { type: 'registry', mode: 'max' }
       },
-      env: ({ replicas }) => ({
-        NODE_ENV: replicas > 1 ? 'production' : 'development',
-        REPLICAS: String(replicas)
-      })
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+    },
+
+    web: {
+      build: {
+        type: 'dockerfile',
+        context: 'apps/web',
+        dockerfile: 'apps/web/Dockerfile'
+      },
+      needs: ['api'],
+      ingress: ({ domain }) => ({ domain }),
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }]
     }
   }
 })
+
+export default config
 ```
 
-## Related Packages
+Application code can import the same contract:
 
-- **@tsops/core** – Core library with programmatic API
-- **@tsops/k8** – Kubernetes manifest builders
+```ts
+import config from '../../tsops.config.js'
 
-## Development
+const apiUrl = config.url('api', 'service')
+```
+
+## Commands
+
+| Command | Purpose |
+| --- | --- |
+| `tsops dev` | Run local app processes through stable Portless routes |
+| `tsops plan` | Validate resources and show the Kubernetes diff |
+| `tsops build` | Build selected images or reuse exact source-key results |
+| `tsops deploy` | Apply workloads and remove managed orphans |
+| `tsops up <overlay>` | Materialise a parameterized preview namespace |
+| `tsops down <overlay>` | Run cleanup hooks and destroy a preview namespace |
+
+### Local development
 
 ```bash
-pnpm build       # Compile TypeScript
+pnpm tsops dev
+pnpm tsops dev --app api
+pnpm tsops dev --namespace local
 ```
 
-The CLI binary is defined in `package.json`:
+`tsops dev` finds `apps.<name>.dev` or the `dev` script under the application's build context. It exports `TSOPS_NAMESPACE` and a complete `TSOPS_DEV_URLS` map to every child process.
 
-```json
-{
-  "bin": {
-    "tsops": "./dist/index.js"
-  }
-}
+### Plan
+
+```bash
+pnpm tsops plan --namespace production
+pnpm tsops plan --namespace production --app api
+pnpm tsops plan --namespace production --dry-run
 ```
+
+A real plan uses `kubectl diff`. Dry-run skips external commands while validating and rendering the graph.
+
+### Build
+
+```bash
+pnpm tsops build --namespace production
+pnpm tsops build --filter origin/main
+pnpm tsops build --filter origin/main --source-key
+pnpm tsops build --app api --force
+```
+
+- `--filter <ref>` selects applications from changed files and build contexts.
+- `--source-key` enables content-addressed reuse for builds without explicit source-key configuration.
+- `--force` bypasses image-existence reuse.
+- BuildKit registry cache is configured in `build.cache`.
+
+### Deploy
+
+```bash
+pnpm tsops deploy --namespace production
+pnpm tsops deploy --namespace production --app api
+pnpm tsops deploy --namespace production --image-digests @images.json
+```
+
+`--image-digests` accepts an inline JSON object or `@file` mapping application names to immutable digest references. Unknown applications and mutable tags fail before apply.
+
+### Preview environments
+
+```bash
+pnpm tsops up preview --var pr=42 --include web
+pnpm tsops up preview --var pr=42 --apps-from-changes --base-ref origin/main
+pnpm tsops down preview --var pr=42
+pnpm tsops down preview --var pr=42 --keep-database
+```
+
+Overlay definitions can inherit a stable namespace, route excluded applications through `ExternalName` Services, reuse wildcard TLS, enforce access and namespace policy, and manage a schema-per-preview database lifecycle.
+
+## Configuration loading
+
+The CLI searches for `tsops.config` with these extensions:
+
+```text
+.ts, .mts, .cts, .js, .mjs, .cjs
+```
+
+Use another path with:
+
+```bash
+pnpm tsops plan --config path/to/tsops.config.ts
+```
+
+Node.js 24 executes supported TypeScript config syntax directly; a separate `tsx` wrapper is not required for the normal configuration shape.
+
+## CI pattern
+
+A build job can select affected applications and reuse exact images:
+
+```bash
+pnpm tsops build --filter origin/main --source-key
+```
+
+Pass the resulting immutable references to a separately authorized deploy job:
+
+```bash
+pnpm tsops deploy --namespace production --image-digests @images.json
+```
+
+This keeps registry work and cluster mutation separate while preserving image identity.
+
+## Packages
+
+- `tsops` — CLI and public `defineConfig` entry point
+- `@tsops/core` — typed model and platform-neutral operations
+- `@tsops/node` — Node.js adapters
+- `@tsops/k8` — deterministic Kubernetes manifest builders
+
+## Documentation
+
+- https://pom4h.github.io/tsops/
+- https://github.com/Pom4H/tsops/tree/main/examples
+- https://github.com/Pom4H/tsops/blob/main/ROADMAP.md
+
+MIT

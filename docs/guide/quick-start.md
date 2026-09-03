@@ -1,114 +1,108 @@
-# Quick Start
+# Quick start
 
-Deploy your first containerized app in 5 minutes.
+Use an existing Node.js 24 application with a `dev` script and a Dockerfile.
 
 ## 1. Install
 
 ```bash
-pnpm add tsops
+pnpm add -D tsops portless
 ```
 
-## 2. Create Config
+## 2. Define the application
 
 Create `tsops.config.ts`:
 
-```typescript
+```ts
 import { defineConfig } from 'tsops'
 
-export default defineConfig({
+const config = defineConfig({
   project: 'hello',
-  
+
   namespaces: {
-    prod: { 
-      domain: 'example.com',
-      production: true 
+    local: {
+      runtime: 'local',
+      domain: 'hello.localhost'
+    },
+    production: {
+      runtime: 'kubernetes',
+      domain: 'hello.example.com'
     }
   },
-  
+
   clusters: {
     production: {
-      apiServer: 'https://your-k8s:6443',
+      apiServer: 'https://kubernetes.example.com:6443',
       context: 'production',
-      namespaces: ['prod']
+      namespaces: ['production']
     }
   },
-  
+
   images: {
-    registry: 'ghcr.io/yourorg',
+    registry: 'ghcr.io/acme/hello',
     tagStrategy: 'git-sha'
   },
-  
+
   apps: {
     web: {
       build: {
         type: 'dockerfile',
-        context: './web',
-        dockerfile: './web/Dockerfile'
+        context: '.',
+        dockerfile: 'Dockerfile'
       },
-      ingress: ({ domain }) => ({ domain: `www.${domain}` }),
-      ports: [{ name: 'http', port: 80, targetPort: 3000 }],
-      env: ({ production }) => ({ 
-        NODE_ENV: production ? 'production' : 'development' 
-      })
+      ingress: ({ domain }) => ({ domain }),
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }]
     }
   }
 })
+
+export default config
 ```
 
-## 3. Create Dockerfile
+Your `package.json` should expose the local process:
 
-Create `web/Dockerfile`:
-
-```dockerfile
-FROM node:20-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm install
-COPY . .
-CMD ["node", "index.js"]
+```json
+{
+  "scripts": {
+    "dev": "node --watch server.js"
+  }
+}
 ```
 
-## 4. Create App
+The process must listen on `process.env.PORT`; Portless supplies it.
 
-Create `web/index.js`:
-
-```javascript
-const http = require('http')
-
-const server = http.createServer((req, res) => {
-  res.writeHead(200, { 'Content-Type': 'text/plain' })
-  res.end('Hello from tsops!')
-})
-
-server.listen(3000, () => {
-  console.log('Server running on port 3000')
-})
-```
-
-## 5. Plan & Deploy
-
-Preview the rollout, then apply it:
+## 3. Run locally
 
 ```bash
-pnpm tsops plan --namespace prod
-pnpm tsops deploy --namespace prod
+pnpm tsops dev
 ```
 
-`tsops plan` shows global validation, per-app manifest diffs, and any orphaned resources that would be removed. Add `--dry-run` to avoid contacting Docker or kubectl while testing the workflow.
+Open the URL printed for `web`, normally:
 
-## 6. Verify
+```text
+https://web.hello.localhost
+```
+
+## 4. Inspect production resources
+
+First validate without Docker or cluster access:
 
 ```bash
-kubectl get pods -n prod
+pnpm tsops plan --namespace production --dry-run
 ```
 
-## That's It! 🎉
+Then compare against the configured Kubernetes context:
 
-Your app is now running in the cluster!
+```bash
+pnpm tsops plan --namespace production
+```
 
-## Next Steps
+## 5. Build and deploy
 
-- [Getting Started guide](/guide/getting-started)
-- [Context helpers tour](/guide/context-helpers)
-- [Secrets & ConfigMaps](/guide/secrets)
-- [What is tsops?](/guide/what-is-tsops)
+```bash
+pnpm tsops build --namespace production --source-key
+pnpm tsops deploy --namespace production
+```
+
+That is the basic loop. The same `web` key now identifies the local route, image, Kubernetes workload, Service, ingress, and runtime endpoint.
+
+Next: [Getting started](/guide/getting-started), [Local development](/guide/local-development), and [How tsops compares](/guide/comparison).

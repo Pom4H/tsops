@@ -1,12 +1,10 @@
 import { defineConfig } from 'vitepress'
 import cliPkg from '../../packages/cli/package.json' with { type: 'json' }
 
-// https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: 'tsops',
-  description: 'TypeScript-first toolkit for Kubernetes deployments',
+  description: 'Typed application delivery for TypeScript monorepos on Kubernetes',
   base: '/tsops/',
-  ignoreDeadLinks: true,
 
   head: [
     ['link', { rel: 'icon', type: 'image/svg+xml', href: '/tsops/favicon.svg' }],
@@ -14,12 +12,12 @@ export default defineConfig({
     ['meta', { name: 'theme-color', content: '#3178c6' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:locale', content: 'en' }],
-    ['meta', { property: 'og:title', content: 'tsops | TypeScript-first Kubernetes toolkit' }],
+    ['meta', { property: 'og:title', content: 'tsops | One typed application graph' }],
     [
       'meta',
       {
         property: 'og:description',
-        content: 'Deploy to Kubernetes with confidence using type-safe TypeScript configuration'
+        content: 'From stable local URLs to selective pull-request previews and Kubernetes deploys.'
       }
     ],
     ['meta', { property: 'og:site_name', content: 'tsops' }],
@@ -33,13 +31,15 @@ export default defineConfig({
 
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
+      { text: 'Comparison', link: '/guide/comparison' },
       { text: 'Examples', link: '/examples/' },
       { text: 'API', link: '/api/' },
       {
         text: `v${cliPkg.version}`,
         items: [
           { text: 'Changelog', link: 'https://github.com/Pom4H/tsops/blob/main/CHANGELOG.md' },
-          { text: 'Contributing', link: '/guide/contributing' }
+          { text: 'Roadmap', link: 'https://github.com/Pom4H/tsops/blob/main/ROADMAP.md' },
+          { text: 'Contributing', link: 'https://github.com/Pom4H/tsops/blob/main/CONTRIBUTING.md' }
         ]
       }
     ],
@@ -50,28 +50,18 @@ export default defineConfig({
           text: 'Introduction',
           items: [
             { text: 'What is tsops?', link: '/guide/what-is-tsops' },
-            { text: 'Getting Started', link: '/guide/getting-started' },
-            { text: 'Quick Start', link: '/guide/quick-start' }
+            { text: 'Getting started', link: '/guide/getting-started' },
+            { text: 'Quick start', link: '/guide/quick-start' },
+            { text: 'How it compares', link: '/guide/comparison' }
           ]
         },
         {
-          text: 'Core Concepts',
+          text: 'Delivery workflow',
           items: [
-            { text: 'Configuration', link: '/guide/configuration' },
-            { text: 'Local Development', link: '/guide/local-development' },
-            { text: 'Context Helpers', link: '/guide/context-helpers' },
-            { text: 'Secrets & ConfigMaps', link: '/guide/secrets' },
-            { text: 'Networking', link: '/guide/networking' },
-            { text: 'Building Images', link: '/guide/building' }
-          ]
-        },
-        {
-          text: 'Advanced',
-          items: [
-            { text: 'Secret Validation', link: '/guide/secret-validation' },
-            { text: 'Multi-Environment', link: '/guide/multi-environment' },
-            { text: 'Monorepo Setup', link: '/guide/monorepo' },
-            { text: 'CI/CD Integration', link: '/guide/cicd' }
+            { text: 'Local development', link: '/guide/local-development' },
+            { text: 'Preview environments', link: '/guide/preview-overlays' },
+            { text: 'Context helpers', link: '/guide/context-helpers' },
+            { text: 'Secrets and ConfigMaps', link: '/guide/secrets' }
           ]
         }
       ],
@@ -80,21 +70,16 @@ export default defineConfig({
           text: 'Examples',
           items: [
             { text: 'Overview', link: '/examples/' },
-            { text: 'Full-Stack App', link: '/examples/fullstack' },
-            { text: 'Monitoring (OTEL + Loki + Grafana)', link: '/examples/monitoring' },
+            { text: 'Full-stack app', link: '/examples/fullstack' },
+            { text: 'Monitoring', link: '/examples/monitoring' },
             { text: 'Monorepo', link: '/examples/monorepo' }
           ]
         }
       ],
       '/api/': [
         {
-          text: 'API Reference',
-          items: [
-            { text: 'Overview', link: '/api/' },
-            { text: 'defineConfig', link: '/api/define-config' },
-            { text: 'Context Helpers', link: '/api/context-helpers' },
-            { text: 'CLI Commands', link: '/api/cli' }
-          ]
+          text: 'API reference',
+          items: [{ text: 'Overview', link: '/api/' }]
         }
       ]
     },

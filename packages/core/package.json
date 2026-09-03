@@ -1,7 +1,7 @@
 {
   "name": "@tsops/core",
   "version": "2.1.0",
-  "description": "Core library for tsops - TypeScript toolkit for Kubernetes",
+  "description": "Typed application graph and delivery operations for tsops",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -26,12 +26,13 @@
     "build": "tsc -b .",
     "dev": "tsc -b --watch",
     "clean": "rm -rf dist",
-    "lint": "pnpm -w exec eslint ."
+    "lint": "pnpm -w exec biome check packages/core"
   },
   "keywords": [
     "kubernetes",
     "k8s",
     "typescript",
+    "application-delivery",
     "devops"
   ],
   "repository": {
