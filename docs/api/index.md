@@ -1,404 +1,342 @@
-# API Reference
+# API reference
 
-Complete API documentation for tsops.
+The `tsops` package is both the CLI and the recommended public TypeScript entry point.
 
-## Core
+```ts
+import {
+  defineConfig,
+  defineDockerfileBuild,
+  buildGraph,
+  topoSort,
+  validateDependencies,
+  normalizePort,
+  normalizePorts
+} from 'tsops'
+```
 
-### defineConfig()
+Most projects only need `defineConfig` and the returned runtime helpers.
 
-Define your tsops configuration with full type safety and runtime helpers.
+## `defineConfig(config)`
 
-```typescript
+Preserves literal project, namespace, application, Secret, and ConfigMap keys while attaching runtime helpers to the configuration.
+
+```ts
 import { defineConfig } from 'tsops'
 
-export default defineConfig({
-  project: 'demo',
-
+const config = defineConfig({
+  project: 'orchard',
   namespaces: {
-    dev: { domain: 'dev.example.com', production: false, replicas: 1 },
-    prod: { domain: 'example.com', production: true, replicas: 3 }
+    local: { runtime: 'local', domain: 'orchard.localhost' },
+    production: { runtime: 'kubernetes', domain: 'orchard.example.com' }
   },
-
   clusters: {
-    prod: {
-      apiServer: 'https://prod.local:6443',
-      context: 'prod',
-      namespaces: ['prod']
+    production: {
+      apiServer: 'https://kubernetes.example.com:6443',
+      context: 'production',
+      namespaces: ['production']
     }
   },
-
   images: {
-    registry: 'ghcr.io/acme',
-    tagStrategy: 'git-sha',
-    includeProjectInName: true
+    registry: 'ghcr.io/acme/orchard',
+    tagStrategy: 'git-sha'
   },
-
-  secrets: {
-    'api-secrets': ({ production }) => ({
-      JWT_SECRET: production
-        ? process.env.JWT_SECRET ?? ''
-        : 'dev-secret'
-    })
-  },
-
-  configMaps: {
-    settings: { LOG_LEVEL: 'info' }
-  },
-
   apps: {
     api: {
-      build: {
-        type: 'dockerfile',
-        context: './api',
-        dockerfile: './api/Dockerfile'
-      },
-      // Single object format - protocol is optional (auto-detects based on domain)
-      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
-      // Or with explicit protocol:
-      // ingress: ({ domain, production }) => ({
-      //   domain: `api.${domain}`,
-      //   protocol: production ? 'https' : 'http'
-      // }),
-      env: ({ secret }) => ({
-        JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
-        // ✅ In your app: config.url('postgres', 'service')
-      }),
-      ports: [{ name: 'http', port: 80, targetPort: 8080 }]
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }]
     }
   }
 })
+
+export default config
 ```
 
-`process.env` access happens at config-evaluation time, so make sure the variables you need are defined before running `tsops`.
+### Top-level fields
 
-`defineConfig` ensures all namespaces share the same shape and returns an object that preserves your configuration plus runtime helpers (`env`, `dns`, `url`).
+| Field | Purpose |
+| --- | --- |
+| `project` | Stable project identifier used in deterministic names and local routes |
+| `namespaces` | Static runtime environments and parameterized overlay templates |
+| `clusters` | Mapping from namespaces to `kubectl` contexts and API servers |
+| `images` | Registry, repository layout, and tag strategy |
+| `apps` | Application builds, ports, dependencies, env, routes, and deploy selection |
+| `secrets` | Named Secret definitions or namespace-aware resolver functions |
+| `configMaps` | Named ConfigMap definitions or namespace-aware resolver functions |
+| `validation` | Optional validation policy, currently including sensitive-env scanning |
 
-### TsOps
+## Namespace runtimes
 
-Programmatic API for planning, building, and deploying.
+```ts
+runtime: 'local' | 'docker' | 'kubernetes'
+```
 
-```typescript
-import { createNodeTsOps } from '@tsops/node'
+`kubernetes` is the default. The selected runtime changes endpoint resolution, not application identity.
+
+A static namespace may contain arbitrary product variables as long as reserved helper names are avoided. Static namespaces in one config should keep the same variable shape.
+
+```ts
+namespaces: {
+  staging: {
+    runtime: 'kubernetes',
+    domain: 'staging.example.com',
+    replicas: 1
+  },
+  production: {
+    runtime: 'kubernetes',
+    domain: 'example.com',
+    replicas: 3
+  }
+}
+```
+
+## Overlay namespace
+
+An overlay is resolved from runtime variables by `tsops up` and `tsops down`:
+
+```ts
+preview: {
+  extends: 'staging',
+  naming: ({ pr }) => `pr-${pr}`,
+  domain: ({ pr }) => `pr-${pr}.staging.example.com`,
+  fallback: 'staging'
+}
+```
+
+Core fields:
+
+| Field | Purpose |
+| --- | --- |
+| `extends` | Base static namespace whose variables are inherited |
+| `naming(vars)` | Kubernetes namespace name |
+| `domain(vars)` | External domain for the resolved overlay |
+| `fallback` | Namespace used by generated fallback Services |
+| `cert` | Wildcard Secret reuse or custom certificate Job |
+| `access` | Optional fail-closed Traefik BasicAuth gate |
+| `appSecrets` | Explicit Secrets copied for included applications |
+| `namespacePolicy` | ResourceQuota and LimitRange settings |
+| `database` | Optional schema-per-overlay lifecycle |
+| `validateVars` | Pre-side-effect variable policy |
+
+See [Preview environments](/guide/preview-overlays) for the complete contract.
+
+## Application definition
+
+```ts
+apps: {
+  api: {
+    image: 'ghcr.io/acme/api@sha256:...',
+    build: {
+      type: 'dockerfile',
+      context: 'apps/api',
+      dockerfile: 'apps/api/Dockerfile'
+    },
+    dev: ['bun', 'run', 'dev'],
+    needs: ['database-proxy'],
+    env: ({ url, secretKey }) => ({
+      UI_URL: url('web', 'service'),
+      DATABASE_URL: secretKey('database', 'DATABASE_URL')
+    }),
+    ports: [{ name: 'http', port: 80, targetPort: 3000 }],
+    ingress: ({ domain }) => ({ domain: `api.${domain}` }),
+    deploy: ['staging', 'production']
+  }
+}
+```
+
+Frequently used fields:
+
+| Field | Purpose |
+| --- | --- |
+| `image` | Explicit image when tsops does not build it |
+| `build` | Dockerfile build context and reproducibility settings |
+| `dev` | Local command, package script, command object, or `false` |
+| `needs` | Typed application dependency edges and deploy order |
+| `env` | One source or an ordered array of static/resolved env sources |
+| `ports` | Service, target, and optional local ports |
+| `ingress` | Public domain and optional protocol |
+| `deploy` | Namespace inclusion or exclusion policy |
+| `volumes`, `volumeMounts`, `args`, `podAnnotations` | Workload-specific Kubernetes settings |
+
+`AppDefinition` is open to additional fields for adapters, but unknown data has no effect unless an operation explicitly consumes it.
+
+## Dockerfile builds
+
+```ts
+build: {
+  type: 'dockerfile',
+  context: 'apps/api',
+  dockerfile: 'apps/api/Dockerfile',
+  inputs: ['apps/api/**', 'packages/shared/**', 'pnpm-lock.yaml'],
+  sourceKey: { mode: 'inputs', inputs: ['apps/api/**', 'packages/shared/**'] },
+  cache: {
+    type: 'registry',
+    ref: 'ghcr.io/acme/api:buildcache',
+    mode: 'max'
+  },
+  target: 'production',
+  platform: 'linux/amd64',
+  args: { NODE_ENV: 'production' }
+}
+```
+
+`sourceKey` may be:
+
+- `true` or `{ mode: 'context' }` for a context-derived key;
+- a string;
+- a resolver function;
+- `{ mode: 'inputs', inputs: [...] }`;
+- `{ mode: 'custom', value: ... }`.
+
+`build.inputs` also defines affected-application matching for `tsops build --filter`.
+
+## Ports
+
+```ts
+ports: [
+  {
+    name: 'http',
+    port: 80,
+    targetPort: 3000,
+    localPort: 4300,
+    protocol: 'TCP'
+  }
+]
+```
+
+- `port` is the Kubernetes Service port.
+- `targetPort` is the container or process-facing port.
+- `localPort` is an optional localhost fallback outside the Portless URL map.
+
+The public `normalizePort`, `normalizePorts`, and `pickPort` helpers expose the same normalization rules used internally.
+
+## Context helpers
+
+Application callbacks receive namespace variables plus the helpers below. Literal application and resource names are inferred from the config.
+
+### `url(app, type, options?)`
+
+```ts
+url('api', 'service')
+url('api', 'cluster')
+url('api', 'ingress')
+url('metrics', 'service', { port: 'prometheus' })
+```
+
+Returns a reachable URL for the active namespace runtime.
+
+### `dns(app, type, options?)`
+
+Returns a host name without a scheme by default. Options can add protocol, port, headless-pod selection, external handling, or a custom cluster domain.
+
+### Port helpers
+
+```ts
+servicePort('api')
+targetPort('api')
+listenPort('api')
+```
+
+Select a named port by passing the port name where supported.
+
+### Resource helpers
+
+```ts
+secret('database')
+secretKey('database', 'DATABASE_URL')
+configMap('api-settings')
+configMapKey('api-settings', 'LOG_LEVEL')
+resource('secret', 'database')
+serviceName('api')
+```
+
+Whole-Secret and whole-ConfigMap references become `envFrom`; key references become Kubernetes `valueFrom` bindings.
+
+### Utilities
+
+```ts
+env('LOG_LEVEL', 'info')
+template('https://{host}/api', { host: 'example.com' })
+```
+
+Read the [Context helpers guide](/guide/context-helpers) for examples and behavior details.
+
+## Environment composition
+
+`env` accepts one source or an array merged from left to right:
+
+```ts
+env: [
+  { LOG_LEVEL: 'info' },
+  ({ configMap }) => configMap('shared-runtime'),
+  ({ secret }) => secret('database'),
+  ({ namespace }) => ({ NAMESPACE: namespace })
+]
+```
+
+Later explicit keys override earlier keys. Whole resource references remain separate `envFrom` entries.
+
+## Sensitive-env validation
+
+```ts
+validation: {
+  sensitiveEnv: {
+    mode: 'error',
+    scanBuildEnv: true,
+    scanRuntimeEnv: true,
+    allowKeys: ['PUBLIC_API_KEY'],
+    allowPrefixes: ['NEXT_PUBLIC_']
+  }
+}
+```
+
+Build-time environment values are especially important because they can become part of image layers.
+
+## Runtime helpers
+
+The object returned by `defineConfig` may be imported by application code:
+
+```ts
+import config from '../../tsops.config.js'
+
+process.env.API_URL = config.url('api', 'service')
+```
+
+Resolution uses `TSOPS_NAMESPACE`. Under `tsops dev`, `TSOPS_DEV_URLS` supplies the Portless routes generated for the complete local graph.
+
+## Graph utilities
+
+Advanced integrations can import:
+
+```ts
+buildGraph(...)
+validateDependencies(...)
+topoSort(...)
+```
+
+These functions expose dependency validation and deterministic ordering without requiring CLI output parsing.
+
+## Programmatic operations
+
+Use `@tsops/node` when an integration needs the configured planner, builder, or deployer with standard Node.js adapters:
+
+```ts
 import config from './tsops.config.js'
+import { createNodeTsOps } from '@tsops/node'
 
-const tsops = createNodeTsOps(config, { dryRun: true })
-
-const plan = await tsops.planWithChanges({ namespace: 'prod' })
-const buildResult = await tsops.build({ app: 'api' })
-await tsops.deploy({ namespace: 'prod', app: 'api' })
+const tsops = createNodeTsOps(config)
+const plan = await tsops.planWithChanges({ namespace: 'production' })
 ```
 
-`createNodeTsOps` bundles the Node adapters (command runner, Docker, kubectl, Git-aware environment provider). If you are targeting a different runtime, instantiate `TsOps` directly and provide implementations for the `DockerClient` and `KubectlClient` ports exported by `@tsops/core`.
-
-Use `plan()` for resolved entries only, or `planWithChanges()` to include cluster validation, diffs, and orphan detection.
+Use `@tsops/core` directly when supplying custom Docker, Kubernetes, command, environment, or logging ports.
 
 ## CLI
 
-### plan
-
-Validate manifests, diff cluster state, and list orphaned resources without applying changes.
-
-```bash
-tsops plan [options]
+```text
+tsops dev
+tsops plan
+tsops build
+tsops deploy
+tsops up <overlay>
+tsops down <overlay>
 ```
 
-**Options:**
-- `-n, --namespace <name>` - Target a single namespace
-- `--app <name>` - Target a single app
-- `-c, --config <path>` - Config file path (defaults to `tsops.config`)
-- `--dry-run` - Skip Docker/kubectl execution, log actions only
-
-The output groups:
-- Global resources (namespaces, secrets, configMaps) validated once per unique artifact
-- Per-app changes with diffs (suppressed when `--dry-run` is used)
-- Orphaned resources that would be deleted by `deploy`
-- A summary that fails the command if validation errors occur
-
-### build
-
-Resolve image references and invoke Docker builds/pushes.
-
-```bash
-tsops build [options]
-```
-
-**Options:**
-- `--app <name>` - Target a single app
-- `-n, --namespace <name>` - Use namespace context (influences env functions)
-- `-c, --config <path>` - Config file path
-- `--dry-run` - Log Docker commands without executing
-- `--source-key` - Reuse Docker images by hashing source inputs and build metadata
-
-### deploy
-
-Generate manifests, validate secret placeholders, apply resources atomically, and clean up orphans.
-
-```bash
-tsops deploy [options]
-```
-
-**Options:**
-- `-n, --namespace <name>` - Target a single namespace
-- `--app <name>` - Target a single app
-- `-c, --config <path>` - Config file path
-- `--dry-run` - Log kubectl actions without executing
-- `--image-digests <json-or-file>` - Override app images with immutable digest refs
-
-## Context Helpers
-
-Functions available in app configuration.
-
-### Metadata
-
-```typescript
-project: string         // Current project name
-namespace: string       // Current namespace
-appName: string         // Current app name
-cluster: ClusterMetadata // Cluster info
-// + all namespace variables (e.g., production, replicas, domain, etc.)
-```
-
-### Service Discovery
-
-**⚠️ Do NOT use ENV variables for internal service endpoints.**
-
-Use runtime config in your application code:
-
-```typescript
-// ✅ In your app code:
-import config from './tsops.config'
-
-const API_URL = config.url('api', 'service')  // http://api
-const POSTGRES_URL = config.url('postgres', 'service')  // http://postgres
-const REDIS_URL = config.url('redis', 'service')  // http://redis
-
-// Full cluster DNS (cross-namespace safe):
-const API_URL = config.url('api', 'cluster')  // http://api.prod.svc.cluster.local
-
-// Public ingress:
-const PUBLIC_URL = config.url('api', 'ingress')  // https://api.example.com
-```
-
-**Benefits:** Type-safe, namespace-aware, single source of truth.
-
-Use ENV variables **only** for:
-- Secrets (passwords, API keys)
-- External services (outside the cluster)
-- Feature flags
-- Build-time values
-
-### secret()
-
-```typescript
-secret(secretName: string): SecretRef  // Reference entire secret (envFrom)
-secret(secretName: string, key: string): SecretRef  // Reference specific key
-```
-
-Simplified API for secret references.
-
-**Examples:**
-```typescript
-env: ({ secret }) => secret('api-secrets')  // All keys as env vars
-env: ({ secret }) => ({
-  JWT_SECRET: secret('api-secrets', 'JWT_SECRET')  // Specific key
-})
-```
-
-### configMap()
-
-```typescript
-configMap(name: string): ConfigMapRef  // Reference entire configMap
-configMap(name: string, key: string): ConfigMapRef  // Reference specific key
-```
-
-### label()
-
-```typescript
-label(key: string, value?: string): string
-```
-
-Generate resource labels following project conventions.
-
-### resource()
-
-```typescript
-resource(kind: ResourceKind, name: string): string
-```
-
-Generate resource name following project conventions.
-
-### env()
-
-```typescript
-env<T extends string>(key: string, fallback?: T): T
-```
-
-Get environment variable with optional fallback.
-
-### template()
-
-```typescript
-template(str: string, vars: Record<string, string>): string
-```
-
-Simple template string helper.
-
-[View All Helpers →](/guide/context-helpers)
-
-## Types
-
-### TsOpsConfig
-
-Simplified shape of the main configuration type.
-
-```typescript
-interface TsOpsConfig {
-  project: string
-  namespaces: Record<string, NamespaceVars>
-  clusters: Record<string, {
-    apiServer: string
-    context: string
-    namespaces: readonly string[]
-  }>
-  images: {
-    registry: string
-    tagStrategy: 'git-sha' | 'git-tag' | 'timestamp' | string
-    repository?: string
-    includeProjectInName?: boolean
-  }
-  secrets?: Record<string, SecretDefinition>
-  configMaps?: Record<string, ConfigMapDefinition>
-  apps: Record<string, AppDefinition>
-}
-```
-
-`NamespaceVars` must be the same shape for every namespace and becomes part of the helper context.
-
-### AppDefinition
-
-Application definition (runtime helpers use the same generics internally).
-
-```typescript
-interface AppDefinition {
-  image?: string
-  build?: DockerfileBuild | Record<string, unknown>
-  env?: Record<string, EnvValue> | ((ctx: AppContext) => Record<string, EnvValue> | SecretRef | ConfigMapRef)
-  secrets?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
-  configMaps?: Record<string, Record<string, string>> | ((ctx: AppContext) => Record<string, Record<string, string>>)
-  network?: string | boolean | AppNetworkOptions | ((ctx: AppContext) => string | boolean | AppNetworkOptions)
-  deploy?: 'all' | readonly string[] | { include?: readonly string[]; exclude?: readonly string[] }
-  ports?: ServicePort[]
-  podAnnotations?: Record<string, string>
-  volumes?: Volume[]
-  volumeMounts?: VolumeMount[]
-  args?: string[]
-}
-```
-
-`DockerfileBuild` supports content-addressed image reuse:
-
-```typescript
-interface DockerfileBuild {
-  type: 'dockerfile'
-  context: string
-  dockerfile: string
-  platform?: string | ((ctx: AppBuildContext) => string)
-  env?: Record<string, string>
-  args?: Record<string, string>
-  target?: string
-  inputs?: readonly string[]
-  sourceKey?: BuildSourceKeyConfig
-  cache?: { type: 'registry'; ref?: string; mode?: 'min' | 'max' }
-}
-
-type BuildSourceKeyConfig =
-  | boolean
-  | string
-  | ((ctx: AppBuildContext) => string | Promise<string>)
-  | { mode?: 'context' }
-  | { mode: 'inputs'; inputs: readonly string[] }
-  | {
-      mode: 'custom'
-      value: string | ((ctx: AppBuildContext) => string | Promise<string>)
-    }
-```
-
-When `inputs` or `sourceKey` is set, `tsops build` checks for a `source-<hash>`
-image tag before building. The build result carries the immutable digest ref
-when the Docker adapter can resolve one.
-
-Programmatic deploy calls can pass the same digest handoff used by the CLI:
-
-```typescript
-await tsops.deploy({
-  namespace: 'preview',
-  imageOverrides: {
-    api: 'ghcr.io/acme/api@sha256:abcd...'
-  }
-})
-```
-
-The `ingress` field uses a simple object format:
-
-```typescript
-ingress: ({ domain }) => ({ 
-  domain: `api.${domain}`,
-  protocol: 'https'  // optional, auto-detects if omitted
-})
-```
-
-**Protocol auto-detection:**
-- `*.localtest.me`, `localhost`, `*.local` → `http` (no certificate warnings)
-- Other domains → `https` (with TLS)
-- Explicit `protocol` overrides auto-detection for special cases
-
-The protocol is automatically used by the `url()` runtime helper when called with type `'ingress'`.
-
-## Runtime
-
-### env()
-
-Get environment variable for an app.
-
-```typescript
-import config from './tsops.config.js'
-
-process.env.TSOPS_NAMESPACE = 'prod'
-
-const nodeEnv = config.env('api', 'NODE_ENV')
-const port = config.env('api', 'PORT')
-console.log(nodeEnv, port)
-```
-
-### dns()
-
-Generate DNS name for different types of resources.
-
-```typescript
-const clusterDns = config.dns('api', 'cluster')     // 'api.prod.svc.cluster.local'
-const serviceDns = config.dns('api', 'service')     // 'api'
-const ingressDns = config.dns('api', 'ingress')     // 'api.prod.example.com'
-```
-
-### url()
-
-Generate complete URL for different types of resources with automatic protocol resolution.
-
-```typescript
-const clusterUrl = config.url('api', 'cluster')     // 'http://api.prod.svc.cluster.local'
-const serviceUrl = config.url('api', 'service')     // 'http://api'
-const ingressUrl = config.url('api', 'ingress')     // Protocol from ingress config
-                                                     // 'http://api.dev.localtest.me' (dev)
-                                                     // 'https://api.example.com' (prod)
-```
-
-The protocol for `'ingress'` type is determined from the `ingress` configuration in your app definition. For `'cluster'` and `'service'` types, `http` is always used (internal communication).
-
-The active namespace is determined by `TSOPS_NAMESPACE`; when unset, the first namespace in your config is used.
-
-## Next Steps
-
-- [Getting Started Guide](/guide/getting-started)
-- [Context Helpers](/guide/context-helpers)
-- [Secrets & ConfigMaps](/guide/secrets)
-- [What is tsops?](/guide/what-is-tsops)
+Run `tsops <command> --help` for the authoritative option list. The [Getting-started guide](/guide/getting-started) demonstrates the supported delivery flow.
