@@ -1,25 +1,25 @@
 ---
-title: Monitoring (OTEL + Loki + Grafana)
+title: Monitoring example
 ---
 
-## Monitoring Example
+# Monitoring example
 
-This example deploys an observability stack with OpenTelemetry Collector, Loki and Grafana.
+[`examples/otel`](https://github.com/Pom4H/tsops/tree/main/examples/otel) models an application together with OpenTelemetry Collector, Loki, and Grafana.
 
-- Project files live in `examples/otel/`
-- Config is defined in `examples/otel/tsops.config.ts`
-
-### How to run
+## Inspect the graph
 
 ```bash
-pnpm install
-pnpm tsops plan --config examples/otel/tsops.config.ts
+pnpm tsops plan \
+  --config examples/otel/tsops.config.ts \
+  --dry-run
 ```
 
-### Config Highlights
+## What to inspect
 
-- `otelCollector`, `loki`, `grafana` are defined with `image`
-- ConfigMaps are embedded as JSON strings and mounted into containers
-- Apps use runtime config for OTLP: `config.url('otelCollector', 'service')`
+- Third-party services can use explicit images while product applications use Dockerfile builds.
+- ConfigMaps carry collector and dashboard configuration.
+- Volume and mount definitions stay next to the application that consumes them.
+- Internal OTLP and dashboard endpoints are resolved from application keys rather than duplicated host-name strings.
+- Public routes remain namespace-aware.
 
-
+This example is intentionally application-scoped. Installing cluster-wide operators and shared observability infrastructure is normally better handled by Helm, GitOps, or upstream infrastructure tooling.
