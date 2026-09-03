@@ -25,7 +25,7 @@ jobs:
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
 
-      - name: Lint (biome)
+      - name: Lint (Biome)
         run: pnpm lint
 
       - name: Typecheck (tsc -b across packages)
@@ -33,3 +33,6 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+      - name: Build documentation
+        run: pnpm docs:build
