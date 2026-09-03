@@ -1,165 +1,101 @@
 # What is tsops?
 
-**tsops** is a TypeScript-first toolkit for planning, building, and deploying containerized applications. It replaces YAML configurations with type-safe TypeScript code, giving you the power of a programming language while maintaining the simplicity of declarative configuration.
+tsops is **typed application delivery for Kubernetes**.
 
-## The Problem
+It gives a TypeScript monorepo one application graph that can be interpreted in several environments:
 
-Deploying containerized applications traditionally involves:
+```text
+                         ┌─ local processes and stable URLs
+                         ├─ affected container builds
+  tsops.config.ts ───────┼─ Kubernetes plan and deploy
+                         ├─ pull-request overlay lifecycle
+                         └─ application runtime URL resolution
+```
 
-- ❌ Writing repetitive YAML files
-- ❌ Copying and pasting configurations
-- ❌ Hardcoding service names, domains, and DNS
-- ❌ Managing secrets separately from deployment
-- ❌ No type safety or validation until runtime
-- ❌ Difficult to maintain across environments
+The graph describes product-level concerns: applications, build inputs, images, ports, dependencies, environment bindings, public routes, namespaces, and preview policy. It does not try to describe an entire cloud account.
 
-## The tsops Solution
+## Why an application graph matters
 
-tsops provides:
+Containerized products commonly describe the same relationship in multiple places:
 
-- ✅ **Type-safe configuration** - Catch errors at compile time
-- ✅ **Context helpers** - secret(), configMap(), env()
-- ✅ **Single source of truth** - Define once, use everywhere
-- ✅ **Secret validation** - Automatic checks before deployment
-- ✅ **Built-in Docker** - Build and push images
-- ✅ **Multi-environment** - Easy dev/staging/prod management
+- a local port in a package script;
+- a Service and container port in Kubernetes;
+- a host name in an ingress manifest;
+- an image path in CI;
+- an API URL in application environment variables;
+- a separate script for each pull-request environment.
 
-## How It Works
+Those files can all be valid independently and still disagree as a system. tsops makes application names and their relationships compiler-visible. A single key such as `api` is used by the build planner, generated manifests, preview routing, local URL map, and runtime helper.
 
-```typescript
-// tsops.config.ts
-import { defineConfig } from 'tsops'
-
-export default defineConfig({
-  project: 'my-app',
-  domain: { prod: 'example.com' },
-  
+```ts
+const config = defineConfig({
+  // ...project, namespaces, clusters, images
   apps: {
     api: {
-      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
-      env: () => ({
-        // ✅ In your app: config.url('postgres', 'service')
+      ports: [{ name: 'http', port: 80, targetPort: 3000 }]
+    },
+    web: {
+      needs: ['api'],
+      env: ({ url }) => ({
+        API_URL: url('api', 'service')
       })
     }
   }
 })
+
+config.url('api', 'service')
 ```
 
-```bash
-# Deploy
-$ pnpm tsops deploy --namespace production
-```
+Renaming or removing the application can now surface through TypeScript rather than through a failed request after deployment.
 
-That's it! tsops:
-1. Resolves your configuration
-2. Builds Docker images (if needed)
-3. Generates deployment manifests
-4. Applies them to your cluster
+## One graph, three runtime shapes
 
-## Key Features
+Namespaces declare how applications are reached:
 
-### 🎯 Type Safety
+| Runtime | Typical use | `url('api', 'service')` resolves to |
+| --- | --- | --- |
+| `local` | Processes on a developer machine | A Portless URL under `tsops dev`, otherwise a localhost fallback |
+| `docker` | Applications sharing a Docker network | The application name and target port |
+| `kubernetes` | Preview, staging, production | A Kubernetes Service URL |
 
-Write configuration in TypeScript with full IntelliSense support. Get instant feedback on typos and type errors.
+The application asks for a semantic endpoint; the active namespace decides its reachable form.
 
-### ✨ Context Helpers
+## Delivery primitives
 
-Built-in helpers for common patterns:
+### `tsops dev`
 
-```typescript
-{
-  // ✅ Use runtime config in your app code:
-  import config from './tsops.config'
-  const POSTGRES_URL = config.url('postgres', 'service')
-  // → 'http://postgres' or 'http://my-app-postgres.production.svc.cluster.local'
-  
-  // Use namespace variables for domain
-  ingress: ({ domain }) => ({ domain: `api.${domain}` })
-  // → 'api.example.com'
-  
-  secret('api-secrets')
-  // → envFrom: secretRef
-}
-```
+Starts local application processes through Portless. Routes are stable, HTTPS-capable, and automatically isolated by Git worktree. Every child process receives the complete `TSOPS_DEV_URLS` map, and runtime helpers consume that map automatically.
 
-### 🔒 Secret Validation
+### `tsops plan`
 
-Automatic validation before deployment:
+Resolves the graph into Kubernetes resources, validates global and application artifacts, asks `kubectl` for diffs, and reports managed orphans. This is the review boundary before a cluster mutation.
 
-```typescript
-secrets: {
-  'api-secrets': () => ({
-    JWT_SECRET: process.env.PROD_JWT ?? ''  // ← Validated!
-  })
-}
-```
+### `tsops build`
 
-If `PROD_JWT` is missing, tsops:
-1. Checks if secret exists in cluster
-2. Uses cluster secret if available
-3. Shows helpful error if not
+Builds selected Docker images. Git-diff filtering limits work to affected applications. Source-key reuse adds a content-derived tag over BuildKit's layer cache and returns an immutable digest when the same build inputs already exist.
 
-### 🚀 Single Source of Truth
+### `tsops deploy`
 
-Use the same config for deployment AND runtime:
+Applies deterministic manifests and removes resources previously managed by tsops but no longer present in the graph. CI may override application images only with validated immutable digest references.
 
-```typescript
-// Deployment
-env: ({ secret }) => secret('api-secrets')
+### `tsops up` and `tsops down`
 
-// Runtime (in your app)
-import config from './tsops.config'
-process.env.TSOPS_NAMESPACE = 'production'
-const nodeEnv = config.env('api', 'NODE_ENV')
-```
+Materialise and destroy parameterized overlay namespaces. A preview may deploy only changed applications while generated `ExternalName` Services route untouched dependencies to a stable base namespace. Optional hooks cover TLS, access control, resource policy, and database isolation.
 
-## Comparison
+## What tsops does not own
 
-| Feature | YAML | Helm | tsops |
-|---------|------|------|-------|
-| Type Safety | ❌ | ❌ | ✅ |
-| IntelliSense | ❌ | ❌ | ✅ |
-| Functions | ❌ | Limited | ✅ |
-| Validation | Runtime | Runtime | Compile-time |
-| Secret Validation | ❌ | ❌ | ✅ |
-| Context Helpers | ❌ | ❌ | ✅ |
-| Learning Curve | Low | High | Medium |
+The boundary is deliberate:
 
-## Who is tsops for?
+- **Cluster and cloud provisioning:** use Terraform, OpenTofu, Pulumi, Crossplane, or a provider-specific tool.
+- **Third-party chart distribution:** use Helm when consuming or publishing a chart is the main requirement.
+- **A general Kubernetes authoring SDK:** use cdk8s when synthesizing arbitrary Kubernetes YAML is the goal.
+- **A mature remote-cluster live-update loop:** Tilt, Skaffold, Garden, and DevSpace currently go deeper on file synchronization and container replacement.
+- **Every deployment platform:** tsops is staying Kubernetes-focused rather than adding shallow adapters for unrelated runtimes.
 
-tsops is perfect for:
+## Who it is for
 
-- **TypeScript teams** - You already know the language
-- **Platform engineers** - Managing multiple apps and environments
-- **Startups** - Need to move fast with confidence
-- **Teams tired of YAML** - Want type safety and better DX
+tsops is most useful when a team owns a TypeScript monorepo with several containerized applications and wants local development, CI, preview environments, runtime service discovery, and Kubernetes delivery to share one model.
 
-## Next Steps
+It is a poor fit for a single static site, a team already satisfied with generated Helm values, or an infrastructure repository whose primary job is provisioning cloud resources.
 
-<div class="next-steps">
-
-### [🚀 Get Started](/guide/getting-started)
-Install tsops and deploy your first app
-
-### [📖 Context Helpers](/guide/context-helpers)
-Learn about configuration helpers and runtime utilities
-
-### [💡 Examples](/examples/)
-See real-world use cases
-
-</div>
-
-<style>
-.next-steps {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-  gap: 1rem;
-  margin: 2rem 0;
-}
-
-.next-steps > div {
-  padding: 1.5rem;
-  background: var(--vp-c-bg-soft);
-  border-radius: 8px;
-}
-</style>
+Continue with [Getting started](/guide/getting-started) or review [How tsops compares](/guide/comparison).
