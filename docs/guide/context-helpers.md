@@ -1,514 +1,259 @@
-# Context Helpers
+# Context helpers
 
-Context helpers are built-in functions available in all app configuration functions. They help you write clean, DRY configuration without hardcoding values.
+Application configuration callbacks receive two things in one typed object:
 
-## Overview
+1. metadata and helper functions supplied by tsops;
+2. custom variables from the selected namespace.
 
-All context helpers are automatically available in app configuration functions:
-
-```typescript
+```ts
 apps: {
   api: {
-    env: ({ secret, appName, production }) => ({
-      // Use helpers here
+    env: ({ project, namespace, production, url, secret }) => ({
+      PROJECT: project,
+      NAMESPACE: namespace,
       NODE_ENV: production ? 'production' : 'development',
-      SERVICE_NAME: appName,
-      JWT_SECRET: secret('api-secrets', 'JWT_SECRET')
-      // ✅ In your app: config.url('postgres', 'service')
+      WEB_URL: url('web', 'service'),
+      DATABASE_URL: secret('database', 'DATABASE_URL')
     })
   }
 }
 ```
 
-**Note:** Use explicit namespace variables (like `production`, `dev`, etc.) instead of auto-detected flags.
-
----
+Literal application, Secret, and ConfigMap names are inferred from the surrounding `defineConfig` call.
 
 ## Metadata
 
-Information about the current context.
+### `project`
 
-### `project: string`
+The stable project name from the root config.
 
-Current project name from config.
-
-```typescript
-env: ({ project }) => ({
-  PROJECT_NAME: project  // -> 'my-project'
-})
+```ts
+env: ({ project }) => ({ PROJECT: project })
 ```
 
-### `namespace: string`
+### `namespace`
 
-Current namespace name.
+The resolved static or materialized overlay namespace name.
 
-```typescript
-env: ({ namespace }) => ({
-  NAMESPACE: namespace  // -> 'production' or 'dev'
-})
+```ts
+env: ({ namespace }) => ({ NAMESPACE: namespace })
 ```
 
-### `appName: string`
+### `appName`
 
-Current application name being configured.
+The application currently being resolved.
 
-```typescript
-env: ({ appName }) => ({
-  SERVICE_NAME: appName,  // -> 'api', 'frontend', etc.
-  INSTANCE_ID: `${appName}-${Date.now()}`
-})
+```ts
+env: ({ appName }) => ({ SERVICE_NAME: appName })
 ```
 
-### `cluster: ClusterMetadata`
+Do not use nondeterministic values such as `Date.now()` or random identifiers in a configuration callback. Equal graph inputs should produce equal resources.
 
-Current cluster information.
+### `cluster`
 
-```typescript
-interface ClusterMetadata {
-  name: string        // Cluster name
-  apiServer: string   // API server URL
-  context: string     // Kubectl context
-}
-```
+Metadata from the cluster definition selected for the namespace:
 
-```typescript
+```ts
 env: ({ cluster }) => ({
   CLUSTER_NAME: cluster.name,
-  K8S_API: cluster.apiServer
+  KUBERNETES_API: cluster.apiServer
 })
 ```
 
----
+## Runtime-aware endpoints
 
-## Service Discovery
+### `url(app, type, options?)`
 
-**⚠️ Important: Use runtime config in your application code, not ENV variables.**
+Returns a complete URL for an application endpoint.
 
-For service-to-service communication, use `config.url()` in your application:
-
-```typescript
-// ✅ In your application code (e.g., backend/src/index.ts):
-import config from './tsops.config'
-
-// Short DNS (same namespace) - best for most cases
-const API_URL = config.url('api', 'service')  // http://api
-const POSTGRES_URL = config.url('postgres', 'service')  // http://postgres
-
-// Full cluster DNS (cross-namespace safe)
-const API_URL = config.url('api', 'cluster')  // http://api.prod.svc.cluster.local
-
-// Public ingress URL (external)
-const PUBLIC_URL = config.url('api', 'ingress')  // https://api.example.com
+```ts
+url('api', 'service')
+url('api', 'cluster')
+url('api', 'ingress')
+url('metrics', 'service', { port: 'prometheus' })
+url('admin', 'service', { protocol: 'https' })
 ```
 
-**Benefits:**
-- ✅ Type-safe (compile-time checks)
-- ✅ Respects `TSOPS_NAMESPACE` environment variable
-- ✅ Single source of truth
-- ✅ No container restarts needed
-- ✅ Zero-downtime deployments work correctly
+The endpoint type means:
 
-**Use ENV variables ONLY for:**
-- Secrets (passwords, API keys)
-- External services (outside the cluster)
-- Feature flags and configuration
-- Build-time values
+| Type | Meaning |
+| --- | --- |
+| `service` | Normal application-to-application endpoint |
+| `cluster` | Fully qualified Kubernetes Service endpoint |
+| `ingress` | Public endpoint derived from ingress configuration |
 
-## Generators
+For `runtime: 'local'`, service and cluster URLs resolve through the `TSOPS_DEV_URLS` map under `tsops dev`, or through a localhost fallback outside it. For `runtime: 'docker'`, they resolve through the application name and target port. For Kubernetes they resolve through Services and cluster DNS.
 
-Functions that generate resource names and labels.
+### `dns(app, type)`
 
----
+Returns the host component without a scheme:
+
+```ts
+dns('api', 'service')
+dns('api', 'cluster')
+dns('api', 'ingress')
+```
+
+Unlike `url`, `dns` does not accept protocol or named-port options.
+
+### Port helpers
+
+```ts
+servicePort('api')
+servicePort('metrics', 'prometheus')
+
+targetPort('api')
+listenPort('api')
+```
+
+- `servicePort` is what another Kubernetes Service client dials.
+- `targetPort` is the numeric container or local process port.
+- `listenPort` is an alias for `targetPort` and expresses application intent.
+
+## Secrets and ConfigMaps
+
+Define named resources once:
+
+```ts
+export default defineConfig({
+  // ...project, namespaces, clusters, images
+  secrets: {
+    database: {
+      DATABASE_URL: process.env.DATABASE_URL ?? ''
+    }
+  },
+  configMaps: {
+    runtime: {
+      LOG_LEVEL: 'info'
+    }
+  },
+  apps: {
+    // ...
+  }
+})
+```
+
+### Whole-resource references
+
+Return a whole reference when every key should become application environment:
+
+```ts
+env: [
+  ({ configMap }) => configMap('runtime'),
+  ({ secret }) => secret('database')
+]
+```
+
+These become Kubernetes `envFrom` entries.
+
+### Key references
+
+Use the second argument for one key:
+
+```ts
+env: ({ secret, configMap }) => ({
+  DATABASE_URL: secret('database', 'DATABASE_URL'),
+  LOG_LEVEL: configMap('runtime', 'LOG_LEVEL')
+})
+```
+
+These become Kubernetes `valueFrom` entries. There are no separate `secretKey` or `configMapKey` callback helpers.
+
+## Names and labels
 
 ### `label(key, value?)`
 
-Generate resource label selector following best practices.
+Builds an `app.kubernetes.io/*` selector string:
 
-#### Signature
-
-```typescript
-label(key: string, value?: string): string
+```ts
+label('name')
+label('component', 'backend')
 ```
-
-#### Examples
-
-```typescript
-env: ({ label }) => ({
-  // Auto-generated value (project-app)
-  APP_LABEL: label('name'),
-  // -> 'app.kubernetes.io/name=my-project-api'
-  
-  // Custom value
-  COMPONENT_LABEL: label('component', 'database'),
-  // -> 'app.kubernetes.io/component=database'
-  
-  TIER_LABEL: label('tier', 'backend')
-  // -> 'app.kubernetes.io/tier=backend'
-})
-```
-
-#### Pattern
-
-```
-app.kubernetes.io/{key}={value || project-appName}
-```
-
----
 
 ### `resource(kind, name)`
 
-Generate resource name following project conventions.
+Builds a deterministic resource name using project conventions:
 
-#### Signature
-
-```typescript
-resource(kind: ResourceKind, name: string): string
-
-type ResourceKind = 'secret' | 'configmap' | 'pvc' | 'sa' | 'serviceaccount'
+```ts
+resource('secret', 'database')
+resource('configmap', 'runtime')
+resource('pvc', 'data')
+resource('serviceaccount', 'worker')
 ```
 
-#### Examples
+Supported kinds are `secret`, `configmap`, `pvc`, `sa`, and `serviceaccount`.
 
-```typescript
-env: ({ resource }) => ({
-  SECRET_NAME: resource('secret', 'api-keys'),
-  // -> 'my-project-api-api-keys'
-  
-  PVC_NAME: resource('pvc', 'data'),
-  // -> 'my-project-api-data'
-  
-  SA_NAME: resource('sa', 'worker'),
-  // -> 'my-project-api-worker'
-})
-```
-
-#### Pattern
-
-```
-{project}-{appName}-{name}[-{kind}]
-```
-
-Note: ServiceAccount (sa) doesn't include kind suffix.
-
----
-
-## Secrets & ConfigMaps
-
-Functions for referencing secrets and config maps in environment variables.
-
-### `secret(secretName)`
-
-Reference entire secret as envFrom (all keys become environment variables).
-
-```typescript
-env: ({ secret }) => secret('api-secrets')
-// Generates: envFrom: [{ secretRef: { name: 'api-secrets' } }]
-```
-
-### `secret(secretName, key)`
-
-Reference specific key from secret as valueFrom.
-
-```typescript
-env: ({ secret }) => ({
-  JWT_SECRET: secret('api-secrets', 'JWT_SECRET'),
-  API_KEY: secret('api-secrets', 'API_KEY')
-})
-// Generates:
-// env:
-//   - name: JWT_SECRET
-//     valueFrom:
-//       secretKeyRef:
-//         name: api-secrets
-//         key: JWT_SECRET
-```
-
-### `configMap(configMapName)`
-
-Reference entire configMap as envFrom.
-
-```typescript
-env: ({ configMap }) => configMap('api-config')
-// Generates: envFrom: [{ configMapRef: { name: 'api-config' } }]
-```
-
-### `configMap(configMapName, key)`
-
-Reference specific key from configMap.
-
-```typescript
-env: ({ configMap }) => ({
-  LOG_LEVEL: configMap('api-config', 'LOG_LEVEL'),
-  FEATURE_FLAGS: configMap('api-config', 'FEATURES')
-})
-```
-
-### Type Safety
-
-Secret and ConfigMap names are type-safe based on your declarations:
-
-```typescript
-export default defineConfig({
-  secrets: {
-    'api-secrets': { /* ... */ },
-    'db-secrets': { /* ... */ }
-  },
-  
-  apps: {
-    api: {
-      env: ({ secret }) => ({
-        // ✅ Type-safe: 'api-secrets' is recognized
-        JWT: secret('api-secrets', 'JWT_SECRET'),
-        
-        // ❌ Type error: 'unknown-secret' doesn't exist
-        // KEY: secret('unknown-secret', 'KEY')
-      })
-    }
-  }
-})
-```
-
----
-
-## Utilities
-
-Helper functions for common tasks.
+## Environment lookup
 
 ### `env(key, fallback?)`
 
-Get environment variable with optional fallback.
+Reads a host environment variable through the configured environment provider:
 
-#### Signature
-
-```typescript
-env<T extends string = string>(key: string, fallback?: T): T
+```ts
+env: ({ env, production }) => ({
+  LOG_LEVEL: env('LOG_LEVEL', production ? 'warn' : 'debug')
+})
 ```
 
-#### Examples
+Use Kubernetes Secret references for application credentials. A plain build-time environment value may become part of an image layer and is covered by sensitive-environment validation.
 
-```typescript
+## String templates
+
+### `template(value, variables)`
+
+Replaces `{name}` placeholders:
+
+```ts
+env: ({ template, domain }) => ({
+  CALLBACK_URL: template('https://{domain}/auth/callback', { domain })
+})
+```
+
+Missing placeholders resolve to an empty string, so prefer direct template literals when TypeScript can express the value more clearly.
+
+## Namespace variables
+
+Custom namespace fields are spread into every application callback:
+
+```ts
+namespaces: {
+  staging: {
+    domain: 'staging.example.com',
+    production: false,
+    replicas: 1
+  },
+  production: {
+    domain: 'example.com',
+    production: true,
+    replicas: 3
+  }
+},
+
 apps: {
   api: {
-    env: ({ env, production }) => ({
-      // Required in production, fallback in dev
-      JWT_SECRET: env('JWT_SECRET', production ? undefined : 'dev-jwt-secret'),
-
-      // Always has fallback
-      DEBUG: env('DEBUG', 'false'),
-
-      // Optional
-      SENTRY_DSN: env('SENTRY_DSN')
+    replicas: ({ replicas }) => replicas,
+    env: ({ production }) => ({
+      NODE_ENV: production ? 'production' : 'development'
     })
   }
 }
 ```
 
-#### Pattern
+Custom fields cannot use reserved helper names such as `url`, `secret`, `namespace`, or `cluster`.
 
-Returns `process.env[key]` if set, otherwise returns `fallback` (or empty string if no fallback).
+## Runtime helpers in application code
 
----
+The object returned by `defineConfig` exposes a smaller runtime API outside callbacks:
 
-### `template(str, vars)`
+```ts
+import config from '../../tsops.config.js'
 
-Simple template string helper for complex string generation.
-
-#### Signature
-
-```typescript
-template(str: string, vars: Record<string, string>): string
+const apiUrl = config.url('api', 'service')
+const apiHost = config.dns('api', 'service')
+const listenPort = config.listenPort('api')
+const nodeEnv = config.env('api', 'NODE_ENV')
 ```
 
-#### Examples
+These methods use `TSOPS_NAMESPACE`, and service URL resolution consumes the Portless map supplied by `tsops dev` when present.
 
-```typescript
-env: ({ template, env }) => ({
-  // Database URL (for external database with credentials)
-  DATABASE_URL: template('postgresql://{user}:{pass}@{host}:{port}/{db}', {
-    user: env('DB_USER', 'admin'),
-    pass: env('DB_PASSWORD'),
-    host: env('DB_HOST', 'external-db.example.com'),
-    port: '5432',
-    db: 'myapp'
-  }),
-  // -> 'postgresql://admin:secret@external-db.example.com:5432/myapp'
-  
-  // API endpoint
-  API_ENDPOINT: template('https://{domain}/api/v{version}', {
-    domain: 'example.com',
-    version: '1'
-  }),
-  // -> 'https://example.com/api/v1'
-})
-```
-
-#### Pattern
-
-Replaces `{key}` with corresponding value from `vars` object. Missing keys are replaced with empty string.
-
----
-
-## Complete Example
-
-```typescript
-import { defineConfig } from 'tsops'
-
-export default defineConfig({
-  project: 'my-app',
-  
-  namespaces: {
-    prod: {
-      domain: 'example.com',
-      production: true,
-      replicas: 3,
-      dbHost: 'prod-db.internal'
-    },
-    dev: {
-      domain: 'dev.example.com',
-      production: false,
-      replicas: 1,
-      dbHost: 'dev-db.internal'
-    }
-  },
-  
-  clusters: { /* ... */ },
-  images: { /* ... */ },
-  
-  secrets: {
-    'app-secrets': ({ production }) => ({
-      JWT_SECRET: production
-        ? process.env.JWT_SECRET ?? ''
-        : 'dev-secret',
-      API_KEY: process.env.API_KEY ?? ''
-    })
-  },
-  
-  apps: {
-    api: {
-      ingress: ({ domain }) => ({ domain: `api.${domain}` }),
-      
-      env: ({
-        // Metadata
-        project,
-        namespace,
-        appName,
-        cluster,
-        
-        // Generators
-        label,
-        resource,
-        
-        // Secrets & ConfigMaps
-        secret,
-        configMap,
-        
-        // Utilities
-        env,
-        template,
-        
-        // Namespace variables
-        production,
-        dbHost,
-        replicas,
-        domain
-      }) => ({
-        // Metadata
-        PROJECT: project,
-        NAMESPACE: namespace,
-        SERVICE_NAME: appName,
-        CLUSTER: cluster.name,
-        
-        // Namespace variables
-        NODE_ENV: production ? 'production' : 'development',
-        DEBUG: production ? 'false' : 'true',
-        
-        // ✅ In your app code, use runtime config:
-        // import config from './tsops.config'
-        // const REDIS_URL = config.url('redis', 'service')
-        // const POSTGRES_URL = config.url('postgres', 'service')
-        
-        // Secrets
-        JWT_SECRET: secret('app-secrets', 'JWT_SECRET'),
-        
-        // Template for external database URL
-        DATABASE_URL: template('postgresql://{user}@{host}:{port}/myapp', {
-          user: env('DB_USER', 'admin'),
-          host: dbHost,  // external database host from namespace variables
-          port: '5432'
-        }),
-        
-        // Namespace variables
-        WORKER_COUNT: String(replicas * 2),
-        
-        // Labels & Resources
-        APP_LABEL: label('name'),
-        DATA_VOLUME: resource('pvc', 'data')
-      })
-    }
-  }
-})
-```
-
----
-
-## Migration from v4
-
-### Removed Helpers
-
-**`serviceName(app)` - REMOVED**
-
-Too simple. Use template string directly:
-
-```typescript
-// ❌ Old
-serviceName: (app) => `${project}-${app}`
-
-// ✅ New
-`${project}-${app}`
-```
-
-**`secretKey(name, key)` - REMOVED**
-
-Merged into `secret()`:
-
-```typescript
-// ❌ Old
-env: ({ secretKey }) => ({
-  JWT: secretKey('api-secrets', 'JWT_SECRET')
-})
-
-// ✅ New
-env: ({ secret }) => ({
-  JWT: secret('api-secrets', 'JWT_SECRET')
-})
-```
-
-**`configMapKey(name, key)` - REMOVED**
-
-Merged into `configMap()`:
-
-```typescript
-// ❌ Old
-env: ({ configMapKey }) => ({
-  CONFIG: configMapKey('api-config', 'app.json')
-})
-
-// ✅ New
-env: ({ configMap }) => ({
-  CONFIG: configMap('api-config', 'app.json')
-})
-```
-
-### Simplified API
-
-The secret/configMap functions now support both use cases with a cleaner API:
-
-```typescript
-// Reference entire secret/configMap (envFrom)
-env: ({ secret }) => secret('api-secrets')
-
-// Reference specific key (valueFrom)
-env: ({ secret }) => ({
-  JWT: secret('api-secrets', 'JWT_SECRET')
-})
-```
+See the [API reference](/api/) for signatures and [Local development](/guide/local-development) for runtime behavior.
