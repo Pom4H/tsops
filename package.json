@@ -6,7 +6,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev --parallel",
     "clean": "turbo run clean",
-    "lint": "biome check .",
+    "lint": "biome check . --max-diagnostics=1000",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "typecheck": "turbo run build",
@@ -25,6 +25,9 @@
     "@types/node": "^25.6.0",
     "turbo": "^2.9.6",
     "typescript": "^6.0.3"
+  },
+  "engines": {
+    "node": ">=24.0.0"
   },
   "packageManager": "pnpm@10.17.1"
 }

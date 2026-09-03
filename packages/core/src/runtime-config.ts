@@ -12,6 +12,7 @@ import { isOverlayNamespace } from './types.js'
 const DEFAULT_HTTP_PORT = 80
 const DEFAULT_HTTPS_PORT = 443
 const CLUSTER_DOMAIN = 'cluster.local'
+const DEV_URLS_ENV = 'TSOPS_DEV_URLS'
 
 /**
  * Creates runtime helper functions for a specific namespace.
@@ -20,6 +21,10 @@ const CLUSTER_DOMAIN = 'cluster.local'
  * `service`/`cluster`/`ingress` URL forms are resolved using the namespace's
  * {@link NamespaceRuntime}, and port selection distinguishes
  * `servicePort` / `targetPort` / `localPort` consistently.
+ *
+ * `tsops dev` injects `TSOPS_DEV_URLS` into local processes. When present,
+ * local runtime helpers resolve their primary HTTP endpoint through that stable
+ * named URL instead of exposing an ephemeral localhost port.
  */
 export function createRuntimeHelpers<
   TConfig extends TsOpsConfig<any, any, any, any, any, any, any>
@@ -114,19 +119,22 @@ export function createRuntimeHelpers<
    * for `ingress`.
    */
   const dns = (app: AppName, type: DNSType): string => {
+    const devUrl = runtime === 'local' ? getDevUrl(app) : undefined
+
     if (type === 'ingress') {
       // Validate ingress is configured; the host value may still be rewritten
-      // to localhost for a local-runtime namespace below.
+      // to a local dev route or localhost below.
       if (!externalHosts[app]) {
         throw new Error(
           `Cannot get ingress DNS for app "${app}": no ingress configuration found. ` +
             `Add an ingress definition to the app or use 'service' type instead.`
         )
       }
-      return runtime === 'local' ? 'localhost' : externalHosts[app]
+      if (runtime === 'local') return devUrl ? new URL(devUrl).hostname : 'localhost'
+      return externalHosts[app]
     }
 
-    if (runtime === 'local') return 'localhost'
+    if (runtime === 'local') return devUrl ? new URL(devUrl).hostname : 'localhost'
 
     // docker uses the service name just like kubernetes at the hostname level;
     // the port is what differs and that happens in url().
@@ -145,6 +153,9 @@ export function createRuntimeHelpers<
     type: DNSType,
     options: { protocol?: 'http' | 'https'; port?: string } = {}
   ): string => {
+    const devUrl = runtime === 'local' && !options.port ? getDevUrl(app) : undefined
+    if (devUrl) return withProtocol(devUrl, options.protocol)
+
     const hostname = dns(app, type)
 
     if (type === 'ingress') {
@@ -175,6 +186,30 @@ export function createRuntimeHelpers<
     listenPort,
     env
   }
+}
+
+function getDevUrl(app: string): string | undefined {
+  const raw = getEnvironmentVariable(DEV_URLS_ENV)
+  if (!raw) return undefined
+
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+    const value = (parsed as Record<string, unknown>)[app]
+    if (typeof value !== 'string') return undefined
+    const url = new URL(value)
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return undefined
+    return url.toString().replace(/\/$/, '')
+  } catch {
+    return undefined
+  }
+}
+
+function withProtocol(url: string, protocol?: 'http' | 'https'): string {
+  if (!protocol) return url
+  const parsed = new URL(url)
+  parsed.protocol = `${protocol}:`
+  return parsed.toString().replace(/\/$/, '')
 }
 
 function resolveRuntime(
