@@ -143,4 +143,4 @@ Then configure registry and cluster authentication in protected GitHub environme
 - [Getting started](../../guide/getting-started.md)
 - [Preview environments](../../guide/preview-overlays.md)
 - [Monorepo example](../monorepo.md)
-- [CLI package reference](../../../packages/cli/README.md)
+- [CLI package reference](https://github.com/Pom4H/tsops/blob/main/packages/cli/README.md)
