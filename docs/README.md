@@ -1,70 +1,48 @@
-# tsops Documentation
+# tsops documentation
 
-This directory contains the VitePress documentation for tsops.
+The public documentation is built with VitePress from this directory and published at:
 
-## Development
+https://pom4h.github.io/tsops/
 
-Start the dev server:
+## Local development
+
+From the repository root:
 
 ```bash
+corepack enable
+pnpm install --frozen-lockfile
 pnpm docs:dev
 ```
 
-Open http://localhost:5173/tsops/
+Open the URL printed by VitePress. The configured base path is `/tsops/`.
 
-## Build
-
-Build the documentation:
+## Validate the site
 
 ```bash
 pnpm docs:build
-```
-
-Preview the built site:
-
-```bash
 pnpm docs:preview
 ```
 
+The build must succeed without `ignoreDeadLinks`. Broken internal links are repository failures, not warnings to suppress.
+
 ## Structure
 
-```
+```text
 docs/
-├── .vitepress/
-│   ├── config.ts          # VitePress configuration
-│   └── theme/
-│       ├── index.ts       # Custom theme
-│       └── custom.css     # Custom styles
-├── guide/                 # User guide
-├── examples/              # Examples
-├── api/                   # API reference
-├── public/                # Static assets
-└── index.md               # Homepage
+├── .vitepress/        site configuration and theme
+├── guide/             product concepts and workflows
+├── examples/          documentation for source examples
+├── api/               public API overview
+├── public/            static assets
+└── index.md           homepage
 ```
 
-## Adding Pages
+## Editing rules
 
-1. Create a new `.md` file in the appropriate directory
-2. Add it to the sidebar in `.vitepress/config.ts`
-3. Write content using Markdown and Vue components
+1. Update the closest existing page before creating another overlapping guide.
+2. Link to a maintained file under `examples/` instead of copying a large configuration.
+3. Use the current Node.js requirement and public CLI flags.
+4. Add every new page to `.vitepress/config.ts` when it belongs in navigation.
+5. Run `pnpm docs:build` before opening a pull request.
 
-## Deployment
-
-Documentation is automatically deployed to GitHub Pages when changes are pushed to main branch.
-
-See `.github/workflows/deploy-docs.yml` for details.
-
-## Features
-
-- ✅ Full-text search
-- ✅ Dark mode
-- ✅ Mobile responsive
-- ✅ TypeScript syntax highlighting
-- ✅ Custom styling
-- ✅ Auto-deployment
-
-## Links
-
-- Live docs: https://yourusername.github.io/tsops/
-- VitePress docs: https://vitepress.dev/
-
+GitHub Pages deployment is defined in `.github/workflows/deploy-docs.yml`.
