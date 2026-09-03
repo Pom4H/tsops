@@ -27,7 +27,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
 
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -48,7 +47,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
 
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -88,7 +86,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
 
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -112,7 +109,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
 
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
@@ -136,7 +132,6 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
 
       - run: corepack enable
       - run: pnpm install --frozen-lockfile
