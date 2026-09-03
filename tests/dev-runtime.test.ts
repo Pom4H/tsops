@@ -1,11 +1,7 @@
 import { createRuntimeHelpers } from '@tsops/core'
 import { defineConfig } from 'tsops'
 import { describe, expect, it } from 'vitest'
-import {
-  buildRouteName,
-  createDevPlan,
-  selectLocalNamespace
-} from '../packages/cli/src/dev.js'
+import { buildRouteName, createDevPlan, selectLocalNamespace } from '../packages/cli/src/dev.js'
 
 describe('tsops dev planning', () => {
   it('selects the only local namespace and creates stable route names', () => {
