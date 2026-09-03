@@ -1,7 +1,7 @@
 {
   "name": "@tsops/k8",
   "version": "2.1.0",
-  "description": "Kubernetes manifest builders for tsops",
+  "description": "Deterministic Kubernetes manifest builders for tsops",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,7 +14,7 @@
     "build": "tsc -b .",
     "dev": "tsc -b --watch",
     "clean": "rm -rf dist",
-    "lint": "pnpm -w exec eslint .",
+    "lint": "pnpm -w exec biome check packages/k8",
     "generate:k8s-types": "node dist/scripts/generate-k8s-types.js"
   },
   "dependencies": {
