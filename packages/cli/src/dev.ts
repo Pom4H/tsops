@@ -1,4 +1,4 @@
-import { spawn, spawnSync, type ChildProcess } from 'node:child_process'
+import { type ChildProcess, spawn, spawnSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
@@ -98,7 +98,9 @@ export function createDevPlan(config: DevConfig, options: DevOptions = {}): DevP
     const route = buildRouteName(config.project, appName)
     const existing = routes.get(route)
     if (existing) {
-      throw new Error(`Apps "${existing}" and "${appName}" resolve to the same Portless route: ${route}`)
+      throw new Error(
+        `Apps "${existing}" and "${appName}" resolve to the same Portless route: ${route}`
+      )
     }
     routes.set(route, appName)
     entries.push({ app: appName, route, ...command })
@@ -225,7 +227,10 @@ function detectPackageManager(cwd: string, root: string): 'bun' | 'pnpm' | 'yarn
   const stop = path.resolve(root)
 
   while (true) {
-    if (fs.existsSync(path.join(current, 'bun.lock')) || fs.existsSync(path.join(current, 'bun.lockb'))) {
+    if (
+      fs.existsSync(path.join(current, 'bun.lock')) ||
+      fs.existsSync(path.join(current, 'bun.lockb'))
+    ) {
       return 'bun'
     }
     if (fs.existsSync(path.join(current, 'pnpm-lock.yaml'))) return 'pnpm'
